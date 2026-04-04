@@ -53,7 +53,7 @@ class BasePlugin:
         except Exception as e:
             Domoticz.Error("Error fetching registry: " + str(e))
             # Fallback to local file if fetch fails
-            local_reg = os.path.join(Parameters.get("HomeFolder", str(os.getcwd()) + "/"), "plugins", "00-PP-MANAGER", "registry.json")
+            local_reg = os.path.join(os.path.abspath(os.path.join(Parameters.get("HomeFolder", str(os.getcwd()) + "/"), "..", "..")), "plugins", os.path.basename(os.path.normpath(Parameters.get('HomeFolder', str(os.getcwd()) + '/'))), "registry.json")
             if os.path.isfile(local_reg):
                 with open(local_reg, 'r') as f:
                     self.plugindata = json.load(f)
@@ -82,11 +82,11 @@ class BasePlugin:
             Domoticz.Error("Windows Platform NOT YET SUPPORTED!!")
             return
             
-        home_folder = Parameters.get("HomeFolder", str(os.getcwd()) + "/")
+        home_folder = os.path.abspath(os.path.join(Parameters.get("HomeFolder", str(os.getcwd()) + "/"), "..", ".."))
         plugins_dir = os.path.join(home_folder, "plugins")
         
         # Inject shared dependencies into sys.path
-        shared_deps_dir = os.path.join(plugins_dir, "00-PP-MANAGER", ".shared_deps")
+        shared_deps_dir = os.path.join(plugins_dir, os.path.basename(os.path.normpath(Parameters.get('HomeFolder', str(os.getcwd()) + '/'))), ".shared_deps")
         if os.path.isdir(shared_deps_dir) and shared_deps_dir not in sys.path:
             sys.path.insert(0, shared_deps_dir)
             Domoticz.Log(f"Injected PP-MANAGER shared dependencies into sys.path: {shared_deps_dir}")
@@ -107,7 +107,7 @@ class BasePlugin:
 
         if Parameters["Mode5"] == 'True':
             Domoticz.Log("Plugin Security Scan is enabled")
-            secpoluserFile = os.path.join(plugins_dir, "00-PP-MANAGER", "secpoluser.txt")
+            secpoluserFile = os.path.join(plugins_dir, os.path.basename(os.path.normpath(Parameters.get('HomeFolder', str(os.getcwd()) + '/'))), "secpoluser.txt")
             Domoticz.Debug("Checking for SecPolUser file on:" + secpoluserFile)
             if os.path.isfile(secpoluserFile):
                 Domoticz.Log("secpoluser file found. Processing!!!")
@@ -134,7 +134,7 @@ class BasePlugin:
                             self.parseFileForSecurityIssues(py_file, d)
                 break # Only scan depth 1
 
-        exceptionFile = os.path.join(plugins_dir, "00-PP-MANAGER", "exceptions.txt")
+        exceptionFile = os.path.join(plugins_dir, os.path.basename(os.path.normpath(Parameters.get('HomeFolder', str(os.getcwd()) + '/'))), "exceptions.txt")
         Domoticz.Debug("Checking for Exception file on:" + exceptionFile)
         if os.path.isfile(exceptionFile):
             Domoticz.Log("Exception file found. Processing!!!")
@@ -153,7 +153,7 @@ class BasePlugin:
                     if d:
                         if d in self.plugindata:
                             self.UpdatePythonPlugin(self.plugindata[d][0], self.plugindata[d][1], d)
-                        elif d == "00-PP-MANAGER":
+                        elif d == os.path.basename(os.path.normpath(Parameters.get('HomeFolder', str(os.getcwd()) + '/'))):
                             Domoticz.Debug("PP-Manager Folder found. Skipping!!")      
                         else:
                             Domoticz.Log("Plugin:" + d + " cannot be managed with PP-Manager!!.")      
@@ -166,7 +166,7 @@ class BasePlugin:
                     if d:
                         if d in self.plugindata:
                             self.CheckForUpdatePythonPlugin(self.plugindata[d][0], self.plugindata[d][1], d)
-                        elif d == "00-PP-MANAGER":
+                        elif d == os.path.basename(os.path.normpath(Parameters.get('HomeFolder', str(os.getcwd()) + '/'))):
                             Domoticz.Debug("PP-Manager Folder found. Skipping!!")      
                         else:
                             Domoticz.Log("Plugin:" + d + " cannot be managed with PP-Manager!!.")      
@@ -205,7 +205,7 @@ class BasePlugin:
     def onStop(self):
         Domoticz.Debug("onStop called")
         Domoticz.Log("Plugin is stopping.")
-        self.UpdatePythonPlugin("adrighem", "pp-manager", "00-PP-MANAGER")
+        self.UpdatePythonPlugin("adrighem", "pp-manager", os.path.basename(os.path.normpath(Parameters.get('HomeFolder', str(os.getcwd()) + '/'))))
         Domoticz.Debugging(0)
 
     def onHeartbeat(self):
@@ -220,7 +220,7 @@ class BasePlugin:
             Domoticz.Log("Its time!!. Trigering Actions!!!")
             self.last_update_date = now.date()
             
-            home_folder = Parameters.get("HomeFolder", str(os.getcwd()) + "/")
+            home_folder = os.path.abspath(os.path.join(Parameters.get("HomeFolder", str(os.getcwd()) + "/"), "..", ".."))
             plugins_dir = os.path.join(home_folder, "plugins")
 
             if Parameters["Mode4"] == 'All':
@@ -230,7 +230,7 @@ class BasePlugin:
                         if d:
                             if d in self.plugindata:
                                 self.UpdatePythonPlugin(self.plugindata[d][0], self.plugindata[d][1], d)
-                            elif d == "00-PP-MANAGER":
+                            elif d == os.path.basename(os.path.normpath(Parameters.get('HomeFolder', str(os.getcwd()) + '/'))):
                                 Domoticz.Debug("PP-Manager Folder found. Skipping!!")      
                             else:
                                 Domoticz.Log("Plugin:" + d + " cannot be managed with PP-Manager!!.")      
@@ -243,7 +243,7 @@ class BasePlugin:
                         if d:
                             if d in self.plugindata:
                                 self.CheckForUpdatePythonPlugin(self.plugindata[d][0], self.plugindata[d][1], d)
-                            elif d == "00-PP-MANAGER":
+                            elif d == os.path.basename(os.path.normpath(Parameters.get('HomeFolder', str(os.getcwd()) + '/'))):
                                 Domoticz.Debug("PP-Manager Folder found. Skipping!!")      
                             else:
                                 Domoticz.Log("Plugin:" + d + " cannot be managed with PP-Manager!!.")      
@@ -263,7 +263,7 @@ class BasePlugin:
     def InstallPythonPlugin(self, ppAuthor, ppRepository, ppKey, ppBranch):
         Domoticz.Debug("InstallPythonPlugin called")
         
-        home_folder = Parameters.get("HomeFolder", str(os.getcwd()) + "/")
+        home_folder = os.path.abspath(os.path.join(Parameters.get("HomeFolder", str(os.getcwd()) + "/"), "..", ".."))
         plugins_dir = os.path.join(home_folder, "plugins")
 
         Domoticz.Log("Installing Plugin:" + self.plugindata[ppKey][2])
@@ -294,11 +294,12 @@ class BasePlugin:
     def UpdatePythonPlugin(self, ppAuthor, ppRepository, ppKey):
         Domoticz.Debug("UpdatePythonPlugin called")
         
-        home_folder = Parameters.get("HomeFolder", str(os.getcwd()) + "/")
+        home_folder = os.path.abspath(os.path.join(Parameters.get("HomeFolder", str(os.getcwd()) + "/"), "..", ".."))
         plugin_dir = os.path.join(home_folder, "plugins", ppKey)
 
-        if ppKey == "00-PP-MANAGER":
-            Domoticz.Log("Self Update Initiated")
+        if ppKey == os.path.basename(os.path.normpath(Parameters.get('HomeFolder', str(os.getcwd()) + '/'))):
+            Domoticz.Log("Self Update Initiated but disabled to preserve local fixes.")
+            return None
         elif (ppKey in self.plugindata and self.plugindata[ppKey][2] in self.ExceptionList):
             Domoticz.Log("Plugin:" + self.plugindata[ppKey][2] + " excluded by Exclusion file (exclusion.txt). Skipping!!!")
             return
@@ -355,7 +356,7 @@ class BasePlugin:
 
         Domoticz.Debug("Checking Plugin:" + ppKey + " for updates")
         
-        home_folder = Parameters.get("HomeFolder", str(os.getcwd()) + "/")
+        home_folder = os.path.abspath(os.path.join(Parameters.get("HomeFolder", str(os.getcwd()) + "/"), "..", ".."))
         plugin_dir = os.path.join(home_folder, "plugins", ppKey)
         
         env = os.environ.copy()
@@ -402,27 +403,13 @@ class BasePlugin:
         return None
 
     def fnSelectedNotify(self, pluginKey):
-        import urllib.request
-        import urllib.parse
-        import urllib.error
         Domoticz.Debug("fnSelectedNotify called")
         Domoticz.Log("Preparing Notification")
-        domoticz_port = Parameters.get("Mode1", "8080")
-        ServerURL = f"http://127.0.0.1:{domoticz_port}/json.htm?param=sendnotification&type=command"
         pluginName = self.plugindata[pluginKey][2] if pluginKey in self.plugindata else pluginKey
-        MailSubject = urllib.parse.quote(platform.node() + ":Domoticz Plugin Updates Available for " + pluginName)
-        MailBody = urllib.parse.quote(pluginName + " has updates available!!")
-        MailDetailsURL = "&subject=" + MailSubject + "&body=" + MailBody + "&subsystem=email"
-        notificationURL = ServerURL + MailDetailsURL
-        Domoticz.Debug("ConstructedURL is:" + notificationURL)
-        try:
-            response = urllib.request.urlopen(notificationURL, timeout=2).read()
-        except urllib.error.URLError as err1:
-            Domoticz.Error("HTTP Request error: " + str(err1) + " URL: " + notificationURL)
-        except Exception as e:
-            Domoticz.Error("Unexpected Error notifying: " + str(e))
-            
-        Domoticz.Debug("Notification URL is :" + str(notificationURL))
+        MailSubject = platform.node() + ": Domoticz Plugin Updates Available for " + pluginName
+        MailBody = pluginName + " has updates available!!"
+        Domoticz.SendNotification(MailSubject, MailBody)
+        Domoticz.Debug("Notification sent natively.")
         return None
 
     def parseIntValue(self, s):
@@ -463,10 +450,10 @@ class BasePlugin:
 
     def installDependencies(self, pluginKey):
         Domoticz.Debug("installDependencies called")
-        home_folder = Parameters.get("HomeFolder", str(os.getcwd()) + "/")
+        home_folder = os.path.abspath(os.path.join(Parameters.get("HomeFolder", str(os.getcwd()) + "/"), "..", ".."))
         plugin_dir = os.path.join(home_folder, "plugins", pluginKey)
         requirementsFile = os.path.join(plugin_dir, "requirements.txt")
-        shared_deps_dir = os.path.join(home_folder, "plugins", "00-PP-MANAGER", ".shared_deps")
+        shared_deps_dir = os.path.join(home_folder, "plugins", os.path.basename(os.path.normpath(Parameters.get('HomeFolder', str(os.getcwd()) + '/'))), ".shared_deps")
 
         if os.path.isfile(requirementsFile):
             Domoticz.Log("requirements.txt found for plugin: " + pluginKey)

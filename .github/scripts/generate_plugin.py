@@ -48,7 +48,6 @@ def generate_plugin():
 		<h2>NOTE: After selecting your options press "Update" button!!</h2>
     </description>
      <params>
-        <param field="Mode1" label="Domoticz Port" width="75px" required="true" default="8080"/>
         <param field="Mode2" label="Plugin to install" width="200px">
             <options>
 {options_xml.rstrip()}
