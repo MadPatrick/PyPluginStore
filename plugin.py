@@ -577,22 +577,40 @@ class BasePlugin:
         requirementsFile = os.path.join(plugin_dir, "requirements.txt")
         shared_deps_dir = os.path.join(home_folder, "plugins", os.path.basename(os.path.normpath(Parameters.get('HomeFolder', str(os.getcwd()) + '/'))), ".shared_deps")
 
+        def check_cmd(cmd):
+            try:
+                subprocess.run([cmd, "--version"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                return True
+            except:
+                return False
+
         if os.path.isfile(requirementsFile):
             Domoticz.Log("requirements.txt found for plugin: " + pluginKey)
             os.makedirs(shared_deps_dir, exist_ok=True)
             
-            # Using 'uv' instead of 'sudo pip3' for fast, non-sudo, dependency resolution
-            installCmd = ["uv", "pip", "install", "-r", requirementsFile, "--target", shared_deps_dir]
-            Domoticz.Log("Installing dependencies using: " + " ".join(installCmd))
-            try:
-                pr = subprocess.Popen(installCmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-                out, error = pr.communicate()
-                if pr.returncode == 0:
-                    Domoticz.Log("Dependencies installed successfully: " + out.strip())
-                else:
-                    Domoticz.Error("Error installing dependencies (Check if 'uv' is installed): " + error.strip())
-            except OSError as e:
-                Domoticz.Error("OS Error running 'uv' (Is it installed?): " + str(e))
+            # Check for 'uv' then 'pip' as fallbacks
+            installCmd = None
+            if check_cmd("uv"):
+                installCmd = ["uv", "pip", "install", "-r", requirementsFile, "--target", shared_deps_dir]
+            elif check_cmd("pip3"):
+                installCmd = ["pip3", "install", "-r", requirementsFile, "--target", shared_deps_dir]
+            elif check_cmd("pip"):
+                installCmd = ["pip", "install", "-r", requirementsFile, "--target", shared_deps_dir]
+            
+            if installCmd:
+                Domoticz.Log("Installing dependencies using: " + " ".join(installCmd))
+                try:
+                    pr = subprocess.Popen(installCmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+                    out, error = pr.communicate()
+                    if pr.returncode == 0:
+                        Domoticz.Log("Dependencies installed successfully: " + out.strip())
+                    else:
+                        Domoticz.Error("Error installing dependencies: " + error.strip())
+                except Exception as e:
+                    Domoticz.Error("Error running installation command: " + str(e))
+            else:
+                Domoticz.Log("Neither 'uv' nor 'pip' found. Skipping automatic dependency installation.")
+                Domoticz.Log(f"Please install dependencies manually from {requirementsFile} into {shared_deps_dir}")
         else:
             Domoticz.Log("No requirements.txt found for plugin: " + pluginKey)
         return None
