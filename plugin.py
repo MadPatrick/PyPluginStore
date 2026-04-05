@@ -254,13 +254,23 @@ class BasePlugin:
             else:
                 self.SecPolUserList = {"Global":[]}
             
-            for root, dirs, files in os.walk(plugins_dir):
-                for d in dirs:
-                    if d:
-                        py_file = os.path.join(plugins_dir, d, "plugin.py")
-                        if os.path.isfile(py_file):
-                            self.parseFileForSecurityIssues(py_file, d)
-                break # Only scan depth 1
+            # Scan all plugins in the plugins directory
+            for plugin_folder in os.listdir(plugins_dir):
+                plugin_path = os.path.join(plugins_dir, plugin_folder)
+                
+                # Make sure it's a directory and not the manager itself
+                if os.path.isdir(plugin_path) and plugin_folder != os.path.basename(os.path.normpath(Parameters.get('HomeFolder', str(os.getcwd()) + '/'))):
+                    
+                    # Recursively walk through the plugin's folder to find all .py files
+                    for root, _, files in os.walk(plugin_path):
+                        # Optional: skip hidden folders like .git or .shared_deps
+                        if '/.' in root.replace('\\', '/'): 
+                            continue
+                            
+                        for file in files:
+                            if file.endswith('.py'):
+                                py_file = os.path.join(root, file)
+                                self.parseFileForSecurityIssues(py_file, plugin_folder)
 
         exceptionFile = os.path.join(plugins_dir, os.path.basename(os.path.normpath(Parameters.get('HomeFolder', str(os.getcwd()) + '/'))), "exceptions.txt")
         Domoticz.Debug("Checking for Exception file on:" + exceptionFile)
@@ -549,30 +559,44 @@ class BasePlugin:
 
     def parseFileForSecurityIssues(self, pyfilename, pypluginid):
         Domoticz.Debug("parseFileForSecurityIssues called")
-        if Parameters["Mode5"] == 'Monitor':
-            Domoticz.Log("Plugin Security Scan is enabled")
+        if Parameters.get("Mode5") == 'True':
+            Domoticz.Log(f"Scanning {pyfilename} for security issues...")
 
-        ips = {}
         if pypluginid not in self.SecPolUserList:
             self.SecPolUserList[pypluginid] = []
 
+        ip_pattern = re.compile(r'\b(?:[0-9]{1,3}\.){3}[0-9]{1,3}\b')
+        suspicious_calls = re.compile(r'\b(subprocess\.|os\.system|os\.popen|eval\(|exec\(|__import__\(|pickle\.)')
+
         try:
-            with open(pyfilename, "r") as file:
+            with open(pyfilename, "r", encoding="utf-8", errors="ignore") as file:
                 for lineNum, text in enumerate(file, 1):
-                    text = text.rstrip()
-                    regexFound = re.findall(r'(?:[\d]{1,3})\.(?:[\d]{1,3})\.(?:[\d]{1,3})\.(?:[\d]{1,3})', text)
-                    paramFound = re.findall(r'<param field=', text)
+                    clean_text = text.strip()
                     
-                    if regexFound and not paramFound:
-                        for rex in regexFound:
-                            clean_text = text.strip()
-                            if (clean_text not in self.SecPolUserList.get("Global", []) and 
-                                clean_text not in self.SecPolUserList[pypluginid] and 
-                                clean_text != "" and 
-                                not text.startswith("#")):
-                                Domoticz.Error(f"Security Finding(IP):-->{clean_text}<-- LINE: {lineNum} FILE:{pyfilename}")
-                                ips[f"IP{lineNum}"] = (rex, "IP Address")
-            Domoticz.Debug("IPS Table contents are:" + str(ips))
+                    if not clean_text or clean_text.startswith('#') or '<param field=' in clean_text:
+                        continue
+
+                    findings = []
+                    
+                    for ip in ip_pattern.findall(clean_text):
+                        if all(0 <= int(octet) <= 255 for octet in ip.split('.')):
+                            findings.append(f"IP Address: {ip}")
+
+                    for call in suspicious_calls.findall(clean_text):
+                        findings.append(f"Suspicious Call: {call}")
+
+                    for finding in findings:
+                        is_excluded = False
+                        combined_exclusions = self.SecPolUserList.get("Global", []) + self.SecPolUserList[pypluginid]
+                        for exclusion in combined_exclusions:
+                            if exclusion in clean_text or exclusion in finding:
+                                is_excluded = True
+                                break
+                        
+                        if not is_excluded:
+                            Domoticz.Error(f"Security Finding in {pypluginid}: --> {finding} <-- LINE: {lineNum} FILE: {pyfilename}")
+                            Domoticz.Error(f"Code context: {clean_text}")
+
         except Exception as e:
             Domoticz.Error(f"Error parsing security issues for {pyfilename}: {str(e)}")
 
