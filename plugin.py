@@ -28,31 +28,24 @@
             <options>
                 <option label="Idle" value="Idle"  default="true" />
                 <option label="Battery monitoring for Z-Wave nodes" value="BatteryLevel"/>
-                <option label="Buienradar.nl (Weather lookup)" value="Buienradar"/>
                 <option label="Chromecast plugin for Domoticz" value="ChromecastPlugin"/>
                 <option label="Creasol DomBus RS485 I/O/Sens modules" value="CreasolDomBus"/>
-                <option label="Crow Runner Alarm" value="AAPIPModule"/>
                 <option label="DDS238 ZN/S energy meter, single phase, Modbus RTU" value="domoticz-dds238"/>
                 <option label="deCONZ bridge (For Conbee,Raspbee)" value="deCONZ"/>
                 <option label="Denon/Marantz Amplifier" value="Denon4306"/>
                 <option label="Domoticz Theme Manager" value="domoticz-theme-manager"/>
                 <option label="DS238-2 ZN/S ModbusTCP" value="ds238-modbus-tcp"/>
                 <option label="DTS238 ZN/S energy meter, three phase, Modbus RTU" value="domoticz-dts238"/>
-                <option label="Dummy Plugin" value="Dummy_Plugin"/>
                 <option label="Dyson Pure Link" value="DysonPureLink"/>
                 <option label="E-Flux by Road back office" value="E-Flux"/>
                 <option label="ebusd bridge" value="ebusd"/>
                 <option label="Emmeti EQ 2021 amd EQ 3021 ES hot water heat pumps" value="domoticz-emmeti-eq2021"/>
                 <option label="Emmeti Mirai heat pumps" value="domoticz-emmeti-mirai"/>
                 <option label="EMS bus Wi-Fi Gateway" value="ems-gateway"/>
-                <option label="eQ-3 MAX! Cube" value="eq3max"/>
                 <option label="EVCC IO Plugin" value="Domoticz-EVCC-IO-Plugin"/>
                 <option label="Freebox V6 (Revolution)" value="freeboxv6"/>
-                <option label="Global Cache 100" value="GC-100"/>
                 <option label="GoodWE Solar inverter via SEMS API" value="GoodWeAPI"/>
                 <option label="Govee Local Api Control" value="GoveeDiscovery"/>
-                <option label="Hisense AC (AEH-W4A1)" value="aeh-w4a1"/>
-                <option label="Hive Plugin" value="HivePlug"/>
                 <option label="Homewizard" value="Homewizard"/>
                 <option label="Homewizard Battery" value="Homewizard-Battery"/>
                 <option label="Hyundai and Kia vehicles" value="HyundaiKiaConnect"/>
@@ -62,34 +55,21 @@
                 <option label="Itho Wifi module" value="IthoWifi"/>
                 <option label="Link-Tap Watering System" value="Link-Tap"/>
                 <option label="Linky" value="Linky"/>
-                <option label="Meteo Alarm EU RSS Reader" value="MeteoAlarmEU"/>
-                <option label="Mikrotik RouterOS" value="mikrotik-routeros"/>
-                <option label="Moon Phases" value="MoonPhases"/>
+                <option label="Lyrion Music Server (LMS)" value="LyrionMusicServer"/>
                 <option label="MQTT discovery" value="MQTTDiscovery"/>
-                <option label="Onkyo AV Receiver" value="Onkyo"/>
                 <option label="OpenWRT WiFi Presence MQTT translator" value="owrtwifi2domo"/>
                 <option label="PZEM-016 PZEM-014 PZEM-004T energy meters" value="pzem016"/>
                 <option label="Quatt" value="Quatt"/>
-                <option label="RAVEn Zigbee energy monitor" value="RAVEn"/>
-                <option label="RTL_433 MQTT receiver" value="pyrtl433"/>
-                <option label="Shelly MQTT translator" value="Shelly_MQTT"/>
-                <option label="SmogTok Air Quality monitor" value="SmogTok"/>
-                <option label="SNMP Reader" value="SNMPreader"/>
                 <option label="Sonoff Mini" value="sonoff-domoticz-plugin"/>
-                <option label="Sonos Players" value="Sonos"/>
-                <option label="Sony Bravia TV (with Kodi remote)" value="sony"/>
                 <option label="Steam player status" value="steam"/>
                 <option label="Synology SurveillanceStation" value="Synology SurveillanceStation"/>
-                <option label="SYSFS-Switches" value="SYSFS-Switches"/>
+                <option label="Tile Bluetooth Tracker" value="DomoticzTile"/>
                 <option label="Tuya" value="tuyaha"/>
-                <option label="UPS Monitor" value="NUT_UPS"/>
                 <option label="Wan IP Checker" value="WAN-IP-CHECKER"/>
                 <option label="WLANThermo" value="WLANThermo"/>
                 <option label="WLED" value="WLED"/>
                 <option label="Xiaomi Mi Flower Mate" value="Mi_Flower_mate_plugin"/>
                 <option label="Xiaomi Mi Robot Vacuum" value="xiaomi-mi-robot-vacuum"/>
-                <option label="Yamaha AV Receiver" value="YamahaPlug"/>
-                <option label="Yi Hack" value="YiHack"/>
                 <option label="Zigate plugin" value="Zigate"/>
                 <option label="Zigbee2Mqtt" value="Zigbee2Mqtt"/>
             </options>
