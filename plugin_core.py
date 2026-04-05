@@ -447,8 +447,13 @@ class BasePlugin:
         ip_pattern = re.compile(r'\b(?:[0-9]{1,3}\.){3}[0-9]{1,3}\b')
 
         try:
+            # 1. Prevent Large File DoS: Limit file read to 5MB
+            MAX_FILE_SIZE = 5 * 1024 * 1024
             with open(pyfilename, "r", encoding="utf-8", errors="ignore") as file:
-                source_code = file.read()
+                source_code = file.read(MAX_FILE_SIZE)
+                if file.read(1):
+                    Domoticz.Error(f"Plugin file {pyfilename} exceeds 5MB limit. Plugin considered UNSAFE.")
+                    return
 
             try:
                 tree = ast.parse(source_code)
@@ -460,18 +465,37 @@ class BasePlugin:
                 def __init__(self):
                     self.findings = []
 
-                def visit_Call(self, node):
-                    func_name = ""
-                    if isinstance(node.func, ast.Attribute):
-                        if isinstance(node.func.value, ast.Name):
-                            func_name = f"{node.func.value.id}.{node.func.attr}"
-                    elif isinstance(node.func, ast.Name):
-                        func_name = node.func.id
+                def get_full_name(self, node):
+                    if isinstance(node, ast.Name):
+                        return node.id
+                    elif isinstance(node, ast.Attribute):
+                        val = self.get_full_name(node.value)
+                        return f"{val}.{node.attr}" if val else node.attr
+                    return ""
 
-                    suspicious = ['os.system', 'os.popen', 'eval', 'exec', '__import__', 'pickle.loads', 'pickle.load']
-                    if func_name in suspicious or func_name.startswith('subprocess.'):
-                        self.findings.append((node.lineno, f"Suspicious Call: {func_name}"))
+                def visit_Call(self, node):
+                    func_full_name = self.get_full_name(node.func)
                     
+                    func_base_name = ""
+                    if isinstance(node.func, ast.Name):
+                        func_base_name = node.func.id
+                    elif isinstance(node.func, ast.Attribute):
+                        func_base_name = node.func.attr
+
+                    exact_matches = {'os.system', 'os.popen', 'eval', 'exec', '__import__', 'compile', 'pickle.loads', 'pickle.load', 'os.remove', 'os.unlink', 'shutil.rmtree'}
+                    
+                    if func_full_name in exact_matches or func_full_name.startswith('subprocess.'):
+                        self.findings.append((node.lineno, f"Suspicious Call: {func_full_name}"))
+                    elif func_base_name in {'eval', 'exec', '__import__', 'compile'}:
+                        self.findings.append((node.lineno, f"Suspicious Call: {func_base_name}"))
+                    elif func_base_name in {'system', 'popen', 'loads', 'rmtree', 'unlink'}:
+                        self.findings.append((node.lineno, f"Potentially Suspicious Call (Alias?): {func_base_name}"))
+                    
+                    self.generic_visit(node)
+
+                def visit_Name(self, node):
+                    if node.id in {'eval', 'exec', '__import__', 'compile'} and isinstance(getattr(node, 'ctx', None), ast.Load):
+                        self.findings.append((node.lineno, f"Dangerous Builtin Referenced: {node.id}"))
                     self.generic_visit(node)
 
             scanner = SecurityScanner()
@@ -481,7 +505,8 @@ class BasePlugin:
             for lineno, finding in scanner.findings:
                 if lineno not in ast_findings_map:
                     ast_findings_map[lineno] = []
-                ast_findings_map[lineno].append(finding)
+                if finding not in ast_findings_map[lineno]:
+                    ast_findings_map[lineno].append(finding)
 
             lines = source_code.splitlines()
             for i, text in enumerate(lines):
