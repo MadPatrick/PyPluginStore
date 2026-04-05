@@ -4,6 +4,10 @@ A robust and modern plugin manager for Domoticz that allows you to install and a
 
 **Note:** This plugin runs exclusively on Linux Systems (including Raspberry Pi).
 
+> **A Fork for the Future:** This repository is a modernized fork of the original [ycahome/pp-manager](https://github.com/ycahome/pp-manager). It was created to clean up the codebase, ensure full compatibility with modern Python versions (including Python 3.13 and up), and introduce significantly advanced security and dependency management features.
+
+---
+
 ## 🚀 Key Features
 
 *   **Install Plugins:** Easily install plugins from a curated registry directly from the Domoticz Hardware page.
@@ -13,6 +17,14 @@ A robust and modern plugin manager for Domoticz that allows you to install and a
 *   **Update Notifications:** Opt-in to receive email/system notifications when a plugin update is available.
 *   **Decoupled Registry:** Uses `registry.json` dynamically fetched from GitHub, so you don't need to constantly update the manager just to see new plugins in your list.
 *   **Custom Plugin Installation:** Support for entering a custom plugin ID (defined in `registry.json`) outside of the dropdown menu.
+
+## 🛡️ Advanced Security Scanning
+
+This fork introduces a vastly improved **Abstract Syntax Tree (AST)** based security scanner to protect your Domoticz instance from malicious plugins:
+*   **Deep Execution Detection:** Detects calls to dangerous functions like `os.system`, `subprocess`, `eval`, `exec`, and `pickle` regardless of how deeply nested or aliased they are.
+*   **Destructive Operation Blocking:** Flags destructive file operations such as `shutil.rmtree` or `os.remove`.
+*   **AST Bomb & DoS Protection:** Implements hard file size limits (5MB) and recursive parsing exception handling to prevent malicious files from crashing your plugin manager.
+*   **Suspicious IP Detection:** Uses precise regex to scan all downloaded code for hardcoded IPv4 addresses.
 
 ---
 
@@ -72,7 +84,7 @@ Once installed and Domoticz is restarted, go to **Setup -> Hardware** and add **
     *   **Selected:** Continuously updates only the plugin selected in the dropdown.
     *   **Selected (NotifyOnly):** Checks only the selected plugin for updates and notifies you.
     *   **None:** Disables auto-updating.
-*   **Security Scan (Experimental):** Set to True to scan for potentially suspicious IPs and subprocess executions within downloaded plugins.
+*   **Security Scan (Experimental):** Set to True to enable the advanced AST and IP scanner to identify potentially suspicious code inside downloaded plugins.
 
 ---
 
