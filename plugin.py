@@ -1,14 +1,13 @@
 # pp-manager - PythonPlugin Manager
 #
-# Author: ycahome, 2018
-# Author: adrighem, 2026
+# Author: adrighem, 2018
 #
 #  Since (2018-02-23): Initial Version
 #
 
 
 """
-<plugin key="PP-MANAGER" name="Python Plugin Manager" author="adrighem" version="2.0.0" externallink="https://forum.domoticz.com/viewtopic.php?t=22339"> <!-- x-release-please-version -->
+<plugin key="PP-MANAGER" name="Python Plugin Manager" author="adrighem" version="2.0.0" externallink="https://www.domoticz.com/forum/viewtopic.php?f=65&t=22339"> <!-- x-release-please-version -->
     <description>
 		<h2>Python Plugin Manager 2.0.0</h2><br/> <!-- x-release-please-version -->
 		<h3>Features</h3>
