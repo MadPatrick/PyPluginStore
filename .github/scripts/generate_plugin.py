@@ -31,9 +31,9 @@ def generate_plugin():
 
 
 """
-<plugin key="PP-MANAGER" name="Python Plugin Manager" author="adrighem" version="1.5.47" externallink="https://www.domoticz.com/forum/viewtopic.php?f=65&t=22339">
+<plugin key="PP-MANAGER" name="Python Plugin Manager" author="adrighem" version="2.0.0" externallink="https://www.domoticz.com/forum/viewtopic.php?f=65&t=22339"> <!-- x-release-please-version -->
     <description>
-		<h2>Python Plugin Manager 1.5.47</h2><br/>
+		<h2>Python Plugin Manager 2.0.0</h2><br/> <!-- x-release-please-version -->
 		<h3>Features</h3>
 		<ul style="list-style-type:square">
 			<li>Install plugins</li>

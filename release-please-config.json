@@ -1,0 +1,13 @@
+{
+  "packages": {
+    ".": {
+      "release-type": "python",
+      "initial-version": "2.0.0",
+      "extra-files": [
+        ".github/scripts/generate_plugin.py",
+        "plugin.py"
+      ]
+    }
+  },
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json"
+}
