@@ -1,0 +1,38 @@
+name: Monthly Plugin Scan
+
+on:
+  schedule:
+    - cron: '0 0 1 * *' # Run at 00:00 on the 1st day of every month
+  workflow_dispatch: # Allow manual trigger from the GitHub Actions UI
+
+jobs:
+  scan-and-pr:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Run Plugin Scanner
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python .github/scripts/scan_github_plugins.py
+
+      - name: Create Pull Request
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: "feat: add new Domoticz Python plugins"
+          title: "Add new Domoticz Python plugins from monthly scan"
+          body: |
+            This automated PR adds new Domoticz Python plugins found on GitHub that were not yet in the registry.
+
+            The search query finds repositories matching `domoticz plugin language:python`.
+          branch: "auto-add-plugins"
+          delete-branch: true
+          labels: "automated pr, enhancement"
