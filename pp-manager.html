@@ -135,7 +135,9 @@
         
         setStatus("Finding API bridge...");
         try {
-            const req = await fetch('json.htm?type=command&param=getdevices&filter=all&used=true');
+            console.log("Fetching devices from /json.htm...");
+            const req = await fetch('/json.htm?type=command&param=getdevices&filter=all&used=true&t=' + Date.now());
+            if (!req.ok) throw new Error("HTTP error " + req.status);
             const devices = await req.json();
             
             if (devices.result) {
@@ -150,15 +152,15 @@
             }
             
             if (!payloadIdx || !triggerIdx) {
-                setStatus("Error: PP-Manager devices not found. Please ensure the plugin is added in Hardware.");
+                setStatus("Error: PP-Manager devices not found (" + (payloadIdx?'Y':'N') + "/" + (triggerIdx?'Y':'N') + "). Please ensure the plugin is added in Hardware.");
                 return;
             }
             
             console.log("Found bridge devices: Payload=" + payloadIdx + ", Trigger=" + triggerIdx);
             loadPlugins();
         } catch (e) {
-            console.error(e);
-            setStatus("Failed to connect to Domoticz API.");
+            console.error("Init Error:", e);
+            setStatus("Failed to connect to Domoticz API: " + e.message);
         }
     }
 
@@ -173,8 +175,9 @@
             const txId = Date.now().toString();
             const payload = JSON.stringify({ action, tx_id: txId, ...data });
             
-            await fetch(`json.htm?type=command&param=udevice&idx=${payloadIdx}&nvalue=0&svalue=${encodeURIComponent(payload)}`);
-            await fetch(`json.htm?type=command&param=switchlight&idx=${triggerIdx}&switchcmd=On`);
+            console.log("Sending command: " + action, payload);
+            await fetch(`/json.htm?type=command&param=udevice&idx=${payloadIdx}&nvalue=0&svalue=${encodeURIComponent(payload)}`);
+            await fetch(`/json.htm?type=command&param=switchlight&idx=${triggerIdx}&switchcmd=On`);
             
             return await pollResponse(action, txId);
         } finally {
@@ -183,10 +186,11 @@
     }
 
     async function pollResponse(action, txId, retries = 120) {
+        console.log("Polling for response to " + action + " (tx_id: " + txId + ")...");
         for (let i = 0; i < retries; i++) {
             await new Promise(r => setTimeout(r, 1000));
             try {
-                const req = await fetch(`json.htm?type=devices&rid=${payloadIdx}`);
+                const req = await fetch(`/json.htm?type=devices&rid=${payloadIdx}`);
                 const resp = await req.json();
                 
                 if (resp.result && resp.result.length > 0) {
@@ -194,6 +198,7 @@
                     try {
                         const data = JSON.parse(dataStr);
                         if (data.action === action && data.tx_id === txId) {
+                            console.log("Received response:", data);
                             return data;
                         }
                     } catch (e) {}
