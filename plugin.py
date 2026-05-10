@@ -524,7 +524,7 @@ class BasePlugin:
         except:
             return None
 
-def is_private_ip(self, ip_str):
+    def is_private_ip(self, ip_str):
         try:
             octets = [int(o) for octet in ip_str.split('.') for o in octet.split()] # Handle potential spaces
             octets = [int(o) for o in ip_str.split('.')]
