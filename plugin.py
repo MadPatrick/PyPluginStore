@@ -162,9 +162,9 @@ class BasePlugin:
             Domoticz.Debug(f"Check permissions for: {templates_dir}")
 
         if 1 not in Devices:
-            Domoticz.Device(Name="API Payload", Unit=1, TypeName="Text", DeviceID="PPM_API_PAYLOAD", Used=1).Create()
+            Domoticz.Device(Name="API Payload", Unit=1, TypeName="Text", DeviceID="PPM_API_PAYLOAD", Used=1, Protected=1).Create()
         if 2 not in Devices:
-            Domoticz.Device(Name="API Trigger", Unit=2, Type=244, Subtype=73, Switchtype=9, DeviceID="PPM_API_TRIGGER", Used=1).Create()
+            Domoticz.Device(Name="API Trigger", Unit=2, Type=244, Subtype=73, Switchtype=9, DeviceID="PPM_API_TRIGGER", Used=1, Protected=1).Create()
             
         self.fetch_registry()
 
@@ -255,6 +255,9 @@ class BasePlugin:
                 payload_str = Devices[1].sValue
                 Domoticz.Debug(f"API Payload received: {payload_str}")
                 try:
+                    # Clear payload device immediately to prevent replay/abuse
+                    Devices[1].Update(nValue=0, sValue="")
+                    
                     payload = json.loads(payload_str)
                     self.tx_id = payload.get("tx_id")
                     self.handleApiCommand(payload)
@@ -299,8 +302,16 @@ class BasePlugin:
             else:
                 self.sendApiResponse({"status": "error", "message": "Plugin not found"})
         elif action == "remove":
-            plugin_key = payload.get("plugin_key")
-            plugin_target_dir = os.path.join(plugins_dir, plugin_key)
+            plugin_key = payload.get("plugin_key", "")
+            # Security: Prevent path traversal and accidental deletion of core folders
+            plugin_key = os.path.basename(plugin_key)
+            plugin_target_dir = os.path.abspath(os.path.join(plugins_dir, plugin_key))
+            
+            # Ensure the resolved path is still inside the plugins directory
+            if not plugin_target_dir.startswith(plugins_dir):
+                 self.sendApiResponse({"status": "error", "message": "Invalid plugin path"})
+                 return
+
             if os.path.isdir(plugin_target_dir) and plugin_key != os.path.basename(os.path.normpath(Parameters.get('HomeFolder', str(os.getcwd()) + '/'))):
                 try:
                     shutil.rmtree(plugin_target_dir)
