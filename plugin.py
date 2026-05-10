@@ -813,6 +813,7 @@ class BasePlugin:
         plugins_dir = os.path.abspath(os.path.join(Parameters.get("HomeFolder", str(os.getcwd()) + "/"), ".."))
         plugin_dir = os.path.join(plugins_dir, plugin_key)
         requirementsFile = os.path.join(plugin_dir, "requirements.txt")
+        home_folder = os.path.abspath(os.path.join(Parameters.get("HomeFolder", str(os.getcwd()) + "/"), "..", ".."))
         shared_deps_dir = os.path.join(home_folder, "plugins", os.path.basename(os.path.normpath(Parameters.get('HomeFolder', str(os.getcwd()) + '/'))), ".shared_deps")
 
         def check_cmd(cmd):
