@@ -34,6 +34,34 @@
         color: #666;
     }
 
+    #pp-manager-container .filters {
+        display: flex;
+        gap: 20px;
+        margin-bottom: 20px;
+        align-items: center;
+        background: var(--card-bg);
+        padding: 15px;
+        border-radius: 8px;
+        border: 1px solid var(--border-color);
+    }
+
+    #pp-manager-container .filters input[type="text"] {
+        flex-grow: 1;
+        padding: 8px 12px;
+        border: 1px solid var(--border-color);
+        border-radius: 4px;
+        font-size: 1em;
+    }
+
+    #pp-manager-container .filters label {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-weight: bold;
+        cursor: pointer;
+        user-select: none;
+    }
+
     #pp-manager-container .grid {
         display: grid;
         grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
@@ -122,6 +150,13 @@
         <h1>PP-Manager: Plugin Store</h1>
         <div id="pp-manager-status">Initializing...</div>
     </div>
+
+    <div class="filters">
+        <input type="text" id="search-box" placeholder="Search plugins...">
+        <label>
+            <input type="checkbox" id="installed-toggle"> Installed
+        </label>
+    </div>
     
     <div id="plugins-list" class="grid">
         <!-- Plugins will be rendered here -->
@@ -134,6 +169,8 @@
     let payloadIdx = null;
     let triggerIdx = null;
     let isLoading = false;
+    let pluginCache = null;
+    let installedCache = [];
 
     function setStatus(msg) {
         console.log("PP-Manager Status: " + msg);
@@ -145,6 +182,10 @@
         if (document.getElementById('pp-manager-status').innerText !== 'Initializing...') {
             return; // Already running
         }
+
+        // Attach filter listeners
+        document.getElementById('search-box').oninput = filterAndRender;
+        document.getElementById('installed-toggle').onchange = filterAndRender;
         
         setStatus("Finding API bridge...");
         try {
@@ -228,7 +269,9 @@
         try {
             const response = await sendCommand('list_plugins', {});
             if (response && response.status === 'success') {
-                renderPlugins(response.data, response.installed);
+                pluginCache = response.data;
+                installedCache = response.installed;
+                filterAndRender();
                 setStatus(`Loaded ${Object.keys(response.data).length} plugins.`);
             } else {
                 setStatus("Error loading plugins: " + (response ? response.message : "Unknown error"));
@@ -238,12 +281,39 @@
         }
     }
 
+    function filterAndRender() {
+        if (!pluginCache) return;
+
+        const searchQuery = document.getElementById('search-box').value.toLowerCase();
+        const showInstalledOnly = document.getElementById('installed-toggle').checked;
+
+        const filteredKeys = Object.keys(pluginCache).filter(key => {
+            const info = pluginCache[key];
+            const name = info[2].toLowerCase();
+            const matchesSearch = name.includes(searchQuery) || key.toLowerCase().includes(searchQuery);
+            const isInstalled = installedCache.indexOf(key) !== -1;
+            
+            if (showInstalledOnly && !isInstalled) return false;
+            return matchesSearch;
+        });
+
+        const filteredData = {};
+        filteredKeys.forEach(key => filteredData[key] = pluginCache[key]);
+
+        renderPlugins(filteredData, installedCache);
+    }
+
     function renderPlugins(pluginData, installedList) {
         const container = document.getElementById('plugins-list');
         if (!container) return;
         container.innerHTML = '';
         
         const keys = Object.keys(pluginData).sort((a, b) => pluginData[a][2].localeCompare(pluginData[b][2]));
+
+        if (keys.length === 0) {
+            container.innerHTML = '<div style="grid-column: 1/-1; text-align: center; padding: 40px; color: #888;">No plugins match your filters.</div>';
+            return;
+        }
 
         for (const key of keys) {
             const info = pluginData[key];
