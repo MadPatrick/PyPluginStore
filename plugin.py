@@ -9,180 +9,24 @@
 """
 <plugin key="PP-MANAGER" name="Python Plugin Manager" author="adrighem" version="2.0.0" externallink="https://www.domoticz.com/forum/viewtopic.php?f=65&t=22339"> <!-- x-release-please-version -->
     <description>
-		<h2>Python Plugin Manager 2.0.0</h2><br/> <!-- x-release-please-version -->
-		<h3>Features</h3>
-		<ul style="list-style-type:square">
-			<li>Install plugins</li>
-			<li>Update All/Selected plugins</li>
-			<li>Update Notification for All/Selected</li>
-		</ul>
-		<h3>----------------------------------------------------------------------</h3>
-		<h3>WARNING:</h3>
-		<h2>         Auto Updating plugins without verifying their code</h2>
-		<h2>         makes you system vulnerable to developer's code intensions!!</h2>
-		<h3>----------------------------------------------------------------------</h3>
-		<h2>NOTE: After selecting your options press "Update" button!!</h2>
+        <h2>Python Plugin Manager</h2><br/>
+        This plugin manages other Domoticz Python plugins.<br/><br/>
+        <b>Usage:</b><br/>
+        1. Add this hardware to Domoticz.<br/>
+        2. Navigate to <b>Custom</b> -> <b>Plugin Manager</b> in the top menu to manage your plugins.
     </description>
-     <params>
-        <param field="Mode2" label="Plugin to install" width="200px">
-            <options>
-                <option label="Idle" value="Idle"  default="true" />
-                <option label="A bridge between Tinytuya and Domoticz" value="Domoticz-TinyTUYA-Plugin"/>
-                <option label="A domoticz plugin for the alphaESS Battery" value="alphaESS-battery-plugin"/>
-                <option label="a Domoticz plugin for Zigbee2Tasmota. Fork of foba-1/Tasmoticz " value="Zigbee2Tasmoticz"/>
-                <option label="A simple plugin for Domoticz that gets the temperature for a location in Sweden from temperature.nu" value="Domoticz-Temperatur-nu"/>
-                <option label="Battery monitoring for Z-Wave nodes" value="BatteryLevel"/>
-                <option label="Bosch Home Connect plugin for Domoticz" value="home-connect"/>
-                <option label="Bouygues Bbox Monitor plugin for Domoticz" value="BboxPlugin"/>
-                <option label="Broadlink devices" value="Broadlink-Domoticz-plugin"/>
-                <option label="Capture location data obtained via GPS Logger app in Domoticz devices." value="Domoticz-GPSLogger-Plugin"/>
-                <option label="Chromecast plugin for Domoticz" value="ChromecastPlugin"/>
-                <option label="Creasol DomBus RS485 I/O/Sens modules" value="CreasolDomBus"/>
-                <option label="DDS238 ZN/S energy meter, single phase, Modbus RTU" value="domoticz-dds238"/>
-                <option label="deCONZ bridge (For Conbee,Raspbee)" value="deCONZ"/>
-                <option label="Denon/Marantz Amplifier" value="Denon4306"/>
-                <option label="Domoticz Cupra Plugin" value="domoticz-cupra-plugin"/>
-                <option label="Domoticz DDS238-7-modbus plugin" value="DDS238-7-modbus"/>
-                <option label="Domoticz iRobot Roomba Plugin" value="Roomba"/>
-                <option label="Domoticz modbus plugin for Powerworld inverters." value="domoticz-PowerWorld-heat-pump"/>
-                <option label="Domoticz PC321-TY power clamp plugin" value="PC321_TY_tuya_local"/>
-                <option label="Domoticz plugin for energy prices in Sweden." value="sweden_energyprice"/>
-                <option label="Domoticz Plugin For Frisquet Connect" value="Krakinou-FrisquetConnectDomoticz"/>
-                <option label="Domoticz plugin for HomeWizard 3FkWh device" value="HomeWizard-Wifi-3F-plugin"/>
-                <option label="Domoticz plugin for Huawei Solar inverters via Modbus" value="Domoticz-Huawei-Inverter"/>
-                <option label="Domoticz plugin for Husqvarna automowers." value="Domoticz-Husqvarna-Automower-plugin"/>
-                <option label="Domoticz plugin for Intergas Xtend data collection" value="XTEND-plugin"/>
-                <option label="Domoticz plugin for Luxtronik heat pump controllers, like Alpha innotec. It offers real-time monitoring and control of temperatures, pressures, pump speeds, and energy consumption with multi-language support and configurable update intervals." value="luxtronik-domoticz-plugin"/>
-                <option label="Domoticz plugin for Marstek Venus battery" value="Marstek-Venus-plugin"/>
-                <option label="Domoticz plugin for NED solar forecast" value="NEDsolarForecast"/>
-                <option label="Domoticz plugin for OM-310 Power Limiter (Novatek-Elektro) over Modbus TCP" value="OM310-Domoticz-plugin"/>
-                <option label="Domoticz plugin for OpenMeteo weather data - no API key required" value="Domoticz-OpenMeteo-Plugin"/>
-                <option label="Domoticz plugin for Sessy batteries" value="SessyBattery"/>
-                <option label="Domoticz plugin for the Tesla Wall Connector" value="TWC"/>
-                <option label="Domoticz plugin for Tuya (W'eau) Heatpumps" value="domoticz-tuya-heatpump"/>
-                <option label="Domoticz plugin for use with Reolink cameras. " value="domoticz_reolink"/>
-                <option label="domoticz plugin for Volvo Recharge Full EV or PHEV vehicles" value="Domoticz_VolvoRecharge_Plugin"/>
-                <option label="Domoticz plugin for washing and drying machines" value="Domoticz_plugin_for_Smasung_Washer_Dryer"/>
-                <option label="Domoticz plugin for Xiaomi Humidifier 1" value="domoticz-AirHumidifier"/>
-                <option label="Domoticz plugin that gets data of public waste collection for Berlin from BSR" value="domoticz-BSR"/>
-                <option label="Domoticz plugin to fetch Solar Forecast data" value="SolarForecast"/>
-                <option label="Domoticz Plugin to gather datas from MG EV" value="Domoticz-MG-Plugin"/>
-                <option label="Domoticz Plugin to gather datas from TeslaFi API" value="Domoticz-TeslaFi-Plugin"/>
-                <option label="Domoticz plugin to get Cheapest Energy Price Time within next 24 hours given a duration of energyconsumption" value="Domoticz---CEPT-plugin"/>
-                <option label="Domoticz Plugin to integrate PiHole with https Support, forked from " value="Domoticz-PiHole-Control"/>
-                <option label="Domoticz Plugin to manage Shelly Gen2+ Devices" value="Domoticz-Shelly-Plugin"/>
-                <option label="Domoticz Plugin to poll Bluetti device via BLE" value="Domoticz-Bluetti-Plugin"/>
-                <option label="Domoticz plugin working with BMW Connected Drive" value="Domoticz-BMW-plugin"/>
-                <option label="Domoticz python plugin for Goodwe Solar Inverters via RS485" value="goodwe_rs485_domoticz"/>
-                <option label="Domoticz python plugin for samsung washing machine via Smartthings API" value="Domoticz-plugin-for-samsung-washing-machine"/>
-                <option label="Domoticz Python plugin for WeHeat heatpumps" value="weheat-domoticz-plugin"/>
-                <option label="Domoticz Python plugin manager" value="pp-manager"/>
-                <option label="Domoticz Theme Manager" value="domoticz-theme-manager"/>
-                <option label="Domoticz ThesslaGreen-modbus plugin" value="ThesslaGreen-modbus"/>
-                <option label="Domoticz-Em3255-Plugin plugin for Domoticz" value="Domoticz-Em3255-Plugin"/>
-                <option label="Domoticz-MCP-Plugin plugin for Domoticz" value="Domoticz-MCP-Plugin"/>
-                <option label="domoticz-powerview-plugin plugin for Domoticz" value="domoticz-powerview-plugin"/>
-                <option label="Domoticz-TinyTUYA-Local-Plugin plugin for Domoticz" value="Domoticz-TinyTUYA-Local-Plugin"/>
-                <option label="Domoticz-Volumio-Plugin plugin for Domoticz" value="Domoticz-Volumio-Plugin"/>
-                <option label="DS238-2 ZN/S ModbusTCP" value="ds238-modbus-tcp"/>
-                <option label="DTS238 ZN/S energy meter, three phase, Modbus RTU" value="domoticz-dts238"/>
-                <option label="Dyson Pure Link" value="DysonPureLink"/>
-                <option label="E-Flux by Road back office" value="E-Flux"/>
-                <option label="ebusd bridge" value="ebusd"/>
-                <option label="Electrolux / AEG Wellbeing" value="domoticz-wellbeing-plugin"/>
-                <option label="Emmeti EQ 2021 amd EQ 3021 ES hot water heat pumps" value="domoticz-emmeti-eq2021"/>
-                <option label="Emmeti Mirai heat pumps" value="domoticz-emmeti-mirai"/>
-                <option label="EMS bus Wi-Fi Gateway" value="ems-gateway"/>
-                <option label="Enigma2 Plugin for domoticz " value="Domoticz-Enigma2"/>
-                <option label="EVCC IO Plugin" value="Domoticz-EVCC-IO-Plugin"/>
-                <option label="Extended version of the original HomeWizard Wi-Fi P1 Domoticz plugin with more detailed data and multi-language support." value="HomeWizard-Wifi-p1-plugin-Extended"/>
-                <option label="Fork de Krakinou (plugin Frisquet Connect pour Domoticz) — correctifs et évolutions" value="FrisquetConnectDomoticz"/>
-                <option label="FoxESS inverter" value="FoxESS-domoticz"/>
-                <option label="Freebox V6 (Revolution)" value="freeboxv6"/>
-                <option label="GitHub Stats Domoticz Plugin" value="domoticz-github"/>
-                <option label="GoodWE Solar inverter via SEMS API" value="GoodWeAPI"/>
-                <option label="Govee Local Api Control" value="GoveeDiscovery"/>
-                <option label="Hisense air conditioners" value="Hisense-AirCon-Domoticz"/>
-                <option label="Homewizard" value="Homewizard"/>
-                <option label="Homewizard Battery" value="Homewizard-Battery"/>
-                <option label="Hyundai and Kia vehicles" value="HyundaiKiaConnect"/>
-                <option label="iDetect Presence Detection" value="iDetect"/>
-                <option label="IKEA Tradfri" value="IKEA-Tradfri"/>
-                <option label="Integrate with AWTRIX3 Smart Clock" value="AWTRIX3"/>
-                <option label="Itho Wifi module" value="IthoWifi"/>
-                <option label="LG ThinQ devices" value="domoticz_lg_thinq_plugin"/>
-                <option label="LG ThinQ domoticz plugin" value="domoticz_lg_thinqconnect_plugin"/>
-                <option label="Link-Tap Watering System" value="Link-Tap"/>
-                <option label="Linky" value="Linky"/>
-                <option label="Luxtronik heat pump v2" value="luxtronik-domoticz-plugin-v2"/>
-                <option label="Lyrion Music Server (LMS)" value="LyrionMusicServer"/>
-                <option label="Matter plugin for Domoticz" value="Mattericz"/>
-                <option label="MQTT discovery" value="MQTTDiscovery"/>
-                <option label="MQTT Mapper" value="domoticz-mqttmapper-plugin"/>
-                <option label="NEST Plugin for Domoticz using the Google credentials." value="Domoticz-NEST-plugin"/>
-                <option label="Not a perfect plugin but it works. " value="DomoticzNestPlugin"/>
-                <option label="OpenEVSE mqtt domoticz plugin" value="OpenEVSEPlugin"/>
-                <option label="OpenWRT WiFi Presence MQTT translator" value="owrtwifi2domo"/>
-                <option label="Peblar wallbox" value="domoticz-peblar"/>
-                <option label="Plugin dla platformy Domoticz umożliwiający pobieranie aktualnych danych pogodowych z publicznego API Instytutu Meteorologii i Gospodarki Wodnej (IMGW)." value="IMGW-Meteo"/>
-                <option label="plugin for comunication with zigbee sensors through tasmota to Domoticz" value="domoticz_zigbee2tasmota"/>
-                <option label="Plugin for control relay on GPIO PINs on RPI with domoticz" value="Domoticz-GPIO-Debian-13"/>
-                <option label="Plugin for domoticz for 1-wire DHT22/AM2301" value="DHT22-rpi"/>
-                <option label="Plugin for Domoticz to load the UI inside Domoticz, and add all workflows as devices that you can toggle on/off inside Domoticz." value="Domoticz-N8N-Plugin"/>
-                <option label="Plugin for Domoticz to read and control binds via a Brel Home Hub" value="Domoticz-Brel-Home-Hub-03-integration"/>
-                <option label="Plugin to collect datas from OpenDTU" value="Domoticz-OpenDTU-Plugin"/>
-                <option label="PZEM-016 PZEM-014 PZEM-004T energy meters" value="pzem016"/>
-                <option label="Quatt" value="Quatt"/>
-                <option label="Refork plugin de supermat" value="PluginDomoticzFreebox"/>
-                <option label="SMA solar inverters" value="Domoticz-SMA-Inverter"/>
-                <option label="Sofar over modbus, Domoticz plugin" value="Sofar-modbus"/>
-                <option label="SolarEdge ModbusTCP" value="domoticz-solaredge-modbustcp-plugin"/>
-                <option label="Solax inverter ModBUS TCP" value="Domoticz-Solax-plugin"/>
-                <option label="Sonoff Mini" value="sonoff-domoticz-plugin"/>
-                <option label="Steam player status" value="steam"/>
-                <option label="Synchronizes (part of) devices of a master instance to a slave one" value="domoticz-mqtt-sync-plugin"/>
-                <option label="Synology Monitoring Plugin.  Collects CPU, Memory, Heat, HDD Information and network load from Synology NAS Units" value="Domoticz-Synology-Plugin"/>
-                <option label="Synology SurveillanceStation" value="Synology SurveillanceStation"/>
-                <option label="Tahoma/Conexoon plugin for IO blinds" value="domoticz_somfy"/>
-                <option label="Tailscale Integration" value="domoticz-tailscale-plugin"/>
-                <option label="Tasmota IR device control plugin that allows remote control of Wi-Fi-free, IR air conditioners from Domoticz" value="domoticz-ir-climate-controller"/>
-                <option label="This plugin connects to a WT53R range sensor over Modbus TCP protocol to measure water levels in rain tanks." value="Domoticz_WT53R_Rain_Tank_Sensor"/>
-                <option label="This plugin integrates Rhasspy intents with Domoticz devices via MQTT and Domoticz API." value="Domoticz-Rhasspy-Plugin"/>
-                <option label="This plugin makes it possible to use Shelly Devices in Domoticz. You can find the specific configuration and ToDo's on the Wiki page." value="ShellyCloudPlugin2"/>
-                <option label="Tile Bluetooth Tracker" value="DomoticzTile"/>
-                <option label="Tuya" value="tuyaha"/>
-                <option label="Tuya Cloud API" value="domoticz-tuya-cloud"/>
-                <option label="Wan IP Checker" value="WAN-IP-CHECKER"/>
-                <option label="Waze time travel plugin for Domoticz" value="Domoticz-WazeTimeTravel-Plugin"/>
-                <option label="WLANThermo" value="WLANThermo"/>
-                <option label="WLED" value="WLED"/>
-                <option label="Xiaomi Mi Flower Mate" value="Mi_Flower_mate_plugin"/>
-                <option label="Xiaomi Mi Robot Vacuum" value="xiaomi-mi-robot-vacuum"/>
-                <option label="Zigate plugin" value="Zigate"/>
-                <option label="Zigbee2Mqtt" value="Zigbee2Mqtt"/>
-                <option label="zigbee2mqtt plugin for domoticz" value="domoticz-zigbee2mqtt-plugin"/>
-            </options>
-        </param>
-        <param field="Mode3" label="Custom Plugin ID (from registry)" width="200px" default=""/>
+    <params>
         <param field="Mode4" label="Auto Update" width="175px">
             <options>
                 <option label="All" value="All"/>
                 <option label="All (NotifyOnly)" value="AllNotify" default="true"/>
-                <option label="Selected" value="Selected"/>
-                <option label="Selected (NotifyOnly)" value="SelectedNotify"/>
                 <option label="None" value="None"/>
             </options>
         </param>
-         <param field="Mode5" label="Security Scan (Experimental)" width="75px">
-            <options>
-                <option label="True" value="True"/>
-                <option label="False" value="False"  default="true" />
-            </options>
-        </param>
-         <param field="Mode6" label="Debug" width="75px">
+        <param field="Mode6" label="Debug" width="75px">
             <options>
                 <option label="True" value="Debug"/>
-                <option label="False" value="Normal"  default="true" />
+                <option label="False" value="Normal" default="true" />
             </options>
         </param>
     </params>
@@ -280,20 +124,15 @@ class BasePlugin:
             sys.path.insert(0, shared_deps_dir)
             Domoticz.Log(f"Injected PP-MANAGER shared dependencies into sys.path: {shared_deps_dir}")
 
-        if 1 not in Devices:
-            Domoticz.Device(Name="API Payload", Unit=1, TypeName="Text", DeviceID="PPM_API_PAYLOAD", Used=1).Create()
-        if 2 not in Devices:
-            Domoticz.Device(Name="API Trigger", Unit=2, Type=244, Subtype=73, Switchtype=9, DeviceID="PPM_API_TRIGGER", Used=1).Create()
-            
         # Autoinstall/Update Custom UI
         try:
             import shutil
             # Determine paths
-            home_folder = Parameters.get("HomeFolder", str(os.getcwd()) + "/")
-            html_src = os.path.join(home_folder, "pp-manager.html")
+            home_folder_param = Parameters.get("HomeFolder", str(os.getcwd()) + "/")
+            html_src = os.path.join(home_folder_param, "pp-manager.html")
             
             # Find templates directory (relative to plugins folder)
-            domoticz_dir = os.path.abspath(os.path.join(home_folder, "..", ".."))
+            domoticz_dir = os.path.abspath(os.path.join(home_folder_param, "..", ".."))
             templates_dir = os.path.join(domoticz_dir, "www", "templates")
             html_dst = os.path.join(templates_dir, "pp-manager.html")
             
@@ -321,21 +160,14 @@ class BasePlugin:
             Domoticz.Error(f"Custom UI autoinstall failed: {e}")
             Domoticz.Debug(f"Check permissions for: {templates_dir}")
 
+        if 1 not in Devices:
+            Domoticz.Device(Name="API Payload", Unit=1, TypeName="Text", DeviceID="PPM_API_PAYLOAD", Used=1).Create()
+        if 2 not in Devices:
+            Domoticz.Device(Name="API Trigger", Unit=2, Type=244, Subtype=73, Switchtype=9, DeviceID="PPM_API_TRIGGER", Used=1).Create()
+            
         self.fetch_registry()
 
-        plugin_key = Parameters.get("Mode3", "").strip() or Parameters["Mode2"]
-        if plugin_key == "Idle":
-            plugin_author, plugin_repository, plugin_text, plugin_branch = "Idle", "Idle", "Idle", "master"
-        elif plugin_key in self.plugin_data:
-            plugin_author = self.plugin_data[plugin_key][0]
-            plugin_repository = self.plugin_data[plugin_key][1]
-            plugin_text = self.plugin_data[plugin_key][2]
-            plugin_branch = self.plugin_data[plugin_key][3]
-        else:
-            Domoticz.Error("Selected plugin not found in registry.")
-            return
-
-        if Parameters["Mode5"] == 'True':
+        if Parameters.get("Mode5") == 'True':
             Domoticz.Log("Plugin Security Scan is enabled")
             secpoluserFile = os.path.join(plugins_dir, os.path.basename(os.path.normpath(Parameters.get('HomeFolder', str(os.getcwd()) + '/'))), "secpoluser.txt")
             Domoticz.Debug("Checking for SecPolUser file on:" + secpoluserFile)
@@ -348,7 +180,7 @@ class BasePlugin:
                             secpoluserSection = line[4:]
                             Domoticz.Log("secpoluser settings found for plugin:" + secpoluserSection)
                         elif line and not line.startswith("--->"):
-                            Domoticz.Debug("SecPolUserList exception (" + secpoluserSection + "):'" + line + "'")
+                            Domoticz.Debug("SecPolUserList exception (" + secpoluserSection + "): '" + line + "'")
                             if secpoluserSection not in self.secpoluser_list:
                                 self.secpoluser_list[secpoluserSection] = []
                             self.secpoluser_list[secpoluserSection].append(line)
@@ -412,36 +244,8 @@ class BasePlugin:
                             Domoticz.Log(f"Plugin: {d} cannot be managed with PP-Manager!!.")
                 break
 
-        if Parameters["Mode4"] == 'SelectedNotify':
-            Domoticz.Log("Collecting Updates for Plugin:" + plugin_key)
-            if plugin_key in self.plugin_data:
-                self.CheckForUpdatePythonPlugin(plugin_author, plugin_repository, plugin_key)
-
-        if plugin_key == "Idle":
-            Domoticz.Log("Plugin Idle")
-            Domoticz.Heartbeat(60)
-        else:
-            plugin_target_dir = os.path.join(plugins_dir, plugin_key)
-            Domoticz.Debug("Checking for dir:" + plugin_target_dir)
-            if os.path.isdir(plugin_target_dir):
-                Domoticz.Debug("Folder for Plugin:" + plugin_key + " already exists!!!")
-                if Parameters["Mode4"] == 'Selected':
-                    Domoticz.Debug("Updating Enabled for Plugin:" + plugin_text + ".Checking For Update!!!")
-                    self.UpdatePythonPlugin(plugin_author, plugin_repository, plugin_key)
-                Domoticz.Heartbeat(60)
-            else:
-                Domoticz.Log("Installation requested for Plugin:" + plugin_text)
-                Domoticz.Debug("Installation URL is: https://github.com/" + plugin_author + "/" + plugin_repository)
-                Domoticz.Debug("Current Working dir is:" + plugins_dir)
-                if plugin_key in self.plugin_data:
-                    Domoticz.Log("Plugin Display Name:" + plugin_text)
-                    Domoticz.Log("Plugin Author:" + plugin_author)
-                    Domoticz.Log("Plugin Repository:" + plugin_repository)
-                    Domoticz.Log("Plugin Key:" + plugin_key)
-                    Domoticz.Log("Plugin Branch:" + plugin_branch)
-                    self.InstallPythonPlugin(plugin_author, plugin_repository, plugin_key, plugin_branch)
-                Domoticz.Heartbeat(60)
-
+        Domoticz.Log("Plugin Manager Ready. Use the 'Custom' menu to manage plugins.")
+        Domoticz.Heartbeat(60)
 
     def onCommand(self, Unit, Command, Level, Hue):
         Domoticz.Debug(f"onCommand called for Unit {Unit}: Command '{Command}', Level: {Level}")
@@ -525,7 +329,6 @@ class BasePlugin:
 
     def onHeartbeat(self):
         Domoticz.Debug("onHeartbeat called")
-        plugin_key = Parameters.get("Mode3", "").strip() or Parameters["Mode2"]
 
         now = datetime.now()
         Domoticz.Debug(f"Current time: {now.strftime('%H:%M')}")
@@ -562,17 +365,6 @@ class BasePlugin:
                             else:
                                 Domoticz.Log(f"Plugin: {d} cannot be managed with PP-Manager!!.")
                     break
-
-            if Parameters["Mode4"] == 'SelectedNotify':
-                Domoticz.Log("Collecting Updates for Plugin:" + plugin_key)
-                if plugin_key in self.plugin_data:
-                    self.CheckForUpdatePythonPlugin(self.plugin_data[plugin_key][0], self.plugin_data[plugin_key][1], plugin_key)
-                else:
-                    Domoticz.Log(f"Plugin: {plugin_key} not found in plugin_data. Skipping update check.")
-
-            if Parameters["Mode4"] == 'Selected' and plugin_key in self.plugin_data:
-                Domoticz.Log(f"Checking Updates for Plugin: {self.plugin_data[plugin_key][2]}")
-                self.UpdatePythonPlugin(self.plugin_data[plugin_key][0], self.plugin_data[plugin_key][1], plugin_key)
 
     def InstallPythonPlugin(self, ppAuthor, ppRepository, ppKey, ppBranch):
         Domoticz.Debug("InstallPythonPlugin called")
@@ -733,6 +525,7 @@ class BasePlugin:
             return None
 
     def parseFileForSecurityIssues(self, pyfilename, pypluginid):
+        import ast
         Domoticz.Debug("parseFileForSecurityIssues called")
         if Parameters.get("Mode5") == 'True':
             Domoticz.Log(f"Scanning {pyfilename} for security issues...")
