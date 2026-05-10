@@ -285,16 +285,41 @@ class BasePlugin:
         if 2 not in Devices:
             Domoticz.Device(Name="API Trigger", Unit=2, Type=244, Subtype=73, Switchtype=9, DeviceID="PPM_API_TRIGGER", Used=1).Create()
             
-        # Copy pp-manager.html to domoticz/www/templates/ if it exists
+        # Autoinstall/Update Custom UI
         try:
             import shutil
-            html_src = os.path.join(plugins_dir, current_folder, "pp-manager.html")
-            html_dst = os.path.join(plugins_dir, "..", "www", "templates", "pp-manager.html")
+            # Determine paths
+            home_folder = Parameters.get("HomeFolder", str(os.getcwd()) + "/")
+            html_src = os.path.join(home_folder, "pp-manager.html")
+            
+            # Find templates directory (relative to plugins folder)
+            domoticz_dir = os.path.abspath(os.path.join(home_folder, "..", ".."))
+            templates_dir = os.path.join(domoticz_dir, "www", "templates")
+            html_dst = os.path.join(templates_dir, "pp-manager.html")
+            
             if os.path.isfile(html_src):
-                shutil.copyfile(html_src, html_dst)
-                Domoticz.Log(f"Copied custom UI to {html_dst}")
+                if not os.path.exists(templates_dir):
+                    Domoticz.Debug(f"Creating templates directory: {templates_dir}")
+                    os.makedirs(templates_dir, exist_ok=True)
+                
+                # Check if we need to copy (exists and different, or doesn't exist)
+                should_copy = True
+                if os.path.isfile(html_dst):
+                    src_mtime = os.path.getmtime(html_src)
+                    dst_mtime = os.path.getmtime(html_dst)
+                    if src_mtime <= dst_mtime:
+                        should_copy = False
+                
+                if should_copy:
+                    shutil.copyfile(html_src, html_dst)
+                    # Try to ensure it is readable by the web server
+                    os.chmod(html_dst, 0o644)
+                    Domoticz.Log(f"Custom UI autoinstalled/updated: {html_dst}")
+                else:
+                    Domoticz.Debug("Custom UI is already up to date.")
         except Exception as e:
-            Domoticz.Error(f"Failed to copy pp-manager.html to templates: {e}")
+            Domoticz.Error(f"Custom UI autoinstall failed: {e}")
+            Domoticz.Debug(f"Check permissions for: {templates_dir}")
 
         self.fetch_registry()
 
