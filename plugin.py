@@ -524,6 +524,25 @@ class BasePlugin:
         except:
             return None
 
+def is_private_ip(self, ip_str):
+        try:
+            octets = [int(o) for octet in ip_str.split('.') for o in octet.split()] # Handle potential spaces
+            octets = [int(o) for o in ip_str.split('.')]
+            if len(octets) != 4: return False
+            # Loopback
+            if octets[0] == 127: return True
+            # Class A private
+            if octets[0] == 10: return True
+            # Class B private
+            if octets[0] == 172 and 16 <= octets[1] <= 31: return True
+            # Class C private
+            if octets[0] == 192 and octets[1] == 168: return True
+            # Link-local
+            if octets[0] == 169 and octets[1] == 254: return True
+            return False
+        except:
+            return False
+
     def parseFileForSecurityIssues(self, pyfilename, pypluginid):
         import ast
         Domoticz.Debug("parseFileForSecurityIssues called")
@@ -573,8 +592,16 @@ class BasePlugin:
 
                     exact_matches = {'os.system', 'os.popen', 'eval', 'exec', '__import__', 'compile', 'pickle.loads', 'pickle.load', 'os.remove', 'os.unlink', 'shutil.rmtree'}
 
-                    if func_full_name in exact_matches or func_full_name.startswith('subprocess.'):
+                    if func_full_name in exact_matches:
                         self.findings.append((node.lineno, f"Suspicious Call: {func_full_name}"))
+                    elif func_full_name.startswith('subprocess.'):
+                        # Specifically look for shell=True which is the biggest risk
+                        is_shell = False
+                        for keyword in node.keywords:
+                            if keyword.arg == 'shell' and isinstance(keyword.value, ast.Constant) and keyword.value.value is True:
+                                is_shell = True
+                        if is_shell:
+                            self.findings.append((node.lineno, f"Dangerous Subprocess (shell=True): {func_full_name}"))
                     elif func_base_name in {'eval', 'exec', '__import__', 'compile'}:
                         self.findings.append((node.lineno, f"Suspicious Call: {func_base_name}"))
                     elif func_base_name in {'system', 'popen', 'loads', 'rmtree', 'unlink'}:
@@ -602,14 +629,16 @@ class BasePlugin:
                 lineNum = i + 1
                 clean_text = text.strip()
 
-                if not clean_text or clean_text.startswith('#') or '<param field=' in clean_text:
+                # Ignore comments, empty lines, and explicit overrides
+                if not clean_text or clean_text.startswith('#') or '<param field=' in clean_text or '# security-ignore' in text or '# nosec' in text:
                     continue
 
                 findings = []
 
                 for ip in ip_pattern.findall(clean_text):
                     if all(0 <= int(octet) <= 255 for octet in ip.split('.')):
-                        findings.append(f"IP Address: {ip}")
+                        if not self.is_private_ip(ip):
+                            findings.append(f"Public IP Address: {ip}")
 
                 if lineNum in ast_findings_map:
                     findings.extend(ast_findings_map[lineNum])
