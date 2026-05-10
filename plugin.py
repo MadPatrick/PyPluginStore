@@ -426,6 +426,7 @@ class BasePlugin:
                 Domoticz.Debug(f"API Payload received: {payload_str}")
                 try:
                     payload = json.loads(payload_str)
+                    self.tx_id = payload.get("tx_id")
                     self.handleApiCommand(payload)
                 except Exception as e:
                     Domoticz.Error(f"Failed to parse API payload: {e}")
@@ -484,6 +485,8 @@ class BasePlugin:
     def sendApiResponse(self, response_dict):
         if 1 in Devices:
             try:
+                if hasattr(self, 'tx_id') and self.tx_id:
+                    response_dict['tx_id'] = self.tx_id
                 response_str = json.dumps(response_dict)
                 Devices[1].Update(nValue=0, sValue=response_str)
             except Exception as e:
