@@ -218,21 +218,35 @@ class BasePlugin:
         if Unit == 2 and Command.lower() == "on":
             if 1 in Devices:
                 payload_str = Devices[1].sValue
+                
+                # 1. DoS Protection: Limit payload length (Domoticz text limit is usually enough, but let's be safe)
+                if len(payload_str) > 2000:
+                    Domoticz.Error("API Payload exceeds length limit.")
+                    Devices[1].Update(nValue=0, sValue="")
+                    return
+
                 Domoticz.Debug(f"API Payload received: {payload_str}")
                 try:
                     # Clear payload device immediately to prevent replay/abuse
                     Devices[1].Update(nValue=0, sValue="")
                     
                     payload = json.loads(payload_str)
-                    self.tx_id = payload.get("tx_id")
+                    
+                    # 2. Type Validation: Ensure we got a dictionary
+                    if not isinstance(payload, dict):
+                        raise ValueError("Payload must be a JSON object")
+                    
+                    # 3. Content Sanitization
+                    self.tx_id = str(payload.get("tx_id", ""))[:50] # Limit tx_id length
                     self.handleApiCommand(payload)
                 except Exception as e:
                     Domoticz.Error(f"Failed to parse API payload: {e}")
-                    self.sendApiResponse({"status": "error", "message": "Invalid JSON payload"})
+                    self.sendApiResponse({"status": "error", "message": "Invalid JSON payload or structure"})
 
     def handleApiCommand(self, payload):
         import shutil
-        action = payload.get("action")
+        # Ensure action is a safe string
+        action = str(payload.get("action", ""))
         plugins_dir = os.path.abspath(os.path.join(Parameters.get("HomeFolder", str(os.getcwd()) + "/"), ".."))
         
         if action == "list_plugins":
