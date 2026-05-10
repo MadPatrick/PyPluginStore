@@ -136,7 +136,7 @@
         setStatus("Finding API bridge...");
         try {
             console.log("Fetching devices from /json.htm...");
-            const req = await fetch('/json.htm?type=command&param=getdevices&filter=all&used=true&t=' + Date.now());
+            const req = await fetch('json.htm?type=command&param=getdevices&filter=all&used=true&t=' + Date.now());
             if (!req.ok) throw new Error("HTTP error " + req.status);
             const devices = await req.json();
             
@@ -176,8 +176,8 @@
             const payload = JSON.stringify({ action, tx_id: txId, ...data });
             
             console.log("Sending command: " + action, payload);
-            await fetch(`/json.htm?type=command&param=udevice&idx=${payloadIdx}&nvalue=0&svalue=${encodeURIComponent(payload)}`);
-            await fetch(`/json.htm?type=command&param=switchlight&idx=${triggerIdx}&switchcmd=On`);
+            await fetch(`json.htm?type=command&param=udevice&idx=${payloadIdx}&nvalue=0&svalue=${encodeURIComponent(payload)}`);
+            await fetch(`json.htm?type=command&param=switchlight&idx=${triggerIdx}&switchcmd=On`);
             
             return await pollResponse(action, txId);
         } finally {
@@ -190,7 +190,7 @@
         for (let i = 0; i < retries; i++) {
             await new Promise(r => setTimeout(r, 1000));
             try {
-                const req = await fetch(`/json.htm?type=devices&rid=${payloadIdx}`);
+                const req = await fetch(`json.htm?type=devices&rid=${payloadIdx}`);
                 const resp = await req.json();
                 
                 if (resp.result && resp.result.length > 0) {
