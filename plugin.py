@@ -539,6 +539,8 @@ class BasePlugin:
             if octets[0] == 192 and octets[1] == 168: return True
             # Link-local
             if octets[0] == 169 and octets[1] == 254: return True
+            # Broadcast / Software versions (e.g. 0.0.0.0)
+            if octets[0] == 0: return True
             return False
         except:
             return False
@@ -604,7 +606,7 @@ class BasePlugin:
                             self.findings.append((node.lineno, f"Dangerous Subprocess (shell=True): {func_full_name}"))
                     elif func_base_name in {'eval', 'exec', '__import__', 'compile'}:
                         self.findings.append((node.lineno, f"Suspicious Call: {func_base_name}"))
-                    elif func_base_name in {'system', 'popen', 'loads', 'rmtree', 'unlink'}:
+                    elif func_base_name in {'system', 'popen', 'rmtree', 'unlink'}:
                         self.findings.append((node.lineno, f"Potentially Suspicious Call (Alias?): {func_base_name}"))
 
                     self.generic_visit(node)
