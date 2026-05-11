@@ -108,9 +108,16 @@ def main():
     new_items = search_github()
     existing_full_names = {f"{v[0].lower()}/{v[1].lower()}" for k, v in registry.items() if k != "Idle"}
     
+    # Repositories that should never be added to the registry
+    ignore_list = {
+        "ycahome/pp-manager",
+        "adrighem/pp-manager",
+        "adrighem/pypluginstore"
+    }
+    
     for repo in new_items:
         full_name = repo['full_name'].lower()
-        if full_name not in existing_full_names:
+        if full_name not in existing_full_names and full_name not in ignore_list:
             if repo.get('archived'): continue
             
             owner = repo['owner']['login']
