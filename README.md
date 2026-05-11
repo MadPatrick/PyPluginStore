@@ -6,7 +6,7 @@ A robust and modern plugin manager for Domoticz that allows you to install and a
 
 ![Plugin Store](store.png)
 
-> **A Fork for the Future:** This repository is a modernized fork of the original [ycahome/PyPluginStore](https://github.com/ycahome/PyPluginStore). It was created to clean up the codebase, ensure full compatibility with modern Python versions (including Python 3.13 and up), and introduce significantly advanced security and dependency management features.
+> **A Fork for the Future:** This repository is a modernized fork of the original [ycahome/pp-manager](https://github.com/ycahome/pp-manager). It was created to clean up the codebase, ensure full compatibility with modern Python versions (including Python 3.13 and up), and introduce significantly advanced security and dependency management features.
 
 ---
 
