@@ -228,12 +228,12 @@
 
     function setStatus(msg) {
         console.log("PyPluginStore Status: " + msg);
-        const el = document.getElementById('PyPluginStore-status');
+        const el = document.getElementById('pypluginstore-status');
         if (el) el.innerText = msg;
     }
 
     async function init() {
-        if (document.getElementById('PyPluginStore-status').innerText !== 'Initializing...') {
+        if (document.getElementById('pypluginstore-status').innerText !== 'Initializing...') {
             return; // Already running
         }
 
