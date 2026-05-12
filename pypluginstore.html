@@ -343,8 +343,8 @@
 
         const filteredKeys = Object.keys(pluginCache).filter(key => {
             const info = pluginCache[key];
-            const name = info[2].toLowerCase();
-            const matchesSearch = name.includes(searchQuery) || key.toLowerCase().includes(searchQuery);
+            const description = info[2].toLowerCase();
+            const matchesSearch = description.includes(searchQuery) || key.toLowerCase().includes(searchQuery);
             const isInstalled = installedCache.indexOf(key) !== -1;
             
             if (showInstalledOnly && !isInstalled) return false;
@@ -362,7 +362,7 @@
         if (!container) return;
         container.innerHTML = '';
         
-        const keys = Object.keys(pluginData).sort((a, b) => pluginData[a][2].localeCompare(pluginData[b][2]));
+        const keys = Object.keys(pluginData).sort((a, b) => a.localeCompare(b));
 
         if (keys.length === 0) {
             container.innerHTML = '<div style="grid-column: 1/-1; text-align: center; padding: 40px; color: #888;">No plugins match your filters.</div>';
@@ -375,7 +375,7 @@
             const info = pluginData[key];
             const author = info[0];
             const repo = info[1];
-            const name = info[2];
+            const description = info[2];
             const branch = info[3];
             const updatedAt = info[4];
             const isInstalled = installedList.indexOf(key) !== -1;
@@ -398,10 +398,10 @@
             
             let html = `
                 <div class="card-header">
-                    ${name}
+                    ${key}
                     ${isInstalled ? '<span class="installed-badge">Installed</span>' : ''}
                 </div>
-                <div class="card-desc">Provides integration for ${name}.</div>
+                <div class="card-desc">${description}</div>
                 <div class="card-meta">
                     Author: ${author} <br> 
                     Repo: ${repo} (${branch})
