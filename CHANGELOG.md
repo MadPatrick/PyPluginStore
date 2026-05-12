@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.2.2](https://github.com/adrighem/PyPluginStore/compare/v2.2.1...v2.2.2) (2026-05-12)
+
+
+### Bug Fixes
+
+* correct UI mapping for card title and description ([e8000f2](https://github.com/adrighem/PyPluginStore/commit/e8000f28d4a7a40448ea93a9aad9adcb234bce21))
+
 ## [2.2.1](https://github.com/adrighem/PyPluginStore/compare/v2.2.0...v2.2.1) (2026-05-11)
 
 
