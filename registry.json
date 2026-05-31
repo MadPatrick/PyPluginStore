@@ -313,10 +313,10 @@
     "main",
     "2023-10-14T17:33:45Z"
   ],
-  "LyrionMusicServer": [
+  "Lyrion Music Server": [
     "MadPatrick",
     "domoticz_lyrion",
-    "Domoticz Lyrion Media Server Plugin",
+    "Control your Lyrion Media Server",
     "main",
     "2026-04-20T17:51:05Z"
   ],
@@ -446,10 +446,10 @@
     "main",
     "2026-04-28T06:53:01Z"
   ],
-  "domoticz_somfy": [
+  "Somfy": [
     "MadPatrick",
     "domoticz_somfy",
-    "Tahoma/Conexoon plugin for IO blinds",
+    "Tahoma/Conexoon plugin for Somfy Devices",
     "master",
     "2026-05-01T19:02:10Z"
   ],
