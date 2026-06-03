@@ -1187,12 +1187,6 @@
         "A couple of utility node.js scripts to assist with lightwaveRF wifi controlller integration with domoticz and to provide a secure way of communicating with domoticz remotely without opening access to your network using a public MQTT message queue",
         "master"
     ],
-    "tado_domoticz": [
-        "WebSpider",
-        "tado_domoticz",
-        "Tado <> Domoticz integration",
-        "master"
-    ],
     "cheapometer": [
         "n0w",
         "cheapometer",
