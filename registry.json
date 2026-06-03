@@ -313,10 +313,10 @@
         "main",
         "2023-10-14T17:33:45Z"
     ],
-    "LyrionMusicServer": [
+    "Lyrion Music Server": [
         "MadPatrick",
         "domoticz_lyrion",
-        "Domoticz Lyrion Media Server Plugin",
+        "Control your Lyrion Media Server",
         "main",
         "2026-05-20T18:22:24Z"
     ],
@@ -446,10 +446,10 @@
         "main",
         "2026-04-28T06:53:01Z"
     ],
-    "domoticz_somfy": [
+    "Somfy": [
         "MadPatrick",
         "domoticz_somfy",
-        "Tahoma/Conexoon plugin for IO blinds",
+        "Tahoma/Conexoon plugin for Somfy Devices",
         "master",
         "2026-05-20T18:20:15Z"
     ],
@@ -2188,5 +2188,47 @@
         "Python script to control a Galcon 9001BT Irrigation Controller",
         "master",
         "2017-05-24T21:21:54Z"
+    ],
+    "Dreame": [
+        "MadPatrick",
+        "Domoticz_dreame",
+        "Control your Dreame robot vacuum cleaner",
+        "main",
+        "2026-04-20T17:51:05Z"
+    ],
+    "Garbage": [
+        "MadPatrick",
+        "Domoticz_garbage",
+        "Calendar for Garbage pickup in NL",
+        "main",
+        "2026-04-20T17:51:05Z"
+    ],
+    "F1_race": [
+        "MadPatrick",
+        "Domoticz_F1",
+        "Calendar for F1 races",
+        "main",
+        "2026-04-20T17:51:05Z"
+    ],
+    "FullyKiosk": [
+        "MadPatrick",
+        "Domoticz_fullykiosk",
+        "Control your tablet with Fully kiosk browser",
+        "main",
+        "2026-04-20T17:51:05Z"
+    ],
+    "Toon_Thermostat": [
+        "MadPatrick",
+        "Domoticz_toon",
+        "Control your Toon Thermostat",
+        "main",
+        "2026-04-20T17:51:05Z"
+    ],
+    "HP iLo": [
+        "MadPatrick",
+        "Domoticz_HP_ilo",
+        "Read out you HP ilo system",
+        "main",
+        "2026-04-20T17:51:05Z"
     ]
 }
