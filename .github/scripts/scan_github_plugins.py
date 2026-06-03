@@ -7,6 +7,7 @@ import time
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 REGISTRY_FILE = os.path.join(SCRIPT_DIR, '../../registry.json')
+UPDATE_TIMES_FILE = os.path.join(SCRIPT_DIR, '../../update_times.json')
 
 def get_repo_info(owner, repo):
     url = f'https://api.github.com/repos/{owner}/{repo}'
@@ -69,6 +70,11 @@ def main():
 
     with open(REGISTRY_FILE, 'r') as f:
         registry = json.load(f)
+        
+    update_times = {}
+    if os.path.exists(UPDATE_TIMES_FILE):
+        with open(UPDATE_TIMES_FILE, 'r') as f:
+            update_times = json.load(f)
 
     stats = {"updated": 0, "removed": 0, "added": 0}
 
@@ -87,11 +93,15 @@ def main():
         if info == "DELETED":
             print(f"[-] Removing {key} (Repo deleted)")
             del registry[key]
+            if key in update_times:
+                del update_times[key]
             stats["removed"] += 1
         elif info:
             if info.get('archived'):
                 print(f"[-] Removing {key} (Repo archived)")
                 del registry[key]
+                if key in update_times:
+                    del update_times[key]
                 stats["removed"] += 1
             else:
                 # Update metadata
@@ -102,18 +112,17 @@ def main():
                 # Check if changed
                 if (updated_desc != data[2] or
                     updated_branch != data[3] or
-                    len(data) < 5 or
-                    data[4] != updated_at):
+                    update_times.get(key) != updated_at):
 
                     print(f"[*] Updating {key}")
-                    # Keep structure but append timestamp at index 4
                     registry[key] = [
                         owner,
                         repo_name,
                         updated_desc,
-                        updated_branch,
-                        updated_at
+                        updated_branch
                     ]
+                    if updated_at:
+                        update_times[key] = updated_at
                     stats["updated"] += 1
 
         # Throttle to respect rate limits
@@ -152,15 +161,19 @@ def main():
                 owner,
                 repo_name,
                 description,
-                default_branch,
-                pushed_at
+                default_branch
             ]
+            if pushed_at:
+                update_times[key] = pushed_at
             stats["added"] += 1
 
     # 3. Save Results
     if stats["updated"] > 0 or stats["removed"] > 0 or stats["added"] > 0:
         with open(REGISTRY_FILE, 'w') as f:
             json.dump(registry, f, indent=4)
+            f.write('\n')
+        with open(UPDATE_TIMES_FILE, 'w') as f:
+            json.dump(update_times, f, indent=4)
             f.write('\n')
         print(f"Registry updated: {stats['added']} added, {stats['updated']} updated, {stats['removed']} removed.")
     else:

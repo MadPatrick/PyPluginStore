@@ -9,2226 +9,1908 @@
         "galadril",
         "Domoticz-AWTRIX3-Plugin",
         "Domoticz python plugin to connect / integrate with AWTRIX3",
-        "master",
-        "2025-01-10T07:59:36Z"
+        "master"
     ],
     "BatteryLevel": [
         "999LV",
         "BatteryLevel",
         "Domoticz python plugin to display/log battery level of zwave devices",
-        "master",
-        "2026-04-06T16:05:31Z"
+        "master"
     ],
     "ChromecastPlugin": [
         "Tsjippy",
         "ChromecastPlugin",
         "Chromecast plugin for Domoticz, based on PyChromecast",
-        "master",
-        "2023-12-04T13:13:46Z"
+        "master"
     ],
     "CreasolDomBus": [
         "CreasolTech",
         "CreasolDomBus",
         "Domoticz plugin for the DomBus RS485 modules (inputs, outputs, sensors, EVSE, solar tracker, ...)",
-        "master",
-        "2026-05-18T18:46:06Z"
+        "master"
     ],
     "deCONZ": [
         "Smanar",
         "Domoticz-deCONZ",
         "deCONZ plugin for Domoticz (Zigbee application)",
-        "master",
-        "2026-03-29T14:23:47Z"
+        "master"
     ],
     "Denon4306": [
         "dnpwwo",
         "Domoticz-Denon-Plugin",
         "Telnet based Denon / Marantz plugin",
-        "master",
-        "2023-12-10T23:41:25Z"
+        "master"
     ],
     "domoticz-dds238": [
         "CreasolTech",
         "domoticz-dds238",
         "Plugin for Domoticz that manage 1 or more DDS238 ZN/S energy meter (DDS238-1 ZN/S , DDS238-2 ZN/S)",
-        "master",
-        "2025-11-10T17:38:25Z"
+        "master"
     ],
     "domoticz-dts238": [
         "CreasolTech",
         "domoticz-dts238",
         "DTS238 energy meter plugin for Domoticz",
-        "master",
-        "2025-11-10T17:38:49Z"
+        "master"
     ],
     "domoticz-theme-manager": [
         "galadril",
         "domoticz-theme-manager",
         "Domoticz Theme Manager",
-        "master",
-        "2024-10-08T10:52:19Z"
+        "master"
     ],
     "DysonPureLink": [
         "JanJaapKo",
         "DysonPureLink",
         "Handles Dyson Pure Link in Domoticz as plugin",
-        "master",
-        "2025-12-05T16:32:59Z"
+        "master"
     ],
     "ebusd": [
         "guillaumezin",
         "DomoticzEbusd",
         "ebusd plugin for Domoticz",
-        "master",
-        "2026-05-27T19:15:06Z"
+        "master"
     ],
     "E-Flux": [
         "galadril",
         "Domoticz-E-Flux-Plugin",
         "E-Flux integration for Domoticz to fetch data",
-        "main",
-        "2025-01-06T09:06:43Z"
+        "main"
     ],
     "domoticz-emmeti-eq2021": [
         "CreasolTech",
         "domoticz-emmeti-eq2021",
         "Emmeti EQ 2021 amd EQ 3021 ES hot water heat pumps",
-        "master",
-        "2025-11-10T17:39:23Z"
+        "master"
     ],
     "domoticz-emmeti-mirai": [
         "CreasolTech",
         "domoticz-emmeti-mirai",
         "EMMETI Mirai heat pump plugin for Domoticz home automation system",
-        "master",
-        "2026-02-09T07:50:13Z"
+        "master"
     ],
     "ems-gateway": [
         "bbqkees",
         "ems-esp-domoticz-plugin",
         "Domoticz plugin for the EMS Wi-Fi Gateway with Proddy's EMS-ESP firmware ",
-        "main",
-        "2021-12-28T08:35:35Z"
+        "main"
     ],
     "Domoticz-EVCC-IO-Plugin": [
         "galadril",
         "Domoticz-EVCC-IO-Plugin",
         "Domoticz evcc.io plugin to fetch state ",
-        "main",
-        "2026-03-18T19:53:22Z"
+        "main"
     ],
     "freeboxv6": [
         "supermat",
         "PluginDomoticzFreebox",
         "Freebox V6 (Revolution)",
-        "master",
-        "2022-09-02T11:22:12Z"
+        "master"
     ],
     "GoodWeAPI": [
         "JanJaapKo",
         "domoticz-GoodWeSEMS",
         "Domoticz GoodWe Solar Inverter plugin (SEMS API)",
-        "master",
-        "2026-05-14T10:23:01Z"
+        "master"
     ],
     "GoveeDiscovery": [
         "galadril",
         "Domoticz-Govee-Plugin",
         "Domoticz Govee Plugin",
-        "main",
-        "2025-01-06T09:03:27Z"
+        "main"
     ],
     "Homewizard": [
         "rvdvoorde",
         "domoticz-homewizard",
         "Plugin for Domoticz",
-        "master",
-        "2022-12-18T22:48:06Z"
+        "master"
     ],
     "Homewizard-Battery": [
         "etmmvdp",
         "HomeWizard-Battery-plugin",
         "A domoticz plugin for the HomeWizard Battery",
-        "main",
-        "2026-03-31T17:37:30Z"
+        "main"
     ],
     "HyundaiKiaConnect": [
         "CreasolTech",
         "domoticz-hyundai-kia",
         "Plugin for Domoticz to get information from the Hyundai and Kia connect cloud",
-        "master",
-        "2026-04-16T15:40:32Z"
+        "master"
     ],
     "iDetect": [
         "d-EScape",
         "Domoticz_iDetect",
         "Python plugin for Domoticz: Presence detection from wireless router",
-        "master",
-        "2024-11-01T12:24:13Z"
+        "master"
     ],
     "IthoWifi": [
         "galadril",
         "Domoticz-Itho-Wifi-Plugin",
         "Plugin for sending commands to your Itho Wifi module.",
-        "main",
-        "2025-01-06T09:08:03Z"
+        "main"
     ],
     "IKEA-Tradfri": [
         "moroen",
         "IKEA-Tradfri-plugin",
         "A Python plugin for Domoticz to controll IKEA Gateway",
-        "master",
-        "2021-05-31T22:06:39Z"
+        "master"
     ],
     "Linky": [
         "guillaumezin",
         "DomoticzLinky",
         "Linky plugin for Domoticz",
-        "master",
-        "2026-05-27T19:12:50Z"
+        "master"
     ],
     "MeshCore": [
         "galadril",
         "Domoticz-MeshCore-Plugin",
         "Domoticz integration for MeshCore",
-        "main",
-        "2026-05-23T08:42:35Z"
+        "main"
     ],
     "SolaxCloud": [
         "galadril",
         "Domoticz-SolaxCloud-Plugin",
         "Fetch data from SolaxCloud as Domoticz Python Plugin",
-        "main",
-        "2025-06-24T07:22:04Z"
+        "main"
     ],
     "Link-Tap": [
         "DebugBill",
         "Link-Tap",
         "This plugin is to be used in the Domoticz home automation package to control a Link-Tap watering system",
-        "main",
-        "2024-05-27T05:47:12Z"
+        "main"
     ],
     "MQTTDiscovery": [
         "emontnemery",
         "domoticz_mqtt_discovery",
         "MQTT discovery plugin for Domoticz",
-        "development",
-        "2023-05-09T18:48:35Z"
+        "development"
     ],
     "pzem016": [
         "CreasolTech",
         "domoticz-pzem-016",
         "Plugin for Domoticz managing one or more PZEM-016 and PZEM-014 energy meters (Modbus)",
-        "master",
-        "2025-11-10T17:40:45Z"
+        "master"
     ],
     "Quatt": [
         "galadril",
         "Domoticz-Quatt-Plugin",
         "Plugin for retrieving and updating Quatt data.",
-        "main",
-        "2026-03-11T19:18:31Z"
+        "main"
     ],
     "sonoff-domoticz-plugin": [
         "bobzomer",
         "sonoff-domoticz-plugin",
         "Plugin to control Sonoff Mini device from Domoticz",
-        "master",
-        "2025-10-07T07:11:19Z"
+        "master"
     ],
     "steam": [
         "galadril",
         "Domoticz-Steam-Plugin",
         "Plugin for retrieving and updating Steam status (Online/Offline) and game name.",
-        "main",
-        "2025-01-16T07:32:07Z"
+        "main"
     ],
     "Synology SurveillanceStation": [
         "lolautruche",
         "SurveillanceStationDomoticz",
         "Synology SurveillanceStation plugin for Domoticz",
-        "master",
-        "2023-02-17T21:00:45Z"
+        "master"
     ],
     "tuyaha": [
         "guino",
         "tuyaha",
         "Implements the special Tuya Home Assistant API.",
-        "master",
-        "2024-07-07T17:45:34Z"
+        "master"
     ],
     "WLANThermo": [
         "galadril",
         "Domoticz-WLANThermo-Plugin",
         "WLANThermo plugin for Domoticz",
-        "master",
-        "2025-01-06T09:08:06Z"
+        "master"
     ],
     "WLED": [
         "frustreermeneer",
         "domoticz-wled-plugin",
         "Domoticz Plugin for WLED ",
-        "master",
-        "2022-01-05T14:42:29Z"
+        "master"
     ],
     "WAN-IP-CHECKER": [
         "ycahome",
         "WAN-IP-CHECKER",
         "Domoticz plugin updates a \"General,Text\" Value with your Wan IP Address. This value can be used later on in order to update any scripts or notify you upon IP change.",
-        "master",
-        "2023-10-21T09:33:12Z"
+        "master"
     ],
     "Mi_Flower_mate_plugin": [
         "flatsiedatsie",
         "Mi_Flower_mate_plugin",
         "A plugin for Domoticz, the open source home automation software, which allows it to easily connect to Xiaomi Mi Flower Mate devices",
-        "master",
-        "2023-02-20T12:26:51Z"
+        "master"
     ],
     "xiaomi-mi-robot-vacuum": [
         "mrin",
         "domoticz-mirobot-plugin",
         "Xiaomi Mi Robot Vacuum plugin for Domoticz",
-        "master",
-        "2021-01-09T10:50:57Z"
+        "master"
     ],
     "Zigate": [
         "zigbeefordomoticz",
         "Domoticz-Zigbee",
         "Zigbee plugin for Domoticz. Allow to connect various zigbee controllers like Zigate but also Texas Instrument CC2531, CC13x2, CC26x2 ; Silicon-Labs; deConz based chipset to be connected to Domoticz",
-        "stable8",
-        "2026-05-31T15:07:41Z"
+        "stable8"
     ],
     "Zigbee2Mqtt": [
         "stas-demydiuk",
         "domoticz-zigbee2mqtt-plugin",
         "zigbee2mqtt plugin for domoticz",
-        "master",
-        "2024-03-26T07:36:44Z"
+        "master"
     ],
     "ds238-modbus-tcp": [
         "xbeaudouin",
         "domoticz-ds238-modbus-tcp",
         "DDS238-2 ZN/S ModbusTCP Plugin for Domoticz",
-        "main",
-        "2023-10-14T17:33:45Z"
+        "main"
     ],
     "Lyrion Music Server": [
         "MadPatrick",
         "domoticz_lyrion",
         "Control your Lyrion Media Server",
-        "main",
-        "2026-05-20T18:22:24Z"
+        "main"
     ],
     "DomoticzTile": [
         "sydspost",
         "Domoticz-Tile-plugin",
         "Domoticz - Tile plugin",
-        "main",
-        "2025-10-22T15:19:55Z"
+        "main"
     ],
     "FoxESS-domoticz": [
         "bblaszkiewicz",
         "FoxESS-domoticz",
         "FoxESS inverter & Domoticz integration",
-        "master",
-        "2026-04-05T14:55:38Z"
+        "master"
     ],
     "luxtronik-domoticz-plugin-v2": [
         "Rouzax",
         "luxtronik-domoticz-plugin-v2",
         "Domoticz plugin for Luxtronik heat pump controllers - COP tracking, multi-instance support, write protection, 5 languages",
-        "main",
-        "2026-03-14T14:52:18Z"
+        "main"
     ],
     "domoticz-tailscale-plugin": [
         "mirkg",
         "domoticz-tailscale-plugin",
         "Tailscale Integration",
-        "main",
-        "2026-02-16T14:45:59Z"
+        "main"
     ],
     "domoticz-mqttmapper-plugin": [
         "FlyingDomotic",
         "domoticz-mqttmapper-plugin",
         "Domoticz plugin to map MQTT topics to devices/Associe MQTT topics et Domoticz dispositifs",
-        "main",
-        "2026-02-15T11:25:51Z"
+        "main"
     ],
     "domoticz-solaredge-modbustcp-plugin": [
         "addiejanssen",
         "domoticz-solaredge-modbustcp-plugin",
         "A Domoticz plugin to collect data from SolarEdge power inverters over ModbusTCP.",
-        "master",
-        "2025-12-23T17:17:13Z"
+        "master"
     ],
     "domoticz-tuya-cloud": [
         "lacha07",
         "domoticz-tuya-cloud",
         "Domoticz plugin to control Tuya devices via Cloud API - No local keys needed. Supports fans, lights, switches with automatic status sync.",
-        "main",
-        "2025-12-20T17:05:07Z"
+        "main"
     ],
     "Domoticz-SMA-Inverter": [
         "derenback",
         "Domoticz-SMA-Inverter",
         "A Domoticz plugin for SMA solar inverters",
-        "main",
-        "2025-12-16T20:09:30Z"
+        "main"
     ],
     "Broadlink-Domoticz-plugin": [
         "zak-45",
         "Broadlink-Domoticz-plugin",
         "Python plugin to manage Broadlink device from Domoticz",
-        "main",
-        "2025-11-03T16:37:49Z"
+        "main"
     ],
     "domoticz_lg_thinq_plugin": [
         "majki09",
         "domoticz_lg_thinq_plugin",
         "Domoticz plugin for LG ThinQ devices.",
-        "main",
-        "2025-03-12T06:42:05Z"
+        "main"
     ],
     "Domoticz-Solax-plugin": [
         "saidlm",
         "Domoticz-Solax-plugin",
         "Plugin to monitor and control Solax inverter from Domoticz via ModBUS over TCP/IP",
-        "main",
-        "2025-01-11T18:37:09Z"
+        "main"
     ],
     "domoticz-peblar": [
         "Achterhoeker",
         "domoticz-peblar",
         "Domoticz plugin for the Peblar wallbox. Also support for loadbalancing.",
-        "main",
-        "2024-10-11T11:49:31Z"
+        "main"
     ],
     "Hisense-AirCon-Domoticz": [
         "bblaszkiewicz",
         "Hisense-AirCon-Domoticz",
         "Hisense air conditioners & Domoticz integrations",
-        "master",
-        "2024-10-04T13:43:11Z"
+        "master"
     ],
     "domoticz-wellbeing-plugin": [
         "jgaalen",
         "domoticz-wellbeing-plugin",
         "Domoticz plugin for Electrolux / AEG Wellbeing Air Purifiers",
-        "main",
-        "2024-08-19T07:00:20Z"
+        "main"
     ],
     "home-connect": [
         "domoticz",
         "home-connect",
         "Bosch Home Connect plugin for Domoticz",
-        "main",
-        "2026-04-30T10:10:34Z"
+        "main"
     ],
     "domoticz_lg_thinqconnect_plugin": [
         "avriessen",
         "domoticz_lg_thinqconnect_plugin",
         "LG ThinQ domoticz plugin",
-        "develop",
-        "2026-05-31T13:55:41Z"
+        "develop"
     ],
     "Roomba": [
         "neutrino85",
         "Roomba",
         "Domoticz iRobot Roomba Plugin",
-        "main",
-        "2026-04-29T11:07:17Z"
+        "main"
     ],
     "Domoticz---CEPT-plugin": [
         "sydspost",
         "Domoticz---CEPT-plugin",
         "Domoticz plugin to get Cheapest Energy Price Time within next 24 hours given a duration of energyconsumption",
-        "main",
-        "2026-04-28T06:53:01Z"
+        "main"
     ],
     "Somfy": [
         "MadPatrick",
         "domoticz_somfy",
         "Tahoma/Conexoon plugin for Somfy Devices",
-        "master",
-        "2026-05-20T18:20:15Z"
+        "master"
     ],
     "Domoticz-TinyTUYA-Plugin": [
         "Xenomes",
         "Domoticz-TinyTUYA-Plugin",
         "A bridge between Tinytuya and Domoticz",
-        "Master",
-        "2026-05-30T10:48:46Z"
+        "Master"
     ],
     "Domoticz_WT53R_Rain_Tank_Sensor": [
         "voyo",
         "Domoticz_WT53R_Rain_Tank_Sensor",
         "This plugin connects to a WT53R range sensor over Modbus TCP protocol to measure water levels in rain tanks.",
-        "main",
-        "2026-04-23T15:08:16Z"
+        "main"
     ],
     "weheat-domoticz-plugin": [
         "Tableflipper9001",
         "weheat-domoticz-plugin",
         "Domoticz Python plugin for WeHeat heatpumps",
-        "main",
-        "2026-04-22T16:36:28Z"
+        "main"
     ],
     "Mattericz": [
         "fleinze",
         "Mattericz",
         "Matter plugin for Domoticz",
-        "main",
-        "2026-04-18T14:28:48Z"
+        "main"
     ],
     "Domoticz_VolvoRecharge_Plugin": [
         "akamming",
         "Domoticz_VolvoRecharge_Plugin",
         "domoticz plugin for Volvo Recharge Full EV or PHEV vehicles",
-        "main",
-        "2026-04-15T11:54:24Z"
+        "main"
     ],
     "BboxPlugin": [
         "neutrino85",
         "BboxPlugin",
         "Bouygues Bbox Monitor plugin for Domoticz",
-        "main",
-        "2026-04-10T16:19:20Z"
+        "main"
     ],
     "Domoticz-Shelly-Plugin": [
         "lemassykoi",
         "Domoticz-Shelly-Plugin",
         "Domoticz Plugin to manage Shelly Gen2+ Devices",
-        "main",
-        "2026-05-12T12:16:46Z"
+        "main"
     ],
     "TWC": [
         "RSP267",
         "TWC",
         "Domoticz plugin for the Tesla Wall Connector",
-        "master",
-        "2026-03-30T21:31:17Z"
+        "master"
     ],
     "HomeWizard-Wifi-p1-plugin-Extended": [
         "szelessavalapitvany",
         "HomeWizard-Wifi-p1-plugin-Extended",
         "Extended version of the original HomeWizard Wi-Fi P1 Domoticz plugin with more detailed data and multi-language support.",
-        "main",
-        "2026-03-30T13:25:21Z"
+        "main"
     ],
     "domoticz-AirHumidifier": [
         "mgrom",
         "domoticz-AirHumidifier",
         "Domoticz plugin for Xiaomi Humidifier 1",
-        "master",
-        "2026-03-30T08:44:25Z"
+        "master"
     ],
     "Zigbee2Tasmoticz": [
         "fleinze",
         "Zigbee2Tasmoticz",
         "a Domoticz plugin for Zigbee2Tasmota. Fork of foba-1/Tasmoticz ",
-        "main-domoticzex",
-        "2026-03-29T16:58:17Z"
+        "main-domoticzex"
     ],
     "Domoticz-Husqvarna-Automower-plugin": [
         "FilipDem",
         "Domoticz-Husqvarna-Automower-plugin",
         "Domoticz plugin for Husqvarna automowers.",
-        "main",
-        "2026-03-28T17:58:23Z"
+        "main"
     ],
     "FrisquetConnectDomoticz": [
         "fjumeaux",
         "FrisquetConnectDomoticz",
         "Fork de Krakinou (plugin Frisquet Connect pour Domoticz) \u2014 correctifs et \u00e9volutions",
-        "main",
-        "2026-03-26T11:49:08Z"
+        "main"
     ],
     "Marstek-Venus-plugin": [
         "WillemD61",
         "Marstek-Venus-plugin",
         "Domoticz plugin for Marstek Venus battery",
-        "main",
-        "2026-03-20T10:51:35Z"
+        "main"
     ],
     "Krakinou-FrisquetConnectDomoticz": [
         "Krakinou",
         "FrisquetConnectDomoticz",
         "Domoticz Plugin For Frisquet Connect",
-        "main",
-        "2026-03-18T22:09:07Z"
+        "main"
     ],
     "PluginDomoticzFreebox": [
         "fjumeaux",
         "PluginDomoticzFreebox",
         "Refork plugin de supermat",
-        "master",
-        "2026-03-18T10:31:54Z"
+        "master"
     ],
     "SessyBattery": [
         "JanJaapKo",
         "SessyBattery",
         "Domoticz plugin for Sessy batteries",
-        "main",
-        "2026-03-14T16:50:28Z"
+        "main"
     ],
     "Domoticz-Huawei-Inverter": [
         "JWGracht",
         "Domoticz-Huawei-Inverter",
         "Domoticz plugin for Huawei Solar inverters via Modbus",
-        "main",
-        "2026-03-11T00:06:26Z"
+        "main"
     ],
     "domoticz-github": [
         "j-b-n",
         "domoticz-github",
         "GitHub Stats Domoticz Plugin",
-        "master",
-        "2026-05-06T17:52:10Z"
+        "master"
     ],
     "Domoticz-TeslaFi-Plugin": [
         "lemassykoi",
         "Domoticz-TeslaFi-Plugin",
         "Domoticz Plugin to gather datas from TeslaFi API",
-        "main",
-        "2026-03-07T19:31:21Z"
+        "main"
     ],
     "Domoticz-OpenDTU-Plugin": [
         "lemassykoi",
         "Domoticz-OpenDTU-Plugin",
         "Plugin to collect datas from OpenDTU",
-        "main",
-        "2026-03-07T19:15:56Z"
+        "main"
     ],
     "Domoticz-Bluetti-Plugin": [
         "lemassykoi",
         "Domoticz-Bluetti-Plugin",
         "Domoticz Plugin to poll Bluetti device via BLE",
-        "main",
-        "2026-03-06T17:38:47Z"
+        "main"
     ],
     "Domoticz-BMW-plugin": [
         "FilipDem",
         "Domoticz-BMW-plugin",
         "Domoticz plugin working with BMW Connected Drive",
-        "main",
-        "2026-03-03T19:44:41Z"
+        "main"
     ],
     "Domoticz-TinyTUYA-Local-Plugin": [
         "Xenomes",
         "Domoticz-TinyTUYA-Local-Plugin",
         "Domoticz-TinyTUYA-Local-Plugin plugin for Domoticz",
-        "Master",
-        "2026-03-01T13:52:19Z"
+        "Master"
     ],
     "domoticz_reolink": [
         "j-b-n",
         "domoticz_reolink",
         "Domoticz plugin for use with Reolink cameras. ",
-        "main",
-        "2026-03-14T09:48:58Z"
+        "main"
     ],
     "SolarForecast": [
         "JanJaapKo",
         "SolarForecast",
         "Domoticz plugin to fetch Solar Forecast data",
-        "main",
-        "2026-02-15T15:27:20Z"
+        "main"
     ],
     "NEDsolarForecast": [
         "JanJaapKo",
         "NEDsolarForecast",
         "Domoticz plugin for NED solar forecast",
-        "main",
-        "2026-02-15T14:14:44Z"
+        "main"
     ],
     "Domoticz-OpenMeteo-Plugin": [
         "lemassykoi",
         "Domoticz-OpenMeteo-Plugin",
         "Domoticz plugin for OpenMeteo weather data - no API key required",
-        "main",
-        "2026-02-13T18:46:01Z"
+        "main"
     ],
     "XTEND-plugin": [
         "WillemD61",
         "XTEND-plugin",
         "Domoticz plugin for Intergas Xtend data collection",
-        "main",
-        "2026-02-07T19:39:06Z"
+        "main"
     ],
     "Domoticz-Synology-Plugin": [
         "bramvreugd",
         "Domoticz-Synology-Plugin",
         "Synology Monitoring Plugin.  Collects CPU, Memory, Heat, HDD Information and network load from Synology NAS Units",
-        "main",
-        "2026-02-02T15:13:22Z"
+        "main"
     ],
     "domoticz-powerview-plugin": [
         "jgaalen",
         "domoticz-powerview-plugin",
         "domoticz-powerview-plugin plugin for Domoticz",
-        "main",
-        "2026-01-28T06:02:53Z"
+        "main"
     ],
     "Domoticz-PiHole-Control": [
         "janreimen",
         "Domoticz-PiHole-Control",
         "Domoticz Plugin to integrate PiHole with https Support, forked from ",
-        "main",
-        "2026-01-23T19:51:44Z"
+        "main"
     ],
     "OpenEVSEPlugin": [
         "ayasystems",
         "OpenEVSEPlugin",
         "OpenEVSE mqtt domoticz plugin",
-        "master",
-        "2026-01-23T16:59:57Z"
+        "master"
     ],
     "ThesslaGreen-modbus": [
         "voyo",
         "ThesslaGreen-modbus",
         "Domoticz ThesslaGreen-modbus plugin",
-        "main",
-        "2026-01-21T00:27:45Z"
+        "main"
     ],
     "domoticz-BSR": [
         "belzetrigger",
         "domoticz-BSR",
         "Domoticz plugin that gets data of public waste collection for Berlin from BSR",
-        "master",
-        "2026-01-08T21:45:17Z"
+        "master"
     ],
     "Domoticz-GPSLogger-Plugin": [
         "TurnOfAFriendlyCard",
         "Domoticz-GPSLogger-Plugin",
         "Capture location data obtained via GPS Logger app in Domoticz devices.",
-        "main",
-        "2026-01-06T21:10:12Z"
+        "main"
     ],
     "Domoticz-Rhasspy-Plugin": [
         "TurnOfAFriendlyCard",
         "Domoticz-Rhasspy-Plugin",
         "This plugin integrates Rhasspy intents with Domoticz devices via MQTT and Domoticz API.",
-        "main",
-        "2026-01-06T16:34:53Z"
+        "main"
     ],
     "Domoticz_plugin_for_Smasung_Washer_Dryer": [
         "csutihu",
         "Domoticz_plugin_for_Smasung_Washer_Dryer",
         "Domoticz plugin for washing and drying machines",
-        "main",
-        "2025-12-29T22:08:30Z"
+        "main"
     ],
     "Domoticz-Enigma2": [
         "kofec",
         "Domoticz-Enigma2",
         "Enigma2 Plugin for domoticz ",
-        "master",
-        "2025-12-19T16:08:46Z"
+        "master"
     ],
     "domoticz-cupra-plugin": [
         "jgaalen",
         "domoticz-cupra-plugin",
         "Domoticz Cupra Plugin",
-        "main",
-        "2025-12-18T07:43:58Z"
+        "main"
     ],
     "Domoticz-Volumio-Plugin": [
         "frepkovsky",
         "Domoticz-Volumio-Plugin",
         "Domoticz-Volumio-Plugin plugin for Domoticz",
-        "main",
-        "2025-12-17T18:30:10Z"
+        "main"
     ],
     "Domoticz-Temperatur-nu": [
         "derenback",
         "Domoticz-Temperatur-nu",
         "A simple plugin for Domoticz that gets the temperature for a location in Sweden from temperature.nu",
-        "main",
-        "2025-12-17T15:21:39Z"
+        "main"
     ],
     "Domoticz-Brel-Home-Hub-03-integration": [
         "salmr",
         "Domoticz-Brel-Home-Hub-03-integration",
         "Plugin for Domoticz to read and control binds via a Brel Home Hub",
-        "main",
-        "2025-12-14T21:51:40Z"
+        "main"
     ],
     "Domoticz-WazeTimeTravel-Plugin": [
         "cth35",
         "Domoticz-WazeTimeTravel-Plugin",
         "Waze time travel plugin for Domoticz",
-        "main",
-        "2025-12-14T14:25:59Z"
+        "main"
     ],
     "OM310-Domoticz-plugin": [
         "tmrealive",
         "OM310-Domoticz-plugin",
         "Domoticz plugin for OM-310 Power Limiter (Novatek-Elektro) over Modbus TCP",
-        "main",
-        "2025-12-10T09:36:29Z"
+        "main"
     ],
     "goodwe_rs485_domoticz": [
         "nijmeijer",
         "goodwe_rs485_domoticz",
         "Domoticz python plugin for Goodwe Solar Inverters via RS485",
-        "master",
-        "2025-11-30T13:21:02Z"
+        "master"
     ],
     "DHT22-rpi": [
         "Mibeus",
         "DHT22-rpi",
         "Plugin for domoticz for 1-wire DHT22/AM2301",
-        "main",
-        "2025-11-28T07:31:04Z"
+        "main"
     ],
     "DomoticzNestPlugin": [
         "lbartuzi",
         "DomoticzNestPlugin",
         "Not a perfect plugin but it works. ",
-        "main",
-        "2025-11-14T16:50:30Z"
+        "main"
     ],
     "ShellyCloudPlugin2": [
         "mario-peters",
         "ShellyCloudPlugin2",
         "This plugin makes it possible to use Shelly Devices in Domoticz. You can find the specific configuration and ToDo's on the Wiki page.",
-        "main",
-        "2025-11-05T15:54:51Z"
+        "main"
     ],
     "domoticz-PowerWorld-heat-pump": [
         "Mike19700",
         "domoticz-PowerWorld-heat-pump",
         "Domoticz modbus plugin for Powerworld inverters.",
-        "main",
-        "2025-11-01T13:14:18Z"
+        "main"
     ],
     "domoticz-zigbee2mqtt-plugin": [
         "RoyP99",
         "domoticz-zigbee2mqtt-plugin",
         "zigbee2mqtt plugin for domoticz",
-        "master",
-        "2025-11-01T12:18:23Z"
+        "master"
     ],
     "Domoticz-GPIO-Debian-13": [
         "Mibeus",
         "Domoticz-GPIO-Debian-13",
         "Plugin for control relay on GPIO PINs on RPI with domoticz",
-        "main",
-        "2025-10-29T12:46:59Z"
+        "main"
     ],
     "Domoticz-N8N-Plugin": [
         "galadril",
         "Domoticz-N8N-Plugin",
         "Plugin for Domoticz to load the UI inside Domoticz, and add all workflows as devices that you can toggle on/off inside Domoticz.",
-        "main",
-        "2025-10-28T15:17:37Z"
+        "main"
     ],
     "domoticz_zigbee2tasmota": [
         "Mibeus",
         "domoticz_zigbee2tasmota",
         "plugin for comunication with zigbee sensors through tasmota to Domoticz",
-        "main",
-        "2025-10-25T18:34:29Z"
+        "main"
     ],
     "Domoticz-plugin-for-samsung-washing-machine": [
         "csutihu",
         "Domoticz-plugin-for-samsung-washing-machine",
         "Domoticz python plugin for samsung washing machine via Smartthings API",
-        "main",
-        "2025-10-23T22:46:29Z"
+        "main"
     ],
     "Domoticz-MCP-Plugin": [
         "galadril",
         "Domoticz-MCP-Plugin",
         "Domoticz-MCP-Plugin plugin for Domoticz",
-        "main",
-        "2025-10-18T12:09:48Z"
+        "main"
     ],
     "alphaESS-battery-plugin": [
         "AntoineVDH",
         "alphaESS-battery-plugin",
         "A domoticz plugin for the alphaESS Battery",
-        "main",
-        "2025-10-09T13:47:33Z"
+        "main"
     ],
     "domoticz-ir-climate-controller": [
         "szelessavalapitvany",
         "domoticz-ir-climate-controller",
         "Tasmota IR device control plugin that allows remote control of Wi-Fi-free, IR air conditioners from Domoticz",
-        "main",
-        "2025-10-09T13:25:06Z"
+        "main"
     ],
     "sweden_energyprice": [
         "j-b-n",
         "sweden_energyprice",
         "Domoticz plugin for energy prices in Sweden.",
-        "main",
-        "2025-10-02T19:41:18Z"
+        "main"
     ],
     "HomeWizard-Wifi-3F-plugin": [
         "freekdk",
         "HomeWizard-Wifi-3F-plugin",
         "Domoticz plugin for HomeWizard 3FkWh device",
-        "main",
-        "2025-09-29T13:56:51Z"
+        "main"
     ],
     "PC321_TY_tuya_local": [
         "nlovrens",
         "PC321_TY_tuya_local",
         "Domoticz PC321-TY power clamp plugin",
-        "main",
-        "2025-09-17T13:33:03Z"
+        "main"
     ],
     "Domoticz-MG-Plugin": [
         "lemassykoi",
         "Domoticz-MG-Plugin",
         "Domoticz Plugin to gather datas from MG EV",
-        "main",
-        "2025-09-10T22:47:29Z"
+        "main"
     ],
     "DDS238-7-modbus": [
         "voyo",
         "DDS238-7-modbus",
         "Domoticz DDS238-7-modbus plugin",
-        "main",
-        "2025-08-29T18:13:54Z"
+        "main"
     ],
     "Sofar-modbus": [
         "voyo",
         "Sofar-modbus",
         "Sofar over modbus, Domoticz plugin",
-        "main",
-        "2025-08-16T23:58:55Z"
+        "main"
     ],
     "IMGW-Meteo": [
         "mstojek",
         "IMGW-Meteo",
         "Plugin dla platformy Domoticz umo\u017cliwiaj\u0105cy pobieranie aktualnych danych pogodowych z publicznego API Instytutu Meteorologii i Gospodarki Wodnej (IMGW).",
-        "main",
-        "2025-08-08T20:15:44Z"
+        "main"
     ],
     "Domoticz-Em3255-Plugin": [
         "iwanbae",
         "Domoticz-Em3255-Plugin",
         "Domoticz-Em3255-Plugin plugin for Domoticz",
-        "main",
-        "2025-07-29T05:05:16Z"
+        "main"
     ],
     "Domoticz-NEST-plugin": [
         "FilipDem",
         "Domoticz-NEST-plugin",
         "NEST Plugin for Domoticz using the Google credentials.",
-        "master",
-        "2025-07-28T18:27:02Z"
+        "master"
     ],
     "domoticz-mqtt-sync-plugin": [
         "FlyingDomotic",
         "domoticz-mqtt-sync-plugin",
         "Synchronizes (part of) devices of a master instance to a slave one",
-        "main",
-        "2025-07-14T15:36:06Z"
+        "main"
     ],
     "domoticz-tuya-heatpump": [
         "jgaalen",
         "domoticz-tuya-heatpump",
         "Domoticz plugin for Tuya (W'eau) Heatpumps",
-        "main",
-        "2025-07-13T17:31:16Z"
+        "main"
     ],
     "Domoticz-ZonneDimmer-Plugin": [
         "galadril",
         "Domoticz-ZonneDimmer-Plugin",
         "Domoticz plugin to integrate with zonnedimmer",
-        "main",
-        "2026-05-26T21:59:19Z"
+        "main"
     ],
     "domoticz-kpn-experia-v10": [
         "adrighem",
         "domoticz-kpn-experia-v10",
         "Domoticz Python Plugin for the KPN Experia v10",
-        "main",
-        "2026-05-13T12:45:28Z"
+        "main"
     ],
     "Domoticz-FranceFuelPrice-Plugin": [
         "cth35",
         "Domoticz-FranceFuelPrice-Plugin",
         "Plugin Domoticz permettant de r\u00e9cup\u00e9rer le prix d'un carburant dans une station-service fran\u00e7aise \u00e0 partir de l'API officielle du gouvernement fran\u00e7ais.",
-        "main",
-        "2026-05-31T12:48:06Z"
+        "main"
     ],
     "Domoticz_dreame": [
         "MadPatrick",
         "Domoticz_dreame",
         "Plugin for Dreame vacuumcleaner",
-        "main",
-        "2026-05-31T14:24:28Z"
+        "main"
     ],
     "DomoticzControl": [
         "guillaumezin",
         "DomoticzControl",
         "Squeezebox / Logitech Media Server plugin for controlling Domoticz devices",
-        "master",
-        "2026-05-27T19:17:39Z"
+        "master"
     ],
     "domoticz-logmonitor-plugin": [
         "mirkg",
         "domoticz-logmonitor-plugin",
         "domoticz-logmonitor-plugin plugin for Domoticz",
-        "main",
-        "2026-05-25T07:09:13Z"
+        "main"
     ],
     "TVUHDOrange": [
         "Christophe-dms",
         "TVUHDOrange",
         "Plugin Domoticz TV UHD Orange 4K ( DTI 385 )",
-        "main",
-        "2026-05-14T22:09:03Z"
+        "main"
     ],
     "homebridge-edomoticz": [
         "PatchworkBoy",
         "homebridge-edomoticz",
         "Domoticz Homebridge-Plugin",
-        "master",
-        "2026-05-07T18:32:46Z"
+        "master"
     ],
     "domoticz-wifisensors-plugin": [
         "mirkg",
         "domoticz-wifisensors-plugin",
         "WifiSensors Domoticz integration",
-        "main",
-        "2026-05-04T10:12:24Z"
+        "main"
     ],
     "wiki": [
         "zigbeefordomoticz",
         "wiki",
         "Wiki part of Domoticz-Zigate plugin",
-        "master",
-        "2026-04-23T09:57:15Z"
+        "master"
     ],
     "Domoticz-Zigbee-UI": [
         "zigbeefordomoticz",
         "Domoticz-Zigbee-UI",
         "Web User Interface for Zigbee for Domoticz plugin",
-        "beta",
-        "2026-04-19T12:41:16Z"
+        "beta"
     ],
     "Domoticz-Aldes": [
         "ludosaxo",
         "Domoticz-Aldes",
         "Domoticz plugin for Aldes T One Air product",
-        "main",
-        "2026-04-15T09:53:06Z"
+        "main"
     ],
     "Domoticz-spaarnelanden-plugin": [
         "Garthim",
         "Domoticz-spaarnelanden-plugin",
         "Domoticz-spaarnelanden-plugin",
-        "main",
-        "2026-01-31T12:35:08Z"
+        "main"
     ],
     "WifiTIC": [
         "DebugBill",
         "WifiTIC",
         "WifiTIC plugin for DomoticZ",
-        "main",
-        "2025-12-01T18:45:24Z"
+        "main"
     ],
     "IntesisBox-Panasonic-Tcap-modbus": [
         "voyo",
         "IntesisBox-Panasonic-Tcap-modbus",
         "IntesisBox Panasonic-Tcap over modbus, Domoticz plugin",
-        "main",
-        "2025-11-22T15:29:27Z"
+        "main"
     ],
     "esphome-air-quality-monitor": [
         "easternredcedarfleece849",
         "esphome-air-quality-monitor",
         "\ud83c\udf31 Monitor indoor air quality easily with this low-cost ESP32-based device using SM300D2 sensors, perfect for Home Assistant integration.",
-        "main",
-        "2026-06-01T00:39:13Z"
+        "main"
     ],
     "boiler-controller-domoticz": [
         "BoilerController",
         "boiler-controller-domoticz",
         "Domoticz integration for the Boiler Controller (BC) device. It turns your electric boiler into a water battery \u2014 instead of exporting surplus energy, it sends the excess reported by your electric meter straight into the heater so you store free solar or dynamic-tariff energy as hot water.",
-        "main",
-        "2026-05-29T20:13:32Z"
+        "main"
     ],
     "domoticz-mcp": [
         "adrighem",
         "domoticz-mcp",
         "A Model Context Protocol (MCP) server for integrating with the Domoticz home automation system",
-        "main",
-        "2026-05-25T07:51:46Z"
+        "main"
     ],
     "Easun-ISolarSPS-Domoticz": [
         "bblaszkiewicz",
         "Easun-ISolarSPS-Domoticz",
         "EAsun inverter & Domoticz integration",
-        "master",
-        "2026-03-31T10:05:30Z"
+        "master"
     ],
     "domoticz-hue-emulator": [
         "hackboxguy",
         "domoticz-hue-emulator",
         "A set of scripts and configs to enable Amazon echo(alexa) based voice command integration with domoticz home server",
-        "main",
-        "2026-01-20T13:59:33Z"
+        "main"
     ],
     "TeslaDomoticz": [
         "JanJaapKo",
         "TeslaDomoticz",
         "Integrates TeslaPy into Domoticz",
-        "main",
-        "2025-12-24T20:26:32Z"
+        "main"
     ],
     "evcc_domoticz": [
         "enboer",
         "evcc_domoticz",
         "EVCC integration with Domoticz",
-        "main",
-        "2025-12-02T14:01:03Z"
+        "main"
     ],
     "LionTasmoticz": [
         "Lion251",
         "LionTasmoticz",
         "Autodetecting Tasmota/Domoticz integration, with special support for BLE thermo/hygrometers",
-        "main",
-        "2025-11-10T17:50:20Z"
+        "main"
     ],
     "psacc-domoticz": [
         "Tatroxitum",
         "psacc-domoticz",
         "Integration of  psa_car_controller into domoticz",
-        "main",
-        "2025-09-19T06:44:59Z"
+        "main"
     ],
     "mqtt-rainbird": [
         "KD377",
         "mqtt-rainbird",
         "This is the python project used for integrating rainbird with domoticz using mqtt auto discovery",
-        "main",
-        "2025-06-19T21:04:18Z"
+        "main"
     ],
     "FF_WeatherStation": [
         "FlyingDomotic",
         "FF_WeatherStation",
         "Integrates Lidl Weather station (SM-041/EM3390A) into MQTT and Domoticz",
-        "main",
-        "2025-04-21T12:36:25Z"
+        "main"
     ],
     "shelly-domoticz-bridge": [
         "darton",
         "shelly-domoticz-bridge",
         "Middleware system for integrating Shelly devices with Domoticz.",
-        "main",
-        "2025-03-06T20:24:29Z"
+        "main"
     ],
     "domoticz-atlantic-cozytouch": [
         "dzooli",
         "domoticz-atlantic-cozytouch",
         "A port of Atlantic Cozytouch integration of HA to Domoticz",
-        "master",
-        "2025-01-02T16:30:35Z"
+        "master"
     ],
     "rp2040pico-w_BME680": [
         "len-sla",
         "rp2040pico-w_BME680",
         "Smart Sensor Hub: Pico W & BME680 Integration How to equip Pico W with lightweigt http, MQTT and TinyML ( tfl micro)  example with Bosch BME680 sensor  (I2C)",
-        "main",
-        "2024-11-01T16:54:02Z"
+        "main"
     ],
     "FF_Radar": [
         "FlyingDomotic",
         "FF_Radar",
         "Integration of LD2450 radar module into HTTP, MQTT and/or Domoticz",
-        "main",
-        "2024-05-31T18:26:41Z"
+        "main"
     ],
     "TeslaApiDomoticz": [
         "JanJaapKo",
         "TeslaApiDomoticz",
         "Integrates TeslaAPI into Domoticz",
-        "main",
-        "2024-05-24T15:14:02Z"
+        "main"
     ],
     "Domoticz-WThermostatBeca": [
         "mvdklip",
         "Domoticz-WThermostatBeca",
         "Domoticz plugin to integrate a BHT thermostat running WThermostatBeca firmware",
-        "master",
-        "2024-01-18T09:57:04Z"
+        "master"
     ],
     "Domoticz-Hewalex": [
         "mvdklip",
         "Domoticz-Hewalex",
         "Domoticz plugin to integrate Hewalex solar and heat pumps",
-        "master",
-        "2024-01-10T12:07:34Z"
+        "master"
     ],
     "domoticz-openDTU": [
         "belzetrigger",
         "domoticz-openDTU",
         "Scripts to integrate live data from openDTU API into domoticz. So easily show your Hoymiles inverter and pannels/trackers as devices. as ",
-        "main",
-        "2023-11-20T20:50:59Z"
+        "main"
     ],
     "domoticz-homematicip-workbook": [
         "rwbl",
         "domoticz-homematicip-workbook",
         "Guide on how to integrate eQ-3 Homematic CCU3 with selected Homematic IP Devices into Domoticz Home Automation System.",
-        "main",
-        "2023-10-31T10:00:37Z"
+        "main"
     ],
     "Domoticz-with-ChatGPT-integration": [
         "LemmeDasker",
         "Domoticz-with-ChatGPT-integration",
         "Control Domoticz with voice commands using ChatGPT",
-        "main",
-        "2023-10-15T12:34:10Z"
+        "main"
     ],
     "test_domoticzex": [
         "zigbeefordomoticz",
         "test_domoticzex",
         "Testing DomoticzEx integration into ZiGate plugin",
-        "master",
-        "2023-09-19T12:53:35Z"
+        "master"
     ],
     "ecoSOL-500-Domoticz": [
         "tomek10861",
         "ecoSOL-500-Domoticz",
         "ecoSOL 500 domoticz integration",
-        "main",
-        "2023-07-06T21:57:21Z"
+        "main"
     ],
     "Domoticz-MQTT-Mew01-integration": [
         "tomek10861",
         "Domoticz-MQTT-Mew01-integration",
         "Integration of the Mew01 energy meter with Domoticz",
-        "main",
-        "2022-06-22T07:19:48Z"
+        "main"
     ],
     "comfoconnect_domoticz": [
         "zygios",
         "comfoconnect_domoticz",
         "Zehnder Q350 ventilation unit MQTT to Domoticz",
-        "main",
-        "2022-03-25T03:25:19Z"
+        "main"
     ],
     "Domoticz-Tasmota-Smartplug": [
         "mvdklip",
         "Domoticz-Tasmota-Smartplug",
         "Domoticz plugin to integrate a smartplug running Tasmota firmware",
-        "main",
-        "2022-02-15T15:29:32Z"
+        "main"
     ],
     "domoticz-splunk": [
         "romanmelko",
         "domoticz-splunk",
         "Integration of Domoticz logging and Splunk for Raspberry PI 4 (ARMv7)",
-        "main",
-        "2021-06-17T13:29:16Z"
+        "main"
     ],
     "integrations": [
         "emsesp",
         "integrations",
         "Scripts for various integrations (HA, Domoticz, etc)",
-        "main",
-        "2021-03-15T15:26:15Z"
+        "main"
     ],
     "IntesishomewithDomoticz": [
         "luismalddonado",
         "IntesishomewithDomoticz",
         "Integration of Intesishome with Domoticz",
-        "main",
-        "2021-02-24T21:48:22Z"
+        "main"
     ],
     "Domoticz-Tuya": [
         "Canard64",
         "Domoticz-Tuya",
         "Utilisation des API tuya pour int\u00e9gration dans DOMOTICZ",
-        "main",
-        "2021-01-04T16:07:10Z"
+        "main"
     ],
     "Domoticz_SharkIQ_Integration": [
         "Ittiz",
         "Domoticz_SharkIQ_Integration",
         "Python Scripts I created to integrate the Shark IQ Vacuum with the Domoticz Home Automation system.",
-        "main",
-        "2020-12-25T21:59:15Z"
+        "main"
     ],
     "max_cube_domoticz": [
         "bbrowaros",
         "max_cube_domoticz",
         "Eq-3 max cube integration with domoticz via python",
-        "main",
-        "2020-11-29T16:20:51Z"
+        "main"
     ],
     "Domoticz_Node-Red_Esp32_DB18B20": [
         "heinohein",
         "Domoticz_Node-Red_Esp32_DB18B20",
         "Integration of Domoticz, Mosquitto MQTT, Node-Red and an Arduino Esp32 with DS18B20 sensor via Wifi",
-        "master",
-        "2020-07-19T07:48:53Z"
+        "master"
     ],
     "domoticz-teracom": [
         "mboisnard",
         "domoticz-teracom",
         "Teracom TCW-180 / TCW-181B SNMP integration for Domoticz",
-        "master",
-        "2020-04-26T17:57:48Z"
+        "master"
     ],
     "CCS811-HDC1080-ESP32-weatherstation-with-Domoticz-integration": [
         "Ierlandfan",
         "CCS811-HDC1080-ESP32-weatherstation-with-Domoticz-integration",
         "IOT ESP32 weather station with CO2 & VOC alarm Domoticz ",
-        "master",
-        "2020-04-16T10:13:23Z"
+        "master"
     ],
     "ESP32-Cam": [
         "DomoticDIY",
         "ESP32-Cam",
         "Installation de l'ESP32-Cam\u00e9ra, et int\u00e9gration dans Domoticz",
-        "master",
-        "2020-03-11T04:49:50Z"
+        "master"
     ],
     "satel2mqtt": [
         "voyo",
         "satel2mqtt",
         "Satel CA-10 events to MQTT queue and integration with Domoticz",
-        "master",
-        "2020-02-16T02:29:25Z"
+        "master"
     ],
     "penguino-domoticz": [
         "duodiscus92",
         "penguino-domoticz",
         "Integration of Delonghi Penguino mobile series EX mobile air conditioner into Domoticz",
-        "master",
-        "2019-12-31T08:38:40Z"
+        "master"
     ],
     "ESP32_Paradox_controler_mqtt": [
         "zygios",
         "ESP32_Paradox_controler_mqtt",
         "ESP32 connected to Paradox SP5500 alarm system and using mqtt publishing data to Domotics server",
-        "master",
-        "2019-10-24T07:08:42Z"
+        "master"
     ],
     "Dz_LinkyD2L": [
         "PhilDeSJDA",
         "Dz_LinkyD2L",
         "Integration dans Domoticz de l'interface temps r\u00e9el avec Linky que propose le module D2L d'eeSmart",
-        "master",
-        "2019-10-03T11:43:00Z"
+        "master"
     ],
     "yolo2domoticz": [
         "djgrasss",
         "yolo2domoticz",
         "Scripts for integrating Yolo image recognition with Domoticz",
-        "master",
-        "2019-07-11T22:15:29Z"
+        "master"
     ],
     "Airwick_ESPM3": [
         "zygios",
         "Airwick_ESPM3",
         "Airwick freshmatic integration to Domoticz",
-        "master",
-        "2019-04-15T16:42:00Z"
+        "master"
     ],
     "domoticz-verisure": [
         "Risca",
         "domoticz-verisure",
         "Verisure integration with Domoticz",
-        "master",
-        "2018-12-02T14:23:45Z"
+        "master"
     ],
     "domo-ifttt": [
         "dswinton",
         "domo-ifttt",
         "Domoticz IFTTT Integration",
-        "master",
-        "2018-09-04T20:59:39Z"
+        "master"
     ],
     "Domoticz_integration": [
         "cipesokram",
         "Domoticz_integration",
         "Arduino to domoticz integration",
-        "master",
-        "2018-03-02T13:38:59Z"
+        "master"
     ],
     "ESP8266_AutoBlinds_MQTT_Domoticz": [
         "zygios",
         "ESP8266_AutoBlinds_MQTT_Domoticz",
         "Automatic blinds ESP8266, 28BYJ-48 stepper with MQTT integration into domoticz",
-        "master",
-        "2018-02-22T19:41:24Z"
+        "master"
     ],
     "Domoticz-Pi-USB8-relay-board-SOS-solutions": [
         "bbqkees",
         "Domoticz-Pi-USB8-relay-board-SOS-solutions",
         "Integrate 8-channel relay board with ATMEL8 from SOS solutions or Ebay/Ali into Domoticz on Raspberry Pi",
-        "master",
-        "2017-12-08T11:10:15Z"
+        "master"
     ],
     "Pollen-forecast-in-Norway-for-Domoticz": [
         "flemmingss",
         "Pollen-forecast-in-Norway-for-Domoticz",
         "A PowerShell script to integrate pollen forcast from pollenvarslingen.no in Domoticz",
-        "master",
-        "2017-03-16T22:24:06Z"
+        "master"
     ],
     "lightwaveproxy": [
         "jagsta",
         "lightwaveproxy",
         "A couple of utility node.js scripts to assist with lightwaveRF wifi controlller integration with domoticz and to provide a secure way of communicating with domoticz remotely without opening access to your network using a public MQTT message queue",
-        "master",
-        "2016-11-02T22:43:25Z"
+        "master"
     ],
     "tado_domoticz": [
         "WebSpider",
         "tado_domoticz",
         "Tado <> Domoticz integration",
-        "master",
-        "2016-08-11T11:11:56Z"
+        "master"
     ],
     "cheapometer": [
         "n0w",
         "cheapometer",
         "ESP8266 + DHT22 sensor with domoticz integration",
-        "master",
-        "2016-07-10T19:23:13Z"
+        "master"
     ],
     "cisco-spark-domoticz-integration": [
         "patglanz",
         "cisco-spark-domoticz-integration",
         "cisco-spark-domoticz-integration plugin for Domoticz",
-        "master",
-        "2016-06-24T12:07:17Z"
+        "master"
     ],
     "domoticz": [
         "domoticz",
         "domoticz",
         "Free open source home automation system for Linux, Windows, Raspberry Pi. Supports Z-Wave, Zigbee, MQTT, and 150+ devices.",
-        "development",
-        "2026-05-31T14:30:50Z"
+        "development"
     ],
     "Domoticz-Events-Scripts": [
         "saidlm",
         "Domoticz-Events-Scripts",
         "Set of events scripts for Domoticz written in Python and LUA (DzVents)",
-        "main",
-        "2026-05-26T16:53:53Z"
+        "main"
     ],
     "domoticz-Niu-escooter": [
         "Mike19700",
         "domoticz-Niu-escooter",
         "A python program written for Domoticz to get data from your NIU E-scooter",
-        "main",
-        "2026-05-02T11:16:36Z"
+        "main"
     ],
     "ADS-B-FlightTracker-counter": [
         "freijn",
         "ADS-B-FlightTracker-counter",
         "ADS-B  flight tracker counter for Home Assistant or Domoticz  Python",
-        "main",
-        "2026-04-24T08:19:58Z"
+        "main"
     ],
     "Domoticz-Resilience-Project": [
         "okfriend88-lang",
         "Domoticz-Resilience-Project",
         "Resilient home automation via Domoticz on Lenovo Yoga. Features: Rika Stove advanced control (Firenet API), Netatmo/Shutter thermal logic, and \"Anti-Cloud\" hardware bridge. Includes Python connectors, Shell infrastructure (Watchdog/Backup), and dzVents scripts.",
-        "main",
-        "2026-03-07T14:23:38Z"
+        "main"
     ],
     "dynamicTelegramBot": [
         "waltervl",
         "dynamicTelegramBot",
         "Dynamic python telegram bot for Domoticz",
-        "master",
-        "2025-12-18T22:41:43Z"
+        "master"
     ],
     "hyundai_kia_connect_monitor": [
         "ZuinigeRijder",
         "hyundai_kia_connect_monitor",
         "Automatic trip administration tools for Hyundai Bluelink or Kia UVO Connect users. Determining afterwards your private and/or business trips and information about those trips and usage of the car. Support for Domoticz and/or MQTT Broker (e.g. HomeAssistant, ioBroker). Best of all is the fact that it does NOT drain your 12 volt battery of the car.",
-        "main",
-        "2025-11-16T13:52:54Z"
+        "main"
     ],
     "rpieasy": [
         "enesbcs",
         "rpieasy",
         "Easy MultiSensor device based on Raspberry PI",
-        "master",
-        "2025-11-06T19:35:16Z"
+        "master"
     ],
     "domoticz-plugins-manager": [
         "stas-demydiuk",
         "domoticz-plugins-manager",
         "UI to manage python plugins in Domoticz",
-        "master",
-        "2025-06-25T11:30:24Z"
+        "master"
     ],
     "HomeWizard-Wifi-kWh-Meter": [
         "Siewert308SW",
         "HomeWizard-Wifi-kWh-Meter",
         "A Python plugin for Domoticz that creates several devices for the HomeWizard Wifi Energy Socket.",
-        "main",
-        "2025-04-29T09:37:44Z"
+        "main"
     ],
     "semodbus2domoticz": [
         "gkroone",
         "semodbus2domoticz",
         "Python script to read values from SolarEdge and push them to domoticz",
-        "master",
-        "2025-03-18T21:35:09Z"
+        "master"
     ],
     "Domoticz-plugin-for-Tasmota-P1-Smart-Meter": [
         "csutihu",
         "Domoticz-plugin-for-Tasmota-P1-Smart-Meter",
         "Sanxing SX631 P1 Smart Energy Meter - Tasmota - Tasmota script - MQTT - Domoticz plugin - Domotocz devices",
-        "main",
-        "2025-01-19T22:06:44Z"
+        "main"
     ],
     "Domoticz-Python-Plugin-Template": [
         "galadril",
         "Domoticz-Python-Plugin-Template",
         "Template repository for making Domoticz Python Plugins",
-        "main",
-        "2025-01-08T10:05:44Z"
+        "main"
     ],
     "Location-aware-night-polling-inhibitor": [
         "daserra23",
         "Location-aware-night-polling-inhibitor",
         "Some script to add to a Domoticz python plugin",
-        "main",
-        "2024-12-23T17:32:16Z"
+        "main"
     ],
     "SolisCloud2PVOutput": [
         "ZuinigeRijder",
         "SolisCloud2PVOutput",
         "Simple Python3 script to copy latest (normally once per 5 minutes) SolisCloud portal inverter update to PVOutput portal, Domoticz, and/or MQTT Broker (e.g. HomeAssistant, ioBroker).",
-        "main",
-        "2024-12-17T08:48:07Z"
+        "main"
     ],
     "domoticz-YONY-Modbus-plugin": [
         "pawelmuszynski",
         "domoticz-YONY-Modbus-plugin",
         "Domoticz Python plugin for reading YONY heat meter.",
-        "master",
-        "2024-11-19T23:12:08Z"
+        "master"
     ],
     "domoticz-Ouman-C203-Modbus-plugin": [
         "pawelmuszynski",
         "domoticz-Ouman-C203-Modbus-plugin",
         "Domoticz Python plugin for reading Ouman C203 regulator.",
-        "master",
-        "2024-11-19T23:10:35Z"
+        "master"
     ],
     "domoticz_panasonic_CZ-TACG1": [
         "sdamasoc",
         "domoticz_panasonic_CZ-TACG1",
         "A Python plugin for Domoticz to communicate with Panasonic Cloud Confort throught CZ-TACG1 WiFi adapter",
-        "master",
-        "2024-11-08T17:33:24Z"
+        "master"
     ],
     "HomeAutomationScripts": [
         "SergeyPomelov",
         "HomeAutomationScripts",
         "Lua, Python, Bash, and Shell Scripts Share for Domoticz Community.",
-        "master",
-        "2024-10-30T12:32:51Z"
+        "master"
     ],
     "Orcon_MQTT": [
         "JWGracht",
         "Orcon_MQTT",
         "Domoticz Python plugin for managing Orcon devices with ramses_esp",
-        "main",
-        "2024-07-24T14:57:01Z"
+        "main"
     ],
     "HomeWizard-Wifi-p1-plugin": [
         "Eraser3",
         "HomeWizard-Wifi-p1-plugin",
         "A Python plugin for Domoticz that creates several devices for the HomeWizard Wifi p1 meter",
-        "main",
-        "2024-07-21T14:13:23Z"
+        "main"
     ],
     "domoticz-watermeter": [
         "akamming",
         "domoticz-watermeter",
         "Python plugin for measuring your watermeter with a NPN sensor on a GPIO pin",
-        "master",
-        "2024-03-30T14:51:17Z"
+        "master"
     ],
     "WeatherAlertToDomoticz": [
         "hotting",
         "WeatherAlertToDomoticz",
         "A python script that displays the weather warnings for the Netherlands issued by the KNMI in domoticz",
-        "main",
-        "2024-03-21T09:10:37Z"
+        "main"
     ],
     "wellnotification": [
         "feelingwalnut",
         "wellnotification",
         "python script to be triggered by domoticz to notify when a device has run X times in Y period or longer than Z time continuous.",
-        "main",
-        "2024-03-12T00:47:01Z"
+        "main"
     ],
     "433Switches": [
         "flatsiedatsie",
         "433Switches",
         "Clone 433Mhz signals - A python plugin for domoticz",
-        "master",
-        "2024-02-29T22:02:05Z"
+        "master"
     ],
     "domoticz-python-melcloud": [
         "gysmo38",
         "domoticz-python-melcloud",
         "A plugin in python for Domoticz",
-        "master",
-        "2024-02-03T13:40:36Z"
+        "master"
     ],
     "SmartVirtualThermostat": [
         "999LV",
         "SmartVirtualThermostat",
         "Smart Virtual Thermostat python plugin for Domoticz home automation system",
-        "master",
-        "2024-01-21T13:57:44Z"
+        "master"
     ],
     "Home-Manager": [
         "roscoe81",
         "Home-Manager",
         "A Home Automation Manager based on a Raspberry Pi, Domoticz, Homebridge and the Apple HomeKit app to automate lighting/power, Aetoec z-wave multisensors/flood sensors/door sensors, Mitsubishi ducted airconditioners, a Fermax door station, a garage door opener, Somfy window blinds, BlueAir air purifiers, a Seneye aquarium sensor and an environment monitor.",
-        "master",
-        "2024-01-21T10:01:13Z"
+        "master"
     ],
     "Solaredge_Domoticz_Modbus": [
         "strebrah",
         "Solaredge_Domoticz_Modbus",
         "python code for reading data from Solaredge modbus TCP and sending it to Domoticz",
-        "master",
-        "2024-01-15T09:37:34Z"
+        "master"
     ],
     "emonitor": [
         "hansake",
         "emonitor",
         "Power and electricity monitor. Python scripts collect readings from energy meters into an SQLite database. Presentation on the web with PHP. Data is also sent to Domoticz over MQTT.",
-        "master",
-        "2023-12-09T15:42:47Z"
+        "master"
     ],
     "Domoticz-Brel-Plugin": [
         "superjunky",
         "Domoticz-Brel-Plugin",
         "A Python plugin for Domoticz to controll Brel Home Hub",
-        "main",
-        "2023-11-19T16:37:55Z"
+        "main"
     ],
     "domoticz-snapcast": [
         "akamming",
         "domoticz-snapcast",
         "python snapcast plugin for domoticz",
-        "main",
-        "2023-11-03T21:14:55Z"
+        "main"
     ],
     "Domoticz-Omnik-Local-Web-Plugin": [
         "sincze",
         "Domoticz-Omnik-Local-Web-Plugin",
         "Domoticz Python Plugin that can read data from the local inverter webinterface",
-        "master",
-        "2023-09-05T18:55:41Z"
+        "master"
     ],
     "domoticz-tinycontrol": [
         "kofec",
         "domoticz-tinycontrol",
         "A Python plugin for Domoticz to monitor and control TINYCONTROL device",
-        "master",
-        "2023-08-30T17:24:38Z"
+        "master"
     ],
     "Cozytouch-domoticz": [
         "OBone-git",
         "Cozytouch-domoticz",
         "Python script for read/write data between the cozytouch server and domoticz on rpi",
-        "master",
-        "2023-08-16T13:37:44Z"
+        "master"
     ],
     "HomeWizard-Wifi-Energy-Socket": [
         "Eraser3",
         "HomeWizard-Wifi-Energy-Socket",
         "A Python plugin for Domoticz that creates several devices for the HomeWizard Wifi Energy Socket.",
-        "main",
-        "2023-06-03T12:53:56Z"
+        "main"
     ],
     "HomeWizard-Wifi-Watermeter": [
         "Eraser3",
         "HomeWizard-Wifi-Watermeter",
         "A Python plugin for Domoticz that creates several devices for the HomeWizard Wifi Watermeter",
-        "main",
-        "2023-06-03T12:43:42Z"
+        "main"
     ],
     "domoticz-P110Tapo-plugin": [
         "Guintolli",
         "domoticz-P110Tapo-plugin",
         "Domoticz Python Plugin for P110 Tapo TP-Link Smart Wi-Fi Socket",
-        "main",
-        "2023-04-18T19:48:24Z"
+        "main"
     ],
     "smarthome": [
         "albertmon",
         "smarthome",
         "Tools and Tutorial for smart home automation (Using domoticz, kodi and raspberry pi's, smart meter and weather station",
-        "main",
-        "2023-04-06T13:42:43Z"
+        "main"
     ],
     "DomoticzD2LPlugin": [
         "ultrasuperpingu",
         "DomoticzD2LPlugin",
         "Domoticz Plugin For D2L Module For Linky",
-        "main",
-        "2023-02-22T19:51:32Z"
+        "main"
     ],
     "Domoticz-WordClock": [
         "akamming",
         "Domoticz-WordClock",
         "WordClock helper for domoticz (Python plugin)",
-        "main",
-        "2023-01-16T18:38:30Z"
+        "main"
     ],
     "Domoticz_Victor_Mousetrap_Cloud": [
         "Net-time",
         "Domoticz_Victor_Mousetrap_Cloud",
         "Python plugin ",
-        "main",
-        "2023-01-07T14:03:01Z"
+        "main"
     ],
     "Domoticz_rpi_ultrasonic": [
         "Net-time",
         "Domoticz_rpi_ultrasonic",
         "Python plugin for a ultrasonic distance meter on Rasppberry Pi",
-        "main",
-        "2023-01-04T19:10:17Z"
+        "main"
     ],
     "Domoticz-Palazzetti": [
         "kinou74",
         "Domoticz-Palazzetti",
         "Domoticz Python Plugin for Palazzetti Connection Box",
-        "master",
-        "2022-12-28T14:51:32Z"
+        "master"
     ],
     "AM2301_Domoticz_Python": [
         "tom-van-pelt",
         "AM2301_Domoticz_Python",
         "AM2301_Domoticz_Python plugin for Domoticz",
-        "master",
-        "2022-11-26T19:11:15Z"
+        "master"
     ],
     "Domoticz-Tuya-SmartPlug-Plugin": [
         "tixi",
         "Domoticz-Tuya-SmartPlug-Plugin",
         "Domoticz Python Plugin for Tuya Smart Plug",
-        "master",
-        "2022-11-18T08:24:37Z"
+        "master"
     ],
     "SolaxHTTP": [
         "ayasystems",
         "SolaxHTTP",
         "Solax inverter python domoticz plugin",
-        "master",
-        "2022-11-10T07:42:22Z"
+        "master"
     ],
     "domoticz-airly": [
         "lrybak",
         "domoticz-airly",
         "A Python plugin for Domoticz to access airly API for smog information in Poland",
-        "master",
-        "2022-10-04T21:59:09Z"
+        "master"
     ],
     "WXDomoPy": [
         "SQ9MDD",
         "WXDomoPy",
         "Python scripts to get data from domoticz for APRS use",
-        "master",
-        "2022-09-12T21:44:18Z"
+        "master"
     ],
     "domoticz_blueconnect": [
         "DannyRuijters",
         "domoticz_blueconnect",
         "Python script for querying temperature, pH, and chlorine from Blue Connect and update Domoticz",
-        "main",
-        "2022-09-10T10:11:21Z"
+        "main"
     ],
     "Domoticz-Dingtian-Relay-Plugin": [
         "dtlzp",
         "Domoticz-Dingtian-Relay-Plugin",
         "Dingtian Relay Python Plugin for Domoticz",
-        "master",
-        "2022-08-08T04:58:25Z"
+        "master"
     ],
     "domo2weewx": [
         "sanrab",
         "domo2weewx",
         "python script to transfer domoticz data to weewx",
-        "main",
-        "2022-05-16T12:57:28Z"
+        "main"
     ],
     "domoticz-wudirect": [
         "vaneeten",
         "domoticz-wudirect",
         "Domoticz Python plugin for direct reception and parsing of Wunderground-formatted Personal Weather Station data",
-        "master",
-        "2022-04-08T16:53:14Z"
+        "master"
     ],
     "Domoticz-stan-czujnikow-email-python": [
         "lukaz1987",
         "Domoticz-stan-czujnikow-email-python",
         "Domoticz-stan-czujnikow-email-python plugin for Domoticz",
-        "main",
-        "2022-02-27T21:45:11Z"
+        "main"
     ],
     "HomeWizard-Wifi-kWh-plugin": [
         "henkNL",
         "HomeWizard-Wifi-kWh-plugin",
         "A Python plugin for Domoticz that creates several devices for the HomeWizard Wifi kWh meter",
-        "main",
-        "2022-02-11T19:41:43Z"
+        "main"
     ],
     "domoticz_gaspar-deprecated": [
         "empierre",
         "domoticz_gaspar-deprecated",
         "Get Gaspar smart meter index to domoticz",
-        "master",
-        "2022-01-10T15:45:26Z"
+        "master"
     ],
     "Shainny": [
         "spatomequ",
         "Shainny",
         "Domoticz's Python Plugins for Xiaomi devices",
-        "main",
-        "2022-01-09T16:25:27Z"
+        "main"
     ],
     "Domoticz-Xiaomi-Mi-Air-Purifier-MIoT-Plugin": [
         "JacekHoleczek",
         "Domoticz-Xiaomi-Mi-Air-Purifier-MIoT-Plugin",
         "A Python plugin for Domoticz to access Xiaomi Mi Air Purifier 3 / 3 H / Pro H",
-        "main",
-        "2021-12-26T14:12:18Z"
+        "main"
     ],
     "domoticz-ewpe-smart-mqtt-plugin": [
         "stas-demydiuk",
         "domoticz-ewpe-smart-mqtt-plugin",
         "Python plugin for Domoticz to control ewpe-smart powered air conditioners",
-        "master",
-        "2021-09-04T19:21:15Z"
+        "master"
     ],
     "domoticz_htu20d_python": [
         "nijmeijer",
         "domoticz_htu20d_python",
         "domoticz_htu20d_python plugin for Domoticz",
-        "main",
-        "2021-08-19T09:22:03Z"
+        "main"
     ],
     "Domoticz-LGTV-WebOS-Plugin": [
         "GameDevHobby",
         "Domoticz-LGTV-WebOS-Plugin",
         "LG TV WebOS 3 Plugin for Domoticz",
-        "master",
-        "2021-08-17T10:51:08Z"
+        "master"
     ],
     "Domoticz-Zigpy": [
         "Hedda",
         "Domoticz-Zigpy",
         "Provide a Domoticz plugin to Zigbee HW by using the zigpy python library",
-        "master",
-        "2021-06-08T12:08:49Z"
+        "master"
     ],
     "domoticz-nuki": [
         "heggink",
         "domoticz-nuki",
         "python plugin for the nuki locks",
-        "master",
-        "2021-05-16T18:54:26Z"
+        "master"
     ],
     "domoticz-python": [
         "coucou747",
         "domoticz-python",
         "domoticz-python plugin for Domoticz",
-        "main",
-        "2021-03-25T15:28:13Z"
+        "main"
     ],
     "domoticz-woonveilig-gate03": [
         "sjaakspiegels",
         "domoticz-woonveilig-gate03",
         "A Python plugin for Domoticz to read sensors from Woonveilig Gate03",
-        "master",
-        "2021-02-22T21:15:06Z"
+        "master"
     ],
     "Domoticz-VirtualThermostat-PID": [
         "worops",
         "Domoticz-VirtualThermostat-PID",
         "Virtual Thermostat python plugin for Domoticz smart home",
-        "main",
-        "2020-12-28T22:00:59Z"
+        "main"
     ],
     "domoticz-andino-x1": [
         "hansaplast26",
         "domoticz-andino-x1",
         "A Domoticz python plugin to interface with the Andino X1",
-        "master",
-        "2020-12-21T20:29:14Z"
+        "master"
     ],
     "HYD6000": [
         "AndyWhittaker",
         "HYD6000",
         "Python Script to Request and Read Data from the Sofar HYD6000-ES Inverter RS422 Port and Write To EmonCMS",
-        "master",
-        "2020-11-22T15:35:49Z"
+        "master"
     ],
     "domoticz-onkyo-plugin": [
         "jorgh6",
         "domoticz-onkyo-plugin",
         "Python plugin for Domoticz to control Onkyo receivers",
-        "master",
-        "2020-11-21T14:37:16Z"
+        "master"
     ],
     "domoticz-quick-access-mobile": [
         "rwbl",
         "domoticz-quick-access-mobile",
         "A Domoticz Custom User Interface, accessible from any browser, as a responsive, mobile-first front-end. ",
-        "main",
-        "2020-10-21T06:59:15Z"
+        "main"
     ],
     "domoticz-plugin-sony-audio": [
         "stefounet",
         "domoticz-plugin-sony-audio",
         "Domoticz Python plugin for Sony Audio Receiver (like STR-DN1080)",
-        "master",
-        "2020-07-25T15:51:07Z"
+        "master"
     ],
     "domoticz-h801-tasmota-plugin": [
         "stas-demydiuk",
         "domoticz-h801-tasmota-plugin",
         "Python plugin for Domoticz to control H801 LED WiFi Controller with Tasmota firmware",
-        "master",
-        "2020-07-06T14:10:58Z"
+        "master"
     ],
     "Python": [
         "Melotron",
         "Python",
         "Python scripts for Domoticz and Raspberrys",
-        "master",
-        "2020-07-03T13:55:36Z"
+        "master"
     ],
     "Domoticz-Unifi-Presence": [
         "lacha07",
         "Domoticz-Unifi-Presence",
         "Domoticz-Unifi-Presence plugin for Domoticz",
-        "master",
-        "2025-10-15T09:05:26Z"
+        "master"
     ],
     "domoticz-espnowserial-plugin": [
         "FlyingDomotic",
         "domoticz-espnowserial-plugin",
         "EspNow serial plugin for Domoticz/Plug Domoticz pour EspNow avec lien s\u00e9rie",
-        "main",
-        "2025-07-12T14:39:19Z"
+        "main"
     ],
     "domoticz-airsend-plugin": [
         "FlyingDomotic",
         "domoticz-airsend-plugin",
         "AirSend (https://devmel.com/) Domoticz plug-in/Plug-in Domoticz pour Airsend",
-        "main",
-        "2025-07-12T14:32:59Z"
+        "main"
     ],
     "domoticz-ff_smsserver-plugin": [
         "FlyingDomotic",
         "domoticz-ff_smsserver-plugin",
         "SMS server plug-in for Domoticz/ Interface Domoticz avec un serveur SMS",
-        "main",
-        "2025-04-15T22:42:43Z"
+        "main"
     ],
     "veolia-idf": [
         "s0nik42",
         "veolia-idf",
         "Charge l'historique de votre consommation Veolia Ile de France dans votre syst\u00e8me domotique.",
-        "master",
-        "2025-01-07T14:09:42Z"
+        "master"
     ],
     "Domoticz-Tapo-P100-Plugin": [
         "RandomOutcome",
         "Domoticz-Tapo-P100-Plugin",
         "Domoticz Plugin to support communication with TP-Link P100 Tapo wifi plugs, implements the new protocol implemented in the 2023 firmware rollouot.",
-        "master",
-        "2023-12-07T14:21:07Z"
+        "master"
     ],
     "froniusHttp": [
         "ayasystems",
         "froniusHttp",
         "Fronius http phyton domoticz plugin",
-        "master",
-        "2023-10-09T07:29:53Z"
+        "master"
     ],
     "domoticz-apc-ups-plugin": [
         "jgaalen",
         "domoticz-apc-ups-plugin",
         "Domoticz APC UPS plugin",
-        "main",
-        "2023-07-28T05:33:32Z"
+        "main"
     ],
     "domoticz-fronius-inverter-plugin": [
         "aukedejong",
         "domoticz-fronius-inverter-plugin",
         "Domoticz Fronius Inverter plugin",
-        "master",
-        "2023-03-22T18:16:08Z"
+        "master"
     ],
     "slsys-domoticz": [
         "william-aqn",
         "slsys-domoticz",
         "SLS gateway Domoticz plugin",
-        "main",
-        "2023-02-25T19:44:05Z"
+        "main"
     ],
     "slide-domoticz": [
         "lokonli",
         "slide-domoticz",
         "Domoticz plugin for Slide by Innovation in Motion",
-        "master",
-        "2022-12-17T13:56:36Z"
+        "master"
     ],
     "DomoticzMyHomeOpenWebNet": [
         "SylvainPer",
         "DomoticzMyHomeOpenWebNet",
         "Domoticz plugin for MyHome Zigbee devices",
-        "master",
-        "2022-04-18T12:42:46Z"
+        "master"
     ],
     "domoticz-plugin-hmip-swdm": [
         "rwbl",
         "domoticz-plugin-hmip-swdm",
         "Domoticz plugin for the homematicIP Window and Door Contact with magnet HMIP-SWDM",
-        "main",
-        "2021-01-26T08:40:27Z"
+        "main"
     ],
     "baby_weather_plugin": [
         "obaby",
         "baby_weather_plugin",
         "Domoticz \u5f69\u4e91\u5929\u6c14 \u548c\u98ce\u5929\u6c14\u63d2\u4ef6",
-        "master",
-        "2020-07-03T06:00:04Z"
+        "master"
     ],
     "AirburgEmoPlus": [
         "wolfg1969",
         "AirburgEmoPlus",
         "Domoticz plugin to read pm2.5 values from Airburg emo plus.",
-        "master",
-        "2020-04-08T12:54:38Z"
+        "master"
     ],
     "cometblue-domoticz": [
         "damsma",
         "cometblue-domoticz",
         "Domoticz plugin to control your Comet Blue radiator valve over bluetooth with Domoticz",
-        "master",
-        "2020-03-08T21:44:18Z"
+        "master"
     ],
     "rest980-domoticz": [
         "damsma",
         "rest980-domoticz",
         " Domoticz plugin to control your iRobot Roomba 980 with koalazak/rest980",
-        "master",
-        "2020-03-08T20:57:05Z"
+        "master"
     ],
     "domoticz-plugin-tinkerforge-lcd20x4": [
         "rwbl",
         "domoticz-plugin-tinkerforge-lcd20x4",
         "Domoticz plugin to interact with the Tinkerforge LCD 20x4 Bricklet.",
-        "master",
-        "2020-02-16T13:02:03Z"
+        "master"
     ],
     "domoticz-plugin-tinkerforge-lcd20x4-lite": [
         "rwbl",
         "domoticz-plugin-tinkerforge-lcd20x4-lite",
         "Domoticz plugin to write characters to the Tinkerforge LCD 20x4 Bricklet.",
-        "master",
-        "2020-02-16T12:59:30Z"
+        "master"
     ],
     "domoticz-plugin-tinkerforge-trafficlight": [
         "rwbl",
         "domoticz-plugin-tinkerforge-trafficlight",
         "Domoticz plugin to explore how to interact with Tinkerforge Building Blocks.",
-        "master",
-        "2020-02-16T12:55:13Z"
+        "master"
     ],
     "domoticz-plugin-tinkerforge-io4v2": [
         "rwbl",
         "domoticz-plugin-tinkerforge-io4v2",
         "Domoticz plugin to interact with the Tinkerforge IO-4 Bricklet 2.0.",
-        "master",
-        "2020-02-16T12:53:58Z"
+        "master"
     ],
     "domoticz-plugin-tinkerforge-ambientlightv2": [
         "rwbl",
         "domoticz-plugin-tinkerforge-ambientlightv2",
         "Domoticz plugin to interact with the Tinkerforge Ambient Light Bricklet 2.0.",
-        "master",
-        "2020-02-16T12:53:02Z"
+        "master"
     ],
     "domoticz-plugin-tinkerforge-rgbledv2": [
         "rwbl",
         "domoticz-plugin-tinkerforge-rgbledv2",
         "Domoticz plugin to interact with the Tinkerforge RGB LED Bricklet 2.0.",
-        "master",
-        "2020-02-16T12:52:15Z"
+        "master"
     ],
     "Xiaomi-MiJia-Philips-LED-Lamp": [
         "Whilser",
         "Xiaomi-MiJia-Philips-LED-Lamp",
         "Xiaomi Mijia Philips LED lamp Domoticz Plugin",
-        "master",
-        "2020-01-25T05:05:13Z"
+        "master"
     ],
     "Domoticz-Pinger-Plugin": [
         "dnpwwo",
         "Domoticz-Pinger-Plugin",
         "Python plugin that pings and shows response times for network devices",
-        "master",
-        "2019-10-01T01:18:51Z"
+        "master"
     ],
     "domoticz-routeros-plugin": [
         "mrin",
         "domoticz-routeros-plugin",
         "Mikrotik RouterOS plugin for Domoticz",
-        "master",
-        "2019-07-09T20:16:07Z"
+        "master"
     ],
     "domoticz-plugin-indoor-air-quality-monitor": [
         "rwbl",
         "domoticz-plugin-indoor-air-quality-monitor",
         "Measure, from an Indoor Air Quality Station (using TinkerForge Building Blocks), the Air Quality Index & Accuracy, Air Pressure, Humidity, Temperature, Illuminance and display the values in Domoticz Home Automation System. ",
-        "master",
-        "2019-06-12T13:48:47Z"
+        "master"
     ],
     "domoticz-plugin-soil-moisture-monitor": [
         "rwbl",
         "domoticz-plugin-soil-moisture-monitor",
         "Measure soil moisture of a plant, display the value in Domoticz Home Automation System, in a TinkerForge Segment Display 4x7 and TinkerForge RGB LED indicator.",
-        "master",
-        "2019-06-11T07:51:30Z"
+        "master"
     ],
     "DomoticzProscenicVacuum": [
         "trandbert37",
         "DomoticzProscenicVacuum",
         "DomoticzProscenicVacuum plugin for Domoticz",
-        "master",
-        "2019-03-16T12:35:13Z"
+        "master"
     ],
     "Domoticz-Kodi-Plugin": [
         "dnpwwo",
         "Domoticz-Kodi-Plugin",
         "Full version of Kodi Python Plugin for Domoticz home automation",
-        "master",
-        "2019-02-12T10:34:47Z"
+        "master"
     ],
     "Domoticz-XAir-Plugin": [
         "xiaoyao9184",
         "Domoticz-XAir-Plugin",
         "\u6b63\u548c\u6e05\u6e90\uff08356\uff09\u68c0\u6d4b\u4eea Domoticz \u63d2\u4ef6",
-        "master",
-        "2019-02-05T10:32:53Z"
+        "master"
     ],
     "domoticz-eSterownik_v3.5": [
         "z1mEk",
         "domoticz-eSterownik_v3.5",
         "Domoticz plugin for heating control: https://esterownik.pl",
-        "master",
-        "2018-10-31T11:42:02Z"
+        "master"
     ],
     "Domoticz-GlobalCache-Plugin": [
         "dnpwwo",
         "Domoticz-GlobalCache-Plugin",
         "Domoticz Python Plugin for GlobalCache GC-100",
-        "master",
-        "2018-10-07T05:30:24Z"
+        "master"
     ],
     "fmi": [
         "Keles75",
         "fmi",
         "Find my iPhone plug-in for Domoticz. ",
-        "master",
-        "2018-09-09T15:59:33Z"
+        "master"
     ],
     "Domoticz-DLinkSmartPlug-plugin": [
         "jorcat",
         "Domoticz-DLinkSmartPlug-plugin",
         "A Domoticz plugin that manage DLink DSP W215 Smart Plug",
-        "master",
-        "2018-03-16T21:58:51Z"
+        "master"
     ],
     "Domoticz-RAVEn-Plugin": [
         "dnpwwo",
         "Domoticz-RAVEn-Plugin",
         "Python plugin alternative to the built in RAVEn Zigbee power consumption monitor",
-        "master",
-        "2018-01-22T10:05:42Z"
+        "master"
     ],
     "domoticz-bt-presence": [
         "mrin",
         "domoticz-bt-presence",
         "Bluetooth Beacon Presence plugin for Domoticz",
-        "master",
-        "2017-12-14T12:46:59Z"
+        "master"
     ],
     "domoticz-plugins": [
         "tcellerier",
         "domoticz-plugins",
         "Domoticz Plugins (Arlo Cameras, Velib, Ratp, Airparif)",
-        "master",
-        "2017-09-27T12:30:02Z"
+        "master"
     ],
     "GalconController": [
         "suborb",
         "GalconController",
         "Python script to control a Galcon 9001BT Irrigation Controller",
-        "master",
-        "2017-05-24T21:21:54Z"
+        "master"
     ],
     "Dreame": [
         "MadPatrick",
         "Domoticz_dreame",
         "Control your Dreame robot vacuum cleaner",
-        "main",
-        "2026-04-20T17:51:05Z"
+        "main"
     ],
     "Garbage": [
         "MadPatrick",
         "Domoticz_garbage",
         "Calendar for Garbage pickup in NL",
-        "main",
-        "2026-04-20T17:51:05Z"
+        "main"
     ],
     "F1_race": [
         "MadPatrick",
         "Domoticz_F1",
         "Calendar for F1 races",
-        "main",
-        "2026-04-20T17:51:05Z"
+        "main"
     ],
     "FullyKiosk": [
         "MadPatrick",
         "Domoticz_fullykiosk",
         "Control your tablet with Fully kiosk browser",
-        "main",
-        "2026-04-20T17:51:05Z"
+        "main"
     ],
     "Toon_Thermostat": [
         "MadPatrick",
         "Domoticz_toon",
         "Control your Toon Thermostat",
-        "main",
-        "2026-04-20T17:51:05Z"
+        "main"
     ],
     "HP iLo": [
         "MadPatrick",
         "Domoticz_HP_ilo",
         "Read out you HP ilo system",
-        "main",
-        "2026-04-20T17:51:05Z"
+        "main"
     ]
 }

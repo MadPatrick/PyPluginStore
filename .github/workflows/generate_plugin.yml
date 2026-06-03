@@ -6,11 +6,13 @@ on:
       - master
     paths:
       - 'registry.json'
+      - 'update_times.json'
       - 'plugin_core.py'
       - '.github/scripts/generate_plugin.py'
   pull_request:
     paths:
       - 'registry.json'
+      - 'update_times.json'
       - 'plugin_core.py'
       - '.github/scripts/generate_plugin.py'
 

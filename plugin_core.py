@@ -35,6 +35,8 @@ class BasePlugin:
     def fetch_registry(self):
 
         registry_url = "https://raw.githubusercontent.com/adrighem/PyPluginStore/refs/heads/master/registry.json"
+        updates_url = "https://raw.githubusercontent.com/adrighem/PyPluginStore/refs/heads/master/update_times.json"
+        
         Domoticz.Debug("Fetching plugin registry from GitHub.")
         try:
             req = urllib.request.Request(registry_url)
@@ -54,6 +56,37 @@ class BasePlugin:
                 Domoticz.Log("Loaded plugin registry from local file.")
             else:
                 Domoticz.Error("No local registry found. Plugins cannot be managed.")
+
+        # Fetch update times
+        update_times = {}
+        Domoticz.Debug("Fetching update times from GitHub.")
+        try:
+            req = urllib.request.Request(updates_url)
+            with urllib.request.urlopen(req, timeout=5) as response:
+                if response.status == 200:
+                    update_times = json.loads(response.read().decode('utf-8'))
+                    Domoticz.Log("Successfully fetched update times from GitHub.")
+                else:
+                    Domoticz.Error("Failed to fetch update times, status code: " + str(response.status))
+        except Exception as e:
+            Domoticz.Error("Error fetching update times: " + str(e))
+            local_upd = os.path.join(os.path.abspath(os.path.join(Parameters.get("HomeFolder", str(os.getcwd()) + "/"), "..", "..")), "plugins", os.path.basename(os.path.normpath(Parameters.get('HomeFolder', str(os.getcwd()) + '/'))), "update_times.json")
+            if os.path.isfile(local_upd):
+                with open(local_upd, 'r') as f:
+                    update_times = json.load(f)
+                Domoticz.Log("Loaded update times from local file.")
+            else:
+                Domoticz.Error("No local update times found.")
+        
+        # Merge update times into plugin data
+        for key, data in self.plugin_data.items():
+            if key == "Idle": continue
+            # Ensure each plugin has 5 elements (owner, repo, desc, branch, timestamp)
+            updated_at = update_times.get(key, "")
+            if len(data) == 4:
+                data.append(updated_at)
+            elif len(data) >= 5:
+                data[4] = updated_at
 
     def onStart(self):
         import json
