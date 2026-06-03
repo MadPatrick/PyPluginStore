@@ -1,5 +1,18 @@
 # Changelog
 
+## [2.4.0](https://github.com/adrighem/PyPluginStore/compare/v2.3.0...v2.4.0) (2026-06-03)
+
+
+### Features
+
+* add new Domoticz Python plugins ([40e1bf9](https://github.com/adrighem/PyPluginStore/commit/40e1bf91eeb1cf28ce81c54fd727198456133be0))
+* split plugin last updated dates into update_times.json ([0eabae9](https://github.com/adrighem/PyPluginStore/commit/0eabae96c6adb9b45b226790409d6094d734ea3b))
+
+
+### Bug Fixes
+
+* remove deleted tado_domoticz plugin ([0eff094](https://github.com/adrighem/PyPluginStore/commit/0eff094eb25db7326d8e5453da43d055299ff7c7))
+
 ## [2.3.0](https://github.com/adrighem/PyPluginStore/compare/v2.2.2...v2.3.0) (2026-05-12)
 
 
