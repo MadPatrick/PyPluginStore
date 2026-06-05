@@ -821,12 +821,6 @@
         "Plugin Domoticz permettant de r\u00e9cup\u00e9rer le prix d'un carburant dans une station-service fran\u00e7aise \u00e0 partir de l'API officielle du gouvernement fran\u00e7ais.",
         "main"
     ],
-    "Domoticz_dreame": [
-        "MadPatrick",
-        "Domoticz_dreame",
-        "Plugin for Dreame vacuumcleaner",
-        "main"
-    ],
     "DomoticzControl": [
         "guillaumezin",
         "DomoticzControl",
