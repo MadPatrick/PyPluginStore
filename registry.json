@@ -272,7 +272,7 @@
     "Lyrion": [
         "MadPatrick",
         "domoticz_lyrion",
-        "Control your Lyrion Media Server",
+        "Domoticz Lyrion Media Server Plugin",
         "main"
     ],
     "DomoticzTile": [
@@ -386,7 +386,7 @@
     "Somfy": [
         "MadPatrick",
         "domoticz_somfy",
-        "Tahoma/Conexoon plugin for Somfy Devices",
+        "Tahoma/Conexoon plugin for Somfy devices",
         "master"
     ],
     "Domoticz-TinyTUYA-Plugin": [
@@ -461,12 +461,6 @@
         "Domoticz plugin for Husqvarna automowers.",
         "main"
     ],
-    "FrisquetConnectDomoticz": [
-        "fjumeaux",
-        "FrisquetConnectDomoticz",
-        "Fork de Krakinou (plugin Frisquet Connect pour Domoticz) \u2014 correctifs et \u00e9volutions",
-        "main"
-    ],
     "Marstek-Venus-plugin": [
         "WillemD61",
         "Marstek-Venus-plugin",
@@ -478,12 +472,6 @@
         "FrisquetConnectDomoticz",
         "Domoticz Plugin For Frisquet Connect",
         "main"
-    ],
-    "PluginDomoticzFreebox": [
-        "fjumeaux",
-        "PluginDomoticzFreebox",
-        "Refork plugin de supermat",
-        "master"
     ],
     "SessyBattery": [
         "JanJaapKo",
@@ -1868,37 +1856,49 @@
     "Dreame": [
         "MadPatrick",
         "Domoticz_dreame",
-        "Control your Dreame robot vacuum cleaner",
+        "Plugin for Dreame vacuumcleaner",
         "main"
     ],
     "Garbage": [
         "MadPatrick",
         "Domoticz_garbage",
-        "Calendar for Garbage pickup in NL",
+        "Gargbage collector NL",
         "main"
     ],
     "F1_race": [
         "MadPatrick",
         "Domoticz_F1",
-        "Calendar for F1 races",
+        "Formula 1 calender",
         "main"
     ],
     "FullyKiosk": [
         "MadPatrick",
         "Domoticz_fullykiosk",
-        "Control your tablet with Fully kiosk browser",
+        "Control your Fully Kiosk Browser with Domoticz",
         "main"
     ],
     "Toon_Thermostat": [
         "MadPatrick",
         "Domoticz_toon",
-        "Control your Toon Thermostat",
+        "Toon Control for Domoticz",
         "main"
     ],
     "HP_iLo": [
         "MadPatrick",
         "Domoticz_HP_ilo",
-        "Read out you HP ilo system",
+        "HP Integrated Lights-Out",
         "main"
+    ],
+    "domoticz-HomeConnectDishwasher": [
+        "bblaszkiewicz",
+        "domoticz-HomeConnectDishwasher",
+        "domoticz plugin for dishwasher with HomeConnect",
+        "main"
+    ],
+    "tado_domoticz": [
+        "LaszloDev",
+        "tado_domoticz",
+        "Tado <> Domoticz integration",
+        "master"
     ]
 }
