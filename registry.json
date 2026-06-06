@@ -269,7 +269,7 @@
         "DDS238-2 ZN/S ModbusTCP Plugin for Domoticz",
         "main"
     ],
-    "Lyrion Music Server": [
+    "Lyrion": [
         "MadPatrick",
         "domoticz_lyrion",
         "Control your Lyrion Media Server",
@@ -819,12 +819,6 @@
         "cth35",
         "Domoticz-FranceFuelPrice-Plugin",
         "Plugin Domoticz permettant de r\u00e9cup\u00e9rer le prix d'un carburant dans une station-service fran\u00e7aise \u00e0 partir de l'API officielle du gouvernement fran\u00e7ais.",
-        "main"
-    ],
-    "Domoticz_dreame": [
-        "MadPatrick",
-        "Domoticz_dreame",
-        "Plugin for Dreame vacuumcleaner",
         "main"
     ],
     "DomoticzControl": [
@@ -1901,7 +1895,7 @@
         "Control your Toon Thermostat",
         "main"
     ],
-    "HP iLo": [
+    "HP_iLo": [
         "MadPatrick",
         "Domoticz_HP_ilo",
         "Read out you HP ilo system",
