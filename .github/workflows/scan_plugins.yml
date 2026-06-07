@@ -5,6 +5,10 @@ on:
     - cron: '0 0 1 * *' # Run at 00:00 on the 1st day of every month
   workflow_dispatch: # Allow manual trigger from the GitHub Actions UI
 
+permissions:
+  contents: write
+  pull-requests: write
+
 jobs:
   scan-and-pr:
     runs-on: ubuntu-latest
