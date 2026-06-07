@@ -16,6 +16,9 @@ on:
       - 'plugin_core.py'
       - '.github/scripts/generate_plugin.py'
 
+permissions:
+  contents: write
+
 jobs:
   generate:
     runs-on: ubuntu-latest
