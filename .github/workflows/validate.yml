@@ -9,6 +9,9 @@ on:
       - master
   workflow_dispatch: # Allows manual trigger
 
+permissions:
+  contents: read
+
 jobs:
   validate:
     runs-on: ubuntu-latest
