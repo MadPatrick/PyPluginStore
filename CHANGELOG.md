@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.5.0](https://github.com/adrighem/PyPluginStore/compare/v2.4.0...v2.5.0) (2026-06-07)
+
+
+### Features
+
+* add new Domoticz Python plugins ([e414b40](https://github.com/adrighem/PyPluginStore/commit/e414b4095cfb601be8ea2febcce28671d0bece5a))
+
 ## [2.4.0](https://github.com/adrighem/PyPluginStore/compare/v2.3.0...v2.4.0) (2026-06-03)
 
 
