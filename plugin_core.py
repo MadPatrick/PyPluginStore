@@ -9,7 +9,7 @@ import time
 import urllib.error
 import urllib.request
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import Domoticz
 
@@ -30,7 +30,9 @@ class BasePlugin:
         self.exception_list = []
         self.secpoluser_list = {}
         self.plugin_data = {}
+        self.update_times = {}
         self.last_update_date = None
+        self.last_update_times_sync = None
 
     def fetch_registry(self):
 
@@ -78,15 +80,159 @@ class BasePlugin:
             else:
                 Domoticz.Error("No local update times found.")
         
-        # Merge update times into plugin data
+        self.update_times = update_times
+        self.syncLocalUpdateTimes(force=True)
+        self.mergeUpdateTimesIntoPluginData()
+
+    def mergeUpdateTimesIntoPluginData(self):
         for key, data in self.plugin_data.items():
             if key == "Idle": continue
             # Ensure each plugin has 5 elements (owner, repo, desc, branch, timestamp)
-            updated_at = update_times.get(key, "")
+            updated_at = self.update_times.get(key, "")
             if len(data) == 4:
                 data.append(updated_at)
             elif len(data) >= 5:
                 data[4] = updated_at
+
+    def getLocalUpdateTimesPath(self):
+        home_folder = Parameters.get("HomeFolder", str(os.getcwd()) + "/")
+        return os.path.join(os.path.abspath(home_folder), "update_times.json")
+
+    def runGitCommand(self, args, cwd, env):
+        try:
+            result = subprocess.run(["git"] + args, cwd=cwd, env=env, capture_output=True, text=True, timeout=30)
+            if result.returncode == 0:
+                return result.stdout.strip()
+            if result.stderr:
+                Domoticz.Debug(f"Git command failed in {cwd}: {result.stderr.strip()}")
+        except Exception as e:
+            Domoticz.Debug(f"Git command error in {cwd}: {e}")
+        return ""
+
+    def extractGitHubRepoId(self, remote_url):
+        if not remote_url:
+            return ""
+        normalized = remote_url.strip().rstrip("/")
+        if normalized.endswith(".git"):
+            normalized = normalized[:-4]
+        match = re.search(r"github\.com[:/](?P<owner>[^/]+)/(?P<repo>[^/]+)$", normalized)
+        if not match:
+            return ""
+        return f"{match.group('owner')}/{match.group('repo')}".lower()
+
+    def normalizeTimestamp(self, timestamp):
+        if not timestamp:
+            return ""
+        timestamp = timestamp.strip()
+        if timestamp.endswith("Z"):
+            return timestamp
+
+        try:
+            match = re.match(r"^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})([+-])(\d{2}):?(\d{2})$", timestamp)
+            if not match:
+                return timestamp
+
+            parsed = datetime.strptime(match.group(1), "%Y-%m-%dT%H:%M:%S")
+            offset = timedelta(hours=int(match.group(3)), minutes=int(match.group(4)))
+            if match.group(2) == "+":
+                parsed -= offset
+            else:
+                parsed += offset
+            return parsed.strftime("%Y-%m-%dT%H:%M:%SZ")
+        except Exception:
+            return timestamp
+
+    def getInstalledGitPlugins(self, plugins_dir, env):
+        by_folder = {}
+        by_repo = {}
+        if not os.path.isdir(plugins_dir):
+            return by_folder, by_repo
+
+        for folder in os.listdir(plugins_dir):
+            plugin_dir = os.path.join(plugins_dir, folder)
+            if not os.path.isdir(plugin_dir) or not os.path.isdir(os.path.join(plugin_dir, ".git")):
+                continue
+
+            by_folder[folder] = plugin_dir
+            remote_url = self.runGitCommand(["config", "--get", "remote.origin.url"], plugin_dir, env)
+            repo_id = self.extractGitHubRepoId(remote_url)
+            if repo_id:
+                by_repo[repo_id] = plugin_dir
+
+        return by_folder, by_repo
+
+    def getLocalGitUpdatedAt(self, plugin_dir, branch, env):
+        self.runGitCommand(["fetch", "--quiet"], plugin_dir, env)
+        status = self.runGitCommand(["status", "-uno"], plugin_dir, env)
+        if status:
+            Domoticz.Debug(f"Git status for {plugin_dir}: {status}")
+
+        upstream_ref = self.runGitCommand(["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"], plugin_dir, env)
+        candidates = []
+        if upstream_ref:
+            candidates.append(upstream_ref)
+        if branch:
+            candidates.append(f"origin/{branch}")
+        candidates.append("HEAD")
+
+        for ref in candidates:
+            timestamp = self.runGitCommand(["log", "-1", "--format=%cI", ref], plugin_dir, env)
+            if timestamp:
+                return self.normalizeTimestamp(timestamp)
+        return ""
+
+    def syncLocalUpdateTimes(self, force=False):
+        now = datetime.now()
+        if not force and self.last_update_times_sync and (now - self.last_update_times_sync).total_seconds() < 3600:
+            return
+        self.last_update_times_sync = now
+
+        if not self.plugin_data:
+            return
+
+        home_folder = os.path.abspath(os.path.join(Parameters.get("HomeFolder", str(os.getcwd()) + "/"), "..", ".."))
+        plugins_dir = os.path.join(home_folder, "plugins")
+
+        env = os.environ.copy()
+        env['LANG'] = 'en_US.UTF-8'
+        env['LC_ALL'] = 'en_US.UTF-8'
+
+        by_folder, by_repo = self.getInstalledGitPlugins(plugins_dir, env)
+        if not by_folder and not by_repo:
+            return
+
+        changed = False
+        valid_keys = {key for key in self.plugin_data.keys() if key != "Idle"}
+        for key in list(self.update_times.keys()):
+            if key not in valid_keys:
+                del self.update_times[key]
+                changed = True
+
+        for key, data in self.plugin_data.items():
+            if key == "Idle" or len(data) < 4:
+                continue
+
+            owner = data[0]
+            repo_name = data[1]
+            branch = data[3]
+            repo_id = f"{owner}/{repo_name}".lower()
+            plugin_dir = by_folder.get(key) or by_repo.get(repo_id)
+            if not plugin_dir:
+                continue
+
+            updated_at = self.getLocalGitUpdatedAt(plugin_dir, branch, env)
+            if updated_at and self.update_times.get(key) != updated_at:
+                self.update_times[key] = updated_at
+                changed = True
+
+        if changed:
+            try:
+                with open(self.getLocalUpdateTimesPath(), 'w') as f:
+                    json.dump(self.update_times, f, indent=4)
+                    f.write('\n')
+                Domoticz.Log("Local update_times.json synchronized from installed Git repositories.")
+            except Exception as e:
+                Domoticz.Error("Failed to write local update_times.json: " + str(e))
 
     def onStart(self):
         import json
@@ -292,6 +438,8 @@ class BasePlugin:
         plugins_dir = os.path.abspath(os.path.join(Parameters.get("HomeFolder", str(os.getcwd()) + "/"), ".."))
         
         if action == "list_plugins":
+            self.syncLocalUpdateTimes()
+            self.mergeUpdateTimesIntoPluginData()
             installed_plugins = []
             for d in os.listdir(plugins_dir):
                 if os.path.isdir(os.path.join(plugins_dir, d)) and not d.startswith("."):
@@ -372,6 +520,9 @@ class BasePlugin:
 
             home_folder = os.path.abspath(os.path.join(Parameters.get("HomeFolder", str(os.getcwd()) + "/"), "..", ".."))
             plugins_dir = os.path.join(home_folder, "plugins")
+
+            self.syncLocalUpdateTimes(force=True)
+            self.mergeUpdateTimesIntoPluginData()
 
             if Parameters["Mode4"] == 'All':
                 Domoticz.Log("Checking Updates for All Plugins!!!")
