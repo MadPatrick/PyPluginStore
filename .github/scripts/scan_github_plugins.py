@@ -9,6 +9,9 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 REGISTRY_FILE = os.path.join(SCRIPT_DIR, '../../registry.json')
 UPDATE_TIMES_FILE = os.path.join(SCRIPT_DIR, '../../update_times.json')
 
+def is_valid_plugin_repo(repo_name):
+    return bool(repo_name) and not repo_name.startswith('.') and '/' not in repo_name and '\\' not in repo_name
+
 def get_repo_info(owner, repo):
     url = f'https://api.github.com/repos/{owner}/{repo}'
     headers = {'User-Agent': 'Domoticz-Plugin-Scanner', 'Accept': 'application/vnd.github.v3+json'}
@@ -148,6 +151,10 @@ def main():
 
             owner = repo['owner']['login']
             repo_name = repo['name']
+            if not is_valid_plugin_repo(repo_name):
+                print(f"[-] Skipping {repo['full_name']} (Invalid plugin repository name)")
+                continue
+
             description = repo['description'] or f"{repo_name} plugin for Domoticz"
             default_branch = repo['default_branch']
             pushed_at = repo.get('pushed_at') or repo.get('updated_at')

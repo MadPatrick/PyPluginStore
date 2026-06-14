@@ -20,6 +20,7 @@ def load_registry():
     for key, data in registry_data.items():
         if key == "Idle":
             continue
+        validate_registry_entry(key, data)
         plugin_data[key] = {
             "key": key,
             "author": data[0],
@@ -29,12 +30,29 @@ def load_registry():
         }
     return plugin_data
 
+def validate_registry_entry(key, data):
+    if not isinstance(data, list) or len(data) < 4:
+        raise ValueError(f"Plugin '{key}' must be a list with owner, repository, description and branch.")
+
+    if not key or key.startswith(".") or "/" in key or "\\" in key:
+        raise ValueError(f"Plugin key '{key}' is invalid. Keys must be visible folder names without path separators.")
+
+    for index, field_name in enumerate(("author", "repository", "description", "branch")):
+        if not isinstance(data[index], str) or not data[index].strip():
+            raise ValueError(f"Plugin '{key}' has an invalid {field_name}.")
+
+    repository = data[1]
+    if repository.startswith(".") or "/" in repository or "\\" in repository:
+        raise ValueError(f"Plugin '{key}' has an invalid repository name '{repository}'.")
+
 def validate_repository(author, repository, branch):
     repo_url = f"https://github.com/{author}/{repository}"
-    repo_clone_cmd = f"env GIT_TERMINAL_PROMPT=0 git ls-remote --heads {repo_url} {branch}"
-    result = subprocess.run(repo_clone_cmd, shell=True, capture_output=True, text=True)
+    env = os.environ.copy()
+    env["GIT_TERMINAL_PROMPT"] = "0"
+    repo_clone_cmd = ["git", "ls-remote", "--heads", repo_url, branch]
+    result = subprocess.run(repo_clone_cmd, env=env, capture_output=True, text=True)
     if result.returncode != 0:
-        print(f"Error executing command: {repo_clone_cmd}")
+        print(f"Error executing command: {' '.join(repo_clone_cmd)}")
         print(f"stdout: {result.stdout}")
         print(f"stderr: {result.stderr}")
     return result.returncode == 0
