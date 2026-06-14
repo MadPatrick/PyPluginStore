@@ -79,6 +79,16 @@ for (const [input, expected] of Object.entries(cases)) {{
     assert result.returncode == 0, result.stderr
 
 
+def test_update_buttons_keep_shared_and_state_specific_classes():
+    html = (REPO_ROOT / "pypluginstore.html").read_text()
+
+    assert ".btn-update {" in html
+    assert ".btn-update-available {" in html
+    assert ".btn-update-current {" in html
+    assert "btn-update btn-update-available" in html
+    assert "btn-update btn-update-current" in html
+
+
 def load_inline_script():
     html = (REPO_ROOT / "pypluginstore.html").read_text()
     parser = InlineScriptParser()
