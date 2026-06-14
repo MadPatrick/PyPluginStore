@@ -5,6 +5,7 @@
 
 ### Features
 
+* MadPatrick: Change layout to new Domoticz style
 * clean Domoticz affixes from plugin cards ([4b5e805](https://github.com/adrighem/PyPluginStore/commit/4b5e805a8eed1e2b2fa06d18bf50d666462d9ba4))
 * improve plugin store controls ([2c102a2](https://github.com/adrighem/PyPluginStore/commit/2c102a212fa244734850413f9c5b0ef1810a6888))
 
