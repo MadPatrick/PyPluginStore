@@ -1139,12 +1139,6 @@
         "Domoticz IFTTT Integration",
         "master"
     ],
-    "Domoticz_integration": [
-        "cipesokram",
-        "Domoticz_integration",
-        "Arduino to domoticz integration",
-        "master"
-    ],
     "ESP8266_AutoBlinds_MQTT_Domoticz": [
         "zygios",
         "ESP8266_AutoBlinds_MQTT_Domoticz",

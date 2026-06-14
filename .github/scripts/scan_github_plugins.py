@@ -12,6 +12,28 @@ UPDATE_TIMES_FILE = os.path.join(SCRIPT_DIR, '../../update_times.json')
 def is_valid_plugin_repo(repo_name):
     return bool(repo_name) and not repo_name.startswith('.') and '/' not in repo_name and '\\' not in repo_name
 
+def get_repo_skip_reason(repo):
+    if repo.get('archived'):
+        return "Repo archived"
+    if repo.get('disabled'):
+        return "Repo disabled"
+
+    size = repo.get('size')
+    if size is not None:
+        try:
+            if int(size) <= 0:
+                return "Repo empty"
+        except (TypeError, ValueError):
+            pass
+
+    return None
+
+def remove_registry_entry(registry, update_times, key, reason):
+    print(f"[-] Removing {key} ({reason})")
+    del registry[key]
+    if key in update_times:
+        del update_times[key]
+
 def get_repo_info(owner, repo):
     url = f'https://api.github.com/repos/{owner}/{repo}'
     headers = {'User-Agent': 'Domoticz-Plugin-Scanner', 'Accept': 'application/vnd.github.v3+json'}
@@ -94,17 +116,12 @@ def main():
         info = get_repo_info(owner, repo_name)
 
         if info == "DELETED":
-            print(f"[-] Removing {key} (Repo deleted)")
-            del registry[key]
-            if key in update_times:
-                del update_times[key]
+            remove_registry_entry(registry, update_times, key, "Repo deleted")
             stats["removed"] += 1
         elif info:
-            if info.get('archived'):
-                print(f"[-] Removing {key} (Repo archived)")
-                del registry[key]
-                if key in update_times:
-                    del update_times[key]
+            skip_reason = get_repo_skip_reason(info)
+            if skip_reason:
+                remove_registry_entry(registry, update_times, key, skip_reason)
                 stats["removed"] += 1
             else:
                 # Update metadata
@@ -147,7 +164,10 @@ def main():
     for repo in new_items:
         full_name = repo['full_name'].lower()
         if full_name not in existing_full_names and full_name not in ignore_list:
-            if repo.get('archived'): continue
+            skip_reason = get_repo_skip_reason(repo)
+            if skip_reason:
+                print(f"[-] Skipping {repo['full_name']} ({skip_reason})")
+                continue
 
             owner = repo['owner']['login']
             repo_name = repo['name']
