@@ -857,12 +857,6 @@
         "Domoticz plugin for Aldes T One Air product",
         "main"
     ],
-    "Domoticz-spaarnelanden-plugin": [
-        "Garthim",
-        "Domoticz-spaarnelanden-plugin",
-        "Domoticz-spaarnelanden-plugin",
-        "main"
-    ],
     "WifiTIC": [
         "DebugBill",
         "WifiTIC",
@@ -946,12 +940,6 @@
         "shelly-domoticz-bridge",
         "Middleware system for integrating Shelly devices with Domoticz.",
         "main"
-    ],
-    "domoticz-atlantic-cozytouch": [
-        "dzooli",
-        "domoticz-atlantic-cozytouch",
-        "A port of Atlantic Cozytouch integration of HA to Domoticz",
-        "master"
     ],
     "rp2040pico-w_BME680": [
         "len-sla",
