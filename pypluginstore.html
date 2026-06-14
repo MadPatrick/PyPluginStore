@@ -270,11 +270,8 @@
     #pypluginstore-container .btn-remove { background: rgba(224, 92, 106, 0.15) !important; color: var(--danger) !important; border: 1px solid rgba(224, 92, 106, 0.65) !important; }
     #pypluginstore-container .btn-remove:hover { background: rgba(224, 92, 106, 0.28) !important; }
 
-    #pypluginstore-container .btn-update-available { background: rgba(58, 191, 126, 0.15) !important; color: var(--success) !important; border: 1px solid rgba(58, 191, 126, 0.65) !important; }
-    #pypluginstore-container .btn-update-available:hover { background: rgba(58, 191, 126, 0.28) !important; }
-
-    #pypluginstore-container .btn-update-current { background: rgba(107, 130, 160, 0.15) !important; color: #8ea8c0 !important; border: 1px solid rgba(107,130,160,0.65) !important; }
-    #pypluginstore-container .btn-update-current:hover { background: rgba(107, 130, 160, 0.28) !important; }
+    #pypluginstore-container .btn-update { background: rgba(58, 191, 126, 0.15) !important; color: var(--success) !important; border: 1px solid rgba(58, 191, 126, 0.65) !important; }
+    #pypluginstore-container .btn-update:hover { background: rgba(58, 191, 126, 0.28) !important; }
 
     #pypluginstore-container .btn-info { background: rgba(107, 130, 160, 0.15) !important; color: #8ea8c0 !important; border: 1px solid rgba(107,130,160,0.65) !important; text-decoration: none !important; }
     #pypluginstore-container .btn-info:hover { background: rgba(107, 130, 160, 0.28) !important; }
@@ -562,7 +559,7 @@
             const cardId = 'btn-' + key.replace(/[^a-z0-9]/gi, '-');
 
             if (isInstalled) {
-                const updateClass = updateStatus === 'available' ? 'btn-update-available' : 'btn-update-current';
+                const updateClass = updateStatus === 'available' ? 'btn-update btn-update-available' : 'btn-update btn-update-current';
                 const updateTitle = updateStatus === 'available' ? 'Update available' :
                     (updateStatus === 'current' ? 'Already up-to-date' : 'Update status unknown');
                 html += `
