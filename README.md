@@ -15,6 +15,9 @@ A robust and modern plugin manager for Domoticz that allows you to install and a
 *   **Custom Plugin Store UI:** A clean, modern web interface accessible via the Domoticz **Custom** menu.
 *   **Search & Filter:** Easily find plugins in the curated registry with type-ahead search and "Installed" toggles.
 *   **Install/Remove/Update:** Manage your entire Python plugin ecosystem with a single click—no manual folder management required.
+*   **Self Update:** PyPluginStore appears in the store under its installed folder name, so it can update itself like any other plugin.
+*   **Update Status Buttons:** Installed plugins show a grey Update button when they are already current and a blue Update button when a git update is available.
+*   **Restart Domoticz:** Request a Domoticz service restart from the Plugin Store UI after installs or updates.
 *   **Auto Updates:** Automatically checks and pulls updates for installed plugins.
 *   **Flexible Dependency Management:** Supports automatic dependency installation using `uv` (recommended) or `pip`. Also allows for manual sysadmin-managed dependencies.
 *   **PEP 668 Compliant:** When using `uv` or `pip`, dependencies are safely installed into a local `.shared_deps` isolated folder without requiring `sudo` or global `pip` access.
@@ -64,7 +67,10 @@ sudo systemctl restart domoticz.service
 Once installed and Domoticz is restarted:
 
 1.  Go to **Setup -> Hardware** and add the **PyPluginStore** hardware.
-2.  Navigate to **Custom -> Plugin Manager** in the top menu to open the Plugin Store dashboard.
+2.  Make sure the **Custom** menu is enabled for your Domoticz user in **Setup -> Users**.
+3.  Navigate to **Custom -> pypluginstore** in the top menu to open the Plugin Store dashboard.
+
+PyPluginStore copies `pypluginstore.html` into `domoticz/www/templates` on startup. Domoticz only shows the **Custom** menu when custom pages exist there and the menu is enabled for the current user. If you run Domoticz in Docker, make sure the templates directory is mounted persistently so the copied page is visible to the Domoticz web UI.
 
 ### Settings (Hardware Page)
 
@@ -73,6 +79,12 @@ Once installed and Domoticz is restarted:
     *   **All (NotifyOnly):** Checks all plugins for updates and notifies you.
     *   **None:** Disables auto-updating.
 *   **Debug:** Set to True for detailed logging.
+
+### Restart Button
+
+The **Restart Domoticz** button asks the host OS to restart `domoticz.service`. This is not handled by a Domoticz JSON API endpoint; it uses non-interactive service commands such as `sudo -n systemctl restart domoticz.service`, `systemctl restart domoticz.service`, and `service domoticz restart`.
+
+For the button to work, the user running Domoticz must have permission to restart the service. On many systems this means adding a tightly scoped passwordless sudo rule for the Domoticz service restart command. If permissions are not configured, the request is sent but the service will keep running.
 
 ---
 

@@ -20,7 +20,7 @@ def generate_plugin():
         This plugin manages other Domoticz Python plugins.<br/><br/>
         <b>Usage:</b><br/>
         1. Add this hardware to Domoticz.<br/>
-        2. Navigate to <b>Custom</b> -> <b>Plugin Store</b> in the top menu to manage your plugins.
+        2. Navigate to <b>Custom</b> -> <b>pypluginstore</b> in the top menu to manage your plugins.
     </description>
     <params>
         <param field="Mode4" label="Auto Update" width="175px">
@@ -51,4 +51,3 @@ def generate_plugin():
 
 if __name__ == '__main__':
     generate_plugin()
-

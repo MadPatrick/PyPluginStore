@@ -13,7 +13,7 @@
         This plugin manages other Domoticz Python plugins.<br/><br/>
         <b>Usage:</b><br/>
         1. Add this hardware to Domoticz.<br/>
-        2. Navigate to <b>Custom</b> -> <b>Plugin Store</b> in the top menu to manage your plugins.
+        2. Navigate to <b>Custom</b> -> <b>pypluginstore</b> in the top menu to manage your plugins.
     </description>
     <params>
         <param field="Mode4" label="Auto Update" width="175px">
@@ -66,6 +66,28 @@ class BasePlugin:
         self.secpoluser_list = {}
         self.plugin_data = {}
         self.last_update_date = None
+
+    def get_current_plugin_folder(self):
+        return os.path.basename(os.path.normpath(Parameters.get('HomeFolder', str(os.getcwd()) + '/')))
+
+    def get_git_env(self):
+        env = os.environ.copy()
+        env['LANG'] = 'en_US.UTF-8'
+        env['LC_ALL'] = 'en_US.UTF-8'
+        return env
+
+    def add_self_to_registry(self):
+        self_key = self.get_current_plugin_folder()
+        if not self_key:
+            return
+
+        self.plugin_data[self_key] = [
+            "adrighem",
+            "PyPluginStore",
+            "PyPluginStore plugin manager",
+            "master",
+            ""
+        ]
 
     def fetch_registry(self):
 
@@ -122,6 +144,8 @@ class BasePlugin:
                 data.append(updated_at)
             elif len(data) >= 5:
                 data[4] = updated_at
+
+        self.add_self_to_registry()
 
     def onStart(self):
         import json
@@ -336,7 +360,9 @@ class BasePlugin:
                 "status": "success",
                 "action": action,
                 "data": self.plugin_data,
-                "installed": installed_plugins
+                "installed": installed_plugins,
+                "manager_key": self.get_current_plugin_folder(),
+                "update_status": self.getInstalledUpdateStatuses(installed_plugins, plugins_dir)
             })
         elif action == "install":
             plugin_key = payload.get("plugin_key")
@@ -357,6 +383,13 @@ class BasePlugin:
                 self.sendApiResponse({"status": "success", "action": action, "plugin_key": plugin_key})
             else:
                 self.sendApiResponse({"status": "error", "message": "Plugin not found"})
+        elif action == "restart_domoticz":
+            self.sendApiResponse({
+                "status": "success",
+                "action": action,
+                "message": "Domoticz restart requested"
+            })
+            self.restartDomoticz()
         elif action == "remove":
             plugin_key = payload.get("plugin_key", "")
             # Security: Prevent path traversal and accidental deletion of core folders
@@ -379,6 +412,49 @@ class BasePlugin:
         else:
             self.sendApiResponse({"status": "error", "message": f"Unknown action: {action}"})
 
+    def getInstalledUpdateStatuses(self, installed_plugins, plugins_dir):
+        update_status = {}
+        for plugin_key in installed_plugins:
+            plugin_dir = os.path.join(plugins_dir, plugin_key)
+            update_status[plugin_key] = self.getGitUpdateStatus(plugin_dir)
+        return update_status
+
+    def getGitUpdateStatus(self, plugin_dir):
+        if not os.path.isdir(os.path.join(plugin_dir, ".git")):
+            return "unknown"
+
+        try:
+            subprocess.run(
+                ["git", "fetch", "--quiet"],
+                cwd=plugin_dir,
+                env=self.get_git_env(),
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=15
+            )
+            result = subprocess.run(
+                ["git", "rev-list", "--left-right", "--count", "HEAD...@{u}"],
+                cwd=plugin_dir,
+                env=self.get_git_env(),
+                capture_output=True,
+                text=True,
+                timeout=10
+            )
+            if result.returncode != 0:
+                return "unknown"
+
+            ahead_behind = result.stdout.strip().split()
+            if len(ahead_behind) < 2:
+                return "unknown"
+
+            behind = int(ahead_behind[1])
+            if behind > 0:
+                return "available"
+            return "current"
+        except Exception as e:
+            Domoticz.Debug(f"Could not determine update status for {plugin_dir}: {e}")
+            return "unknown"
+
     def sendApiResponse(self, response_dict):
         if 1 in Devices:
             try:
@@ -392,7 +468,6 @@ class BasePlugin:
     def onStop(self):
         Domoticz.Debug("onStop called")
         Domoticz.Log("Plugin is stopping.")
-        self.UpdatePythonPlugin("adrighem", "PyPluginStore", os.path.basename(os.path.normpath(Parameters.get('HomeFolder', str(os.getcwd()) + '/'))))
         Domoticz.Debugging(0)
 
     def onHeartbeat(self):
@@ -469,18 +544,17 @@ class BasePlugin:
 
         home_folder = os.path.abspath(os.path.join(Parameters.get("HomeFolder", str(os.getcwd()) + "/"), "..", ".."))
         plugin_dir = os.path.join(home_folder, "plugins", ppKey)
+        is_self_update = ppKey == self.get_current_plugin_folder()
 
-        if ppKey == os.path.basename(os.path.normpath(Parameters.get('HomeFolder', str(os.getcwd()) + '/'))):
-            Domoticz.Log("Self Update Initiated but disabled to preserve local fixes.")
-            return None
-        elif (ppKey in self.plugin_data and self.plugin_data[ppKey][2] in self.exception_list):
+        if (ppKey in self.plugin_data and self.plugin_data[ppKey][2] in self.exception_list):
             Domoticz.Log("Plugin:" + self.plugin_data[ppKey][2] + " excluded by Exclusion file (exclusion.txt). Skipping!!!")
             return
 
+        if is_self_update:
+            Domoticz.Log("Self update requested for PyPluginStore.")
+
         Domoticz.Log("Resetting and Updating Plugin:" + ppKey)
-        env = os.environ.copy()
-        env['LANG'] = 'en_US.UTF-8'
-        env['LC_ALL'] = 'en_US.UTF-8'
+        env = self.get_git_env()
 
         ppGitReset = ["git", "reset", "--hard", "HEAD"]
         try:
@@ -729,6 +803,38 @@ class BasePlugin:
 
         except Exception as e:
             Domoticz.Error(f"Error reading or processing {pyfilename}: {str(e)}")
+
+    def restartDomoticz(self):
+        Domoticz.Log("Domoticz service restart requested from PyPluginStore UI.")
+        helper = r'''
+import subprocess
+import time
+
+commands = [
+    ["sudo", "-n", "systemctl", "restart", "domoticz.service"],
+    ["systemctl", "restart", "domoticz.service"],
+    ["sudo", "-n", "service", "domoticz", "restart"],
+    ["service", "domoticz", "restart"],
+]
+
+time.sleep(2)
+for command in commands:
+    try:
+        result = subprocess.run(command, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=20)
+        if result.returncode == 0:
+            break
+    except Exception:
+        pass
+'''
+        try:
+            subprocess.Popen(
+                [sys.executable, "-c", helper],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                start_new_session=True
+            )
+        except Exception as e:
+            Domoticz.Error(f"Failed to schedule Domoticz restart: {e}")
 
     def installDependencies(self, plugin_key):
         Domoticz.Debug("installDependencies called")
