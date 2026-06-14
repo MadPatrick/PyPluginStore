@@ -1,5 +1,5 @@
 <style>
-:root {
+    :root {
         --bg-color: #1a2035;
         --panel-bg: #1e2d45;
         --card-bg: #162035;
@@ -36,37 +36,6 @@
         padding-bottom: 16px;
         border-bottom: 1px solid var(--border-color);
     }
-	
-    #pypluginstore-container .btn-restart {
-        background: rgba(224, 92, 106, 0.15) !important;
-        color: var(--danger) !important;
-        border: 1px solid rgba(224, 92, 106, 0.65) !important;
-        border-radius: 6px;
-        padding: 7px 12px;
-        font-size: 0.82em;
-        font-weight: 600;
-        cursor: pointer;
-        transition: background 0.2s, box-shadow 0.2s;
-    }
-
-
-    #pypluginstore-container .btn-update-available { 
-        background: rgba(255, 165, 0, 0.2) !important; 
-        color: #ffaa00 !important; 
-        border: 1px solid rgba(255, 165, 0, 0.8) !important; 
-        font-weight: bold !important;
-        animation: pulse 2s infinite;
-    }
-
-    @keyframes pulse {
-        0% { box-shadow: 0 0 0 0 rgba(255, 165, 0, 0.4); }
-        70% { box-shadow: 0 0 0 6px rgba(255, 165, 0, 0); }
-        100% { box-shadow: 0 0 0 0 rgba(255, 165, 0, 0); }
-    }
-
-    #pypluginstore-container .btn-restart:hover {
-        background: rgba(224, 92, 106, 0.28) !important;
-    }
 
     #pypluginstore-container h1 {
         margin: 0;
@@ -84,6 +53,14 @@
         border: 1px solid rgba(74, 158, 218, 0.2);
         padding: 5px 12px;
         border-radius: 20px;
+    }
+	
+	#pypluginstore-container .header-actions {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+        justify-content: flex-end;
+        flex-wrap: wrap;
     }
 
     #pypluginstore-container .filters {
@@ -299,6 +276,9 @@
     #pypluginstore-container .btn-info { background: rgba(107, 130, 160, 0.15) !important; color: #8ea8c0 !important; border: 1px solid rgba(107,130,160,0.65) !important; text-decoration: none !important; }
     #pypluginstore-container .btn-info:hover { background: rgba(107, 130, 160, 0.28) !important; }
     
+	.btn-restart { background: #343a40; color: white; flex: 0 0 auto !important; }
+    .btn-restart:hover { background: #23272b; }
+	
     .installed-badge {
         display: inline-block;
         background: rgba(58, 191, 126, 0.18);
@@ -310,25 +290,6 @@
         font-weight: 600;
         letter-spacing: 0.03em;
     }
-
-/* Update button styles */
-#pypluginstore-container .btn-update-current {
-    background: rgba(107,130,160,.15) !important;
-    color: #8ea8c0 !important;
-    border: 1px solid rgba(107,130,160,.65) !important;
-}
-#pypluginstore-container .btn-update-current:hover {
-    background: rgba(107,130,160,.28) !important;
-}
-#pypluginstore-container .btn-update-available {
-    background: rgba(58,191,126,.15) !important;
-    color: var(--success) !important;
-    border: 1px solid rgba(58,191,126,.65) !important;
-}
-#pypluginstore-container .btn-update-available:hover {
-    background: rgba(58,191,126,.28) !important;
-}
-
 </style>
 
 <div id="pypluginstore-container">
