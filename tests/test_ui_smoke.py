@@ -52,10 +52,13 @@ def test_plugin_display_name_strips_domoticz_affixes():
     function_source = extract_js_function(load_inline_script(), "formatPluginDisplayName")
     cases = {
         "Domoticz-AWTRIX3-Plugin": "AWTRIX3-Plugin",
+        "domoticz-for-HomeWizard": "HomeWizard",
+        "Domoticz for Solar": "Solar",
         "domoticz_plugin_HomeWizard": "HomeWizard",
         "domoticz plugin Solar": "Solar",
         "Broadlink-Domoticz-plugin": "Broadlink",
-        "Pollen-forecast-in-Norway-for-Domoticz": "Pollen-forecast-in-Norway-for",
+        "Pollen-forecast-in-Norway-for-Domoticz": "Pollen-forecast-in-Norway",
+        "Forecast_for_domoticz": "Forecast",
         "DomoticzTile": "DomoticzTile",
         "PluginDomoticzFreebox": "PluginDomoticzFreebox",
     }

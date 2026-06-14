@@ -512,8 +512,10 @@
     function formatPluginDisplayName(pluginName) {
         const displayName = String(pluginName || '')
             .replace(/^domoticz[-_ ]+plugin[-_ ]+/i, '')
+            .replace(/^domoticz[-_ ]+for[-_ ]+/i, '')
             .replace(/^domoticz[-_ ]+/i, '')
             .replace(/[-_ ]+domoticz[-_ ]+plugin$/i, '')
+            .replace(/[-_ ]+for[-_ ]+domoticz$/i, '')
             .replace(/[-_ ]+domoticz$/i, '')
             .replace(/^[-_ ]+|[-_ ]+$/g, '');
         return displayName || pluginName;
