@@ -114,6 +114,11 @@ def test_scanner_explains_unscannable_repositories(scan_plugins_module, repo, ex
     assert scan_plugins_module.get_repo_skip_reason(repo) == expected
 
 
+def test_scanner_blocks_explicit_repositories(scan_plugins_module):
+    assert scan_plugins_module.get_repo_block_reason("domoticz", "domoticz") == "Repo blocklisted"
+    assert scan_plugins_module.get_repo_block_reason("owner", "repo") is None
+
+
 def test_scanner_removes_empty_existing_repo_and_does_not_readd(scan_plugins_module, tmp_path, monkeypatch):
     registry_file = tmp_path / "registry.json"
     update_times_file = tmp_path / "update_times.json"
@@ -155,3 +160,49 @@ def test_scanner_removes_empty_existing_repo_and_does_not_readd(scan_plugins_mod
 
     assert "Domoticz_integration" not in registry
     assert "Domoticz_integration" not in update_times
+
+
+def test_scanner_removes_blocklisted_existing_repo_and_does_not_readd(scan_plugins_module, tmp_path, monkeypatch):
+    registry_file = tmp_path / "registry.json"
+    update_times_file = tmp_path / "update_times.json"
+    registry_file.write_text(json.dumps({
+        "Idle": ["Idle", "Idle", "Idle", "master"],
+        "domoticz": [
+            "domoticz",
+            "domoticz",
+            "Free open source home automation system",
+            "development",
+        ],
+    }))
+    update_times_file.write_text(json.dumps({
+        "domoticz": "2026-06-13T09:52:48Z",
+    }))
+
+    domoticz_repo = {
+        "archived": False,
+        "disabled": False,
+        "size": 100,
+        "full_name": "domoticz/domoticz",
+        "owner": {"login": "domoticz"},
+        "name": "domoticz",
+        "description": "Free open source home automation system",
+        "default_branch": "development",
+        "pushed_at": "2026-06-13T09:52:48Z",
+    }
+
+    def fail_get_repo_info(owner, repo):
+        raise AssertionError("blocklisted repositories should not be fetched")
+
+    monkeypatch.setattr(scan_plugins_module, "REGISTRY_FILE", str(registry_file))
+    monkeypatch.setattr(scan_plugins_module, "UPDATE_TIMES_FILE", str(update_times_file))
+    monkeypatch.setattr(scan_plugins_module, "get_repo_info", fail_get_repo_info)
+    monkeypatch.setattr(scan_plugins_module, "search_github", lambda: [domoticz_repo])
+    monkeypatch.setenv("GITHUB_TOKEN", "test-token")
+
+    scan_plugins_module.main()
+
+    registry = json.loads(registry_file.read_text())
+    update_times = json.loads(update_times_file.read_text())
+
+    assert "domoticz" not in registry
+    assert "domoticz" not in update_times
