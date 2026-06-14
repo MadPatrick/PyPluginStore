@@ -466,7 +466,10 @@
         const filteredKeys = Object.keys(pluginCache).filter(key => {
             const info = pluginCache[key];
             const description = info[2].toLowerCase();
-            const matchesSearch = description.includes(searchQuery) || key.toLowerCase().includes(searchQuery);
+            const displayName = formatPluginDisplayName(key).toLowerCase();
+            const matchesSearch = description.includes(searchQuery) ||
+                key.toLowerCase().includes(searchQuery) ||
+                displayName.includes(searchQuery);
             const isInstalled = installedCache.indexOf(key) !== -1;
             
             if (showInstalledOnly && !isInstalled) return false;
@@ -484,9 +487,9 @@
         
         switch(sortBy) {
             case 'name':
-                return keys.sort((a, b) => a.localeCompare(b));
+                return keys.sort((a, b) => formatPluginDisplayName(a).localeCompare(formatPluginDisplayName(b)));
             case 'name-desc':
-                return keys.sort((a, b) => b.localeCompare(a));
+                return keys.sort((a, b) => formatPluginDisplayName(b).localeCompare(formatPluginDisplayName(a)));
             case 'updated':
                 return keys.sort((a, b) => {
                     const dateA = new Date(pluginData[a][4] || 0);
@@ -500,8 +503,18 @@
                     return dateA - dateB; // Oldest first
                 });
             default:
-                return keys.sort((a, b) => a.localeCompare(b));
+                return keys.sort((a, b) => formatPluginDisplayName(a).localeCompare(formatPluginDisplayName(b)));
         }
+    }
+
+    function formatPluginDisplayName(pluginName) {
+        const displayName = String(pluginName || '')
+            .replace(/^domoticz[-_ ]+plugin[-_ ]+/i, '')
+            .replace(/^domoticz[-_ ]+/i, '')
+            .replace(/[-_ ]+domoticz[-_ ]+plugin$/i, '')
+            .replace(/[-_ ]+domoticz$/i, '')
+            .replace(/^[-_ ]+|[-_ ]+$/g, '');
+        return displayName || pluginName;
     }
 
     function renderPlugins(pluginData, installedList) {
@@ -527,6 +540,7 @@
             const updatedAt = info[4];
             const isInstalled = installedList.indexOf(key) !== -1;
             const updateStatus = updateStatusCache[key] || 'unknown';
+            const displayName = formatPluginDisplayName(key);
 
             let timeStr = "";
             if (updatedAt) {
@@ -546,7 +560,7 @@
             
             let html = `
                 <div class="card-header">
-                    ${key}
+                    ${displayName}
                     ${isInstalled ? '<span class="installed-badge">Installed</span>' : ''}
                 </div>
                 <div class="card-desc">${description}</div>
