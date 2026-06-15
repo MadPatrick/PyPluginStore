@@ -1,5 +1,22 @@
 # Changelog
 
+## [2.7.0](https://github.com/adrighem/PyPluginStore/compare/v2.6.0...v2.7.0) (2026-06-15)
+
+
+### Features
+
+* add plugin update controls and cached status refresh with MadPatrick ([81018ad](https://github.com/adrighem/PyPluginStore/commit/81018adcdc9662dfaefec07737db566c34f26f2a))
+
+
+### Bug Fixes
+
+* clean plugin update time refresh ([86c0c6a](https://github.com/adrighem/PyPluginStore/commit/86c0c6a3bb92ef60a6a8331062e16a93ca2ae8b7))
+
+
+### Documentation
+
+* clarify generated plugin workflow ([39dd23a](https://github.com/adrighem/PyPluginStore/commit/39dd23a2bd6472de4b39e264d4d1339bcb2022df))
+
 ## [2.6.0](https://github.com/adrighem/PyPluginStore/compare/v2.5.0...v2.6.0) (2026-06-14)
 
 
