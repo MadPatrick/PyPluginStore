@@ -92,6 +92,15 @@ def test_update_buttons_keep_shared_and_state_specific_classes():
     assert "btn-update btn-update-current" in html
 
 
+def test_refresh_status_button_is_wired_to_backend_command():
+    html = (REPO_ROOT / "pypluginstore.html").read_text()
+    script = load_inline_script()
+
+    assert 'id="refresh-update-status"' in html
+    assert "document.getElementById('refresh-update-status').onclick = refreshUpdateStatus" in script
+    assert "sendCommand('refresh_update_status', {})" in script
+
+
 def load_inline_script():
     html = (REPO_ROOT / "pypluginstore.html").read_text()
     parser = InlineScriptParser()
