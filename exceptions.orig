@@ -4,6 +4,7 @@
 # Remove "#" from the line to enable
 
 #Dummy Plugin
+#AwoxSMP
 #Battery monitoring for Z-Wave nodes
 #Buienradar.nl (Weather lookup)
 #Denon/Marantz Amplifier
@@ -11,6 +12,7 @@
 #Dutch earthquakes
 #Eartquake EMSC Data
 #ebusd bridge
+#examples
 #Global Cache 100
 #Homewizard
 #Hive Plugin
