@@ -1,6 +1,6 @@
 <style>
     :root {
-        --bg-color: #1a2035;
+        --bg-color: transparent;
         --panel-bg: #1e2d45;
         --card-bg: #162035;
         --card-bg-hover: #1c2a42;
@@ -286,11 +286,29 @@
     #pypluginstore-container .btn-info { background: rgba(107, 130, 160, 0.15) !important; color: #8ea8c0 !important; border: 1px solid rgba(107,130,160,0.65) !important; text-decoration: none !important; }
     #pypluginstore-container .btn-info:hover { background: rgba(107, 130, 160, 0.28) !important; }
 
-    .btn-restart { background: #343a40; color: white; flex: 0 0 auto !important; }
-    .btn-restart:hover { background: #23272b; }
+	#pypluginstore-container .btn-restart {
+		background: #343a40;
+		color: white;
+		border: 1px solid rgba(255,255,255,0.22) !important;
+		flex: 0 0 auto !important;
+	}
 
-    .btn-refresh { background: rgba(74, 158, 218, 0.25); color: var(--primary); border: 1px solid rgba(74, 158, 218, 0.65); flex: 0 0 auto !important; }
-    .btn-refresh:hover { background: rgba(74, 158, 218, 0.35); }
+	#pypluginstore-container .btn-restart:hover {
+		background: #23272b;
+		border-color: rgba(255,255,255,0.35) !important;
+	}
+
+	#pypluginstore-container .btn-refresh {
+		background: rgba(74, 158, 218, 0.25);
+		color: var(--primary);
+		border: 1px solid rgba(74, 158, 218, 0.65) !important;
+		flex: 0 0 auto !important;
+	}
+
+	#pypluginstore-container .btn-refresh:hover {
+		background: rgba(74, 158, 218, 0.35);
+		border-color: rgba(74, 158, 218, 0.85) !important;
+	}
 
     .installed-badge {
         display: inline-block;
