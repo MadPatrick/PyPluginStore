@@ -1,6 +1,6 @@
 <style>
     :root {
-        --bg-color: #1a2035;
+        --bg-color: transparent;
         --panel-bg: #1e2d45;
         --card-bg: #162035;
         --card-bg-hover: #1c2a42;
@@ -54,8 +54,8 @@
         padding: 5px 12px;
         border-radius: 20px;
     }
-	
-	#pypluginstore-container .header-actions {
+
+    #pypluginstore-container .header-actions {
         display: flex;
         gap: 12px;
         align-items: center;
@@ -138,7 +138,6 @@
         border-color: var(--primary);
     }
 
-    /* Switch styling */
     .switch {
         position: relative;
         display: inline-block;
@@ -146,7 +145,7 @@
         height: 22px;
     }
 
-    .switch input { 
+    .switch input {
         opacity: 0;
         width: 0;
         height: 0;
@@ -244,7 +243,7 @@
         align-items: stretch;
     }
 
-    #pypluginstore-container button, 
+    #pypluginstore-container button,
     #pypluginstore-container .btn-link {
         padding: 7px 12px;
         border: none;
@@ -272,7 +271,13 @@
 
     #pypluginstore-container .btn-update { border: 1px solid transparent !important; }
 
-    #pypluginstore-container .btn-update-available { background: rgba(58, 191, 126, 0.15) !important; color: var(--success) !important; border-color: rgba(58, 191, 126, 0.65) !important; }
+    @keyframes glow-pulse {
+        0%   { box-shadow: 0 0 4px 1px rgba(58, 191, 126, 0.35); }
+        50%  { box-shadow: 0 0 12px 4px rgba(58, 191, 126, 0.7); }
+        100% { box-shadow: 0 0 4px 1px rgba(58, 191, 126, 0.35); }
+    }
+
+    #pypluginstore-container .btn-update-available { background: rgba(58, 191, 126, 0.15) !important; color: var(--success) !important; border-color: rgba(58, 191, 126, 0.65) !important; animation: glow-pulse 3.5s ease-in-out infinite; }
     #pypluginstore-container .btn-update-available:hover { background: rgba(58, 191, 126, 0.28) !important; }
 
     #pypluginstore-container .btn-update-current { background: rgba(107, 130, 160, 0.15) !important; color: #8ea8c0 !important; border-color: rgba(107, 130, 160, 0.65) !important; }
@@ -280,12 +285,30 @@
 
     #pypluginstore-container .btn-info { background: rgba(107, 130, 160, 0.15) !important; color: #8ea8c0 !important; border: 1px solid rgba(107,130,160,0.65) !important; text-decoration: none !important; }
     #pypluginstore-container .btn-info:hover { background: rgba(107, 130, 160, 0.28) !important; }
-    
-	.btn-restart { background: #343a40; color: white; flex: 0 0 auto !important; }
-    .btn-restart:hover { background: #23272b; }
 
-    .btn-refresh { background: rgba(74, 158, 218, 0.25); color: var(--primary); border: 1px solid rgba(74, 158, 218, 0.65); flex: 0 0 auto !important; }
-    .btn-refresh:hover { background: rgba(74, 158, 218, 0.35); }
+	#pypluginstore-container .btn-restart {
+		background: #343a40;
+		color: white;
+		border: 1px solid rgba(255,255,255,0.22) !important;
+		flex: 0 0 auto !important;
+	}
+
+	#pypluginstore-container .btn-restart:hover {
+		background: #23272b;
+		border-color: rgba(255,255,255,0.35) !important;
+	}
+
+	#pypluginstore-container .btn-refresh {
+		background: rgba(74, 158, 218, 0.25);
+		color: var(--primary);
+		border: 1px solid rgba(74, 158, 218, 0.65) !important;
+		flex: 0 0 auto !important;
+	}
+
+	#pypluginstore-container .btn-refresh:hover {
+		background: rgba(74, 158, 218, 0.35);
+		border-color: rgba(74, 158, 218, 0.85) !important;
+	}
 
     .installed-badge {
         display: inline-block;
@@ -329,7 +352,7 @@
             </span>
         </label>
     </div>
-    
+
     <div id="plugins-list" class="grid">
         <!-- Plugins will be rendered here -->
     </div>
@@ -355,10 +378,9 @@
 
     async function init() {
         if (document.getElementById('pypluginstore-status').innerText !== 'Initializing...') {
-            return; // Already running
+            return;
         }
 
-        // Attach filter listeners
         document.getElementById('search-box').oninput = filterAndRender;
         document.getElementById('installed-toggle').onchange = filterAndRender;
         document.getElementById('refresh-update-status').onclick = refreshUpdateStatus;
@@ -367,14 +389,14 @@
             currentSort = this.value;
             filterAndRender();
         };
-        
+
         setStatus("Finding API bridge...");
         try {
             console.log("Fetching devices from /json.htm...");
             const req = await fetch('json.htm?type=command&param=getdevices&filter=all&used=true&t=' + Date.now());
             if (!req.ok) throw new Error("HTTP error " + req.status);
             const devices = await req.json();
-            
+
             if (devices.result) {
                 for (const device of devices.result) {
                     if (device.ID === 'PPM_API_PAYLOAD') {
@@ -385,12 +407,12 @@
                     }
                 }
             }
-            
+
             if (!payloadIdx || !triggerIdx) {
-                setStatus("Error: PyPluginStore devices not found (" + (payloadIdx?'Y':'N') + "/" + (triggerIdx?'Y':'N') + "). Please ensure the plugin is added in Hardware.");
+                setStatus("Error: PyPluginStore devices not found (" + (payloadIdx ? 'Y' : 'N') + "/" + (triggerIdx ? 'Y' : 'N') + "). Please ensure the plugin is added in Hardware.");
                 return;
             }
-            
+
             console.log("Found bridge devices: Payload=" + payloadIdx + ", Trigger=" + triggerIdx);
             loadPlugins();
         } catch (e) {
@@ -405,15 +427,15 @@
             return null;
         }
         isLoading = true;
-        
+
         try {
             const txId = Date.now().toString();
             const payload = JSON.stringify({ action, tx_id: txId, ...data });
-            
+
             console.log("Sending command: " + action, payload);
             await fetch(`json.htm?type=command&param=udevice&idx=${payloadIdx}&nvalue=0&svalue=${encodeURIComponent(payload)}`);
             await fetch(`json.htm?type=command&param=switchlight&idx=${triggerIdx}&switchcmd=On`);
-            
+
             return await pollResponse(action, txId);
         } finally {
             isLoading = false;
@@ -427,7 +449,7 @@
             try {
                 const req = await fetch(`json.htm?type=command&param=getdevices&rid=${payloadIdx}&t=` + Date.now());
                 const resp = await req.json();
-                
+
                 if (resp.result && resp.result.length > 0) {
                     const dataStr = resp.result[0].Data;
                     try {
@@ -471,14 +493,14 @@
         const showInstalledOnly = document.getElementById('installed-toggle').checked;
 
         const filteredKeys = Object.keys(pluginCache).filter(key => {
-            const info = pluginCache[key];
-            const description = info[2].toLowerCase();
+            const info = pluginCache[key] || [];
+            const description = String(info[2] || '').toLowerCase();
             const displayName = formatPluginDisplayName(key).toLowerCase();
             const matchesSearch = description.includes(searchQuery) ||
                 key.toLowerCase().includes(searchQuery) ||
                 displayName.includes(searchQuery);
             const isInstalled = installedCache.indexOf(key) !== -1;
-            
+
             if (showInstalledOnly && !isInstalled) return false;
             return matchesSearch;
         });
@@ -491,7 +513,7 @@
 
     function sortPlugins(pluginData, sortBy) {
         const keys = Object.keys(pluginData);
-        
+
         switch(sortBy) {
             case 'name':
                 return keys.sort((a, b) => formatPluginDisplayName(a).localeCompare(formatPluginDisplayName(b)));
@@ -501,13 +523,13 @@
                 return keys.sort((a, b) => {
                     const dateA = new Date(pluginData[a][4] || 0);
                     const dateB = new Date(pluginData[b][4] || 0);
-                    return dateB - dateA; // Newest first
+                    return dateB - dateA;
                 });
             case 'updated-oldest':
                 return keys.sort((a, b) => {
                     const dateA = new Date(pluginData[a][4] || 0);
                     const dateB = new Date(pluginData[b][4] || 0);
-                    return dateA - dateB; // Oldest first
+                    return dateA - dateB;
                 });
             default:
                 return keys.sort((a, b) => formatPluginDisplayName(a).localeCompare(formatPluginDisplayName(b)));
@@ -530,22 +552,28 @@
         const container = document.getElementById('plugins-list');
         if (!container) return;
         container.innerHTML = '';
-        
+
         const keys = sortPlugins(pluginData, currentSort);
 
         if (keys.length === 0) {
-            container.innerHTML = '<div style="grid-column: 1/-1; text-align: center; padding: 40px; color: #888;">No plugins match your filters.</div>';
+            const empty = document.createElement('div');
+            empty.style.gridColumn = '1/-1';
+            empty.style.textAlign = 'center';
+            empty.style.padding = '40px';
+            empty.style.color = '#888';
+            empty.textContent = 'No plugins match your filters.';
+            container.appendChild(empty);
             return;
         }
 
         const now = new Date();
 
         for (const key of keys) {
-            const info = pluginData[key];
-            const author = info[0];
-            const repo = info[1];
-            const description = info[2];
-            const branch = info[3];
+            const info = pluginData[key] || [];
+            const author = String(info[0] || '');
+            const repo = String(info[1] || '');
+            const description = String(info[2] || '');
+            const branch = String(info[3] || '');
             const updatedAt = info[4];
             const isInstalled = installedList.indexOf(key) !== -1;
             const updateStatus = updateStatusCache[key] || 'unknown';
@@ -556,56 +584,94 @@
                 const date = new Date(updatedAt);
                 const diffMs = now - date;
                 const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-                
+
                 if (diffDays === 0) timeStr = "today";
                 else if (diffDays === 1) timeStr = "yesterday";
                 else if (diffDays < 30) timeStr = diffDays + " days ago";
-                else if (diffDays < 365) timeStr = Math.floor(diffDays/30) + " months ago";
-                else timeStr = Math.floor(diffDays/365) + " years ago";
+                else if (diffDays < 365) timeStr = Math.floor(diffDays / 30) + " months ago";
+                else timeStr = Math.floor(diffDays / 365) + " years ago";
             }
 
             const card = document.createElement('div');
             card.className = 'card';
-            
-            let html = `
-                <div class="card-header">
-                    ${displayName}
-                    ${isInstalled ? '<span class="installed-badge">Installed</span>' : ''}
-                </div>
-                <div class="card-desc">${description}</div>
-                <div class="card-meta">
-                    Author: ${author} <br> 
-                    Repo: ${repo} (${branch})
-                    ${timeStr ? '<br> Last updated: ' + timeStr : ''}
-                </div>
-                <div class="actions">
-                    <a class="btn-info btn-link" href="https://github.com/${author}/${repo}" target="_blank">Repo</a>
-            `;
-            
-            const cardId = 'btn-' + key.replace(/[^a-z0-9]/gi, '-');
+
+            const header = document.createElement('div');
+            header.className = 'card-header';
+            header.appendChild(document.createTextNode(displayName));
+
+            if (isInstalled) {
+                const badge = document.createElement('span');
+                badge.className = 'installed-badge';
+                badge.textContent = 'Installed';
+                header.appendChild(badge);
+            }
+
+            const desc = document.createElement('div');
+            desc.className = 'card-desc';
+            desc.textContent = description;
+
+            const meta = document.createElement('div');
+            meta.className = 'card-meta';
+            meta.appendChild(document.createTextNode('Author: ' + author));
+            meta.appendChild(document.createElement('br'));
+            meta.appendChild(document.createTextNode('Repo: ' + repo + (branch ? ' (' + branch + ')' : '')));
+
+            if (timeStr) {
+                meta.appendChild(document.createElement('br'));
+                meta.appendChild(document.createTextNode('Last updated: ' + timeStr));
+            }
+
+            const actions = document.createElement('div');
+            actions.className = 'actions';
+
+            const repoLink = document.createElement('a');
+            repoLink.className = 'btn-info btn-link';
+            repoLink.href = 'https://github.com/' + encodeURIComponent(author) + '/' + encodeURIComponent(repo);
+            repoLink.target = '_blank';
+            repoLink.rel = 'noopener noreferrer';
+            repoLink.textContent = 'Repo';
+            actions.appendChild(repoLink);
 
             if (isInstalled) {
                 const updateClass = updateStatus === 'available' ? 'btn-update btn-update-available' : 'btn-update btn-update-current';
                 const updateTitle = updateStatus === 'available' ? 'Update available' :
                     (updateStatus === 'current' ? 'Already up-to-date' : 'Update status unknown');
-                html += `
-                    <button class="${updateClass}" data-key="${key}" data-action="update" title="${updateTitle}">Update</button>
-                `;
+
+                const updateButton = document.createElement('button');
+                updateButton.className = updateClass;
+                updateButton.dataset.key = key;
+                updateButton.dataset.action = 'update';
+                updateButton.title = updateTitle;
+                updateButton.type = 'button';
+                updateButton.textContent = 'Update';
+                actions.appendChild(updateButton);
+
                 if (key !== managerKey) {
-                    html += `<button class="btn-remove" data-key="${key}" data-action="remove">Remove</button>`;
+                    const removeButton = document.createElement('button');
+                    removeButton.className = 'btn-remove';
+                    removeButton.dataset.key = key;
+                    removeButton.dataset.action = 'remove';
+                    removeButton.type = 'button';
+                    removeButton.textContent = 'Remove';
+                    actions.appendChild(removeButton);
                 }
             } else {
-                html += `
-                    <button class="btn-install" data-key="${key}" data-action="install">Install</button>
-                `;
+                const installButton = document.createElement('button');
+                installButton.className = 'btn-install';
+                installButton.dataset.key = key;
+                installButton.dataset.action = 'install';
+                installButton.type = 'button';
+                installButton.textContent = 'Install';
+                actions.appendChild(installButton);
             }
-            
-            html += `</div>`;
-            card.innerHTML = html;
+
+            card.appendChild(header);
+            card.appendChild(desc);
+            card.appendChild(meta);
+            card.appendChild(actions);
             container.appendChild(card);
         }
 
-        // Add event listeners only to action buttons
         container.querySelectorAll('button[data-action]').forEach(btn => {
             btn.onclick = function() {
                 handleAction(this.getAttribute('data-action'), this.getAttribute('data-key'));
@@ -617,7 +683,7 @@
         if (action === 'remove' && !confirm(`Are you sure you want to remove ${pluginKey}?`)) {
             return;
         }
-        
+
         setStatus(`Executing ${action} for ${pluginKey}... This may take a moment.`);
         try {
             const response = await sendCommand(action, { plugin_key: pluginKey });
@@ -677,14 +743,12 @@
         }
     }
 
-    // Domoticz SPA might load this multiple times or at different ready states
     if (document.readyState === 'complete' || document.readyState === 'interactive') {
         setTimeout(init, 100);
     } else {
         document.addEventListener('DOMContentLoaded', init);
     }
-    
-    // Fallback for some browsers/SPA engines
-    window.onload = init;
+
+    window.addEventListener('load', init);
 })();
 </script>
