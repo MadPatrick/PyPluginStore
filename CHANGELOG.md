@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.8.1](https://github.com/adrighem/PyPluginStore/compare/v2.8.0...v2.8.1) (2026-06-20)
+
+
+### Bug Fixes
+
+* parse clone URLs before GitHub normalization ([66bcd4c](https://github.com/adrighem/PyPluginStore/commit/66bcd4ca598d8ea06fdcd05e817e3c85bb2489c9))
+
 ## [2.8.0](https://github.com/adrighem/PyPluginStore/compare/v2.7.0...v2.8.0) (2026-06-20)
 
 
