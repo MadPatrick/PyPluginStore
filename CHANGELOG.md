@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.8.0](https://github.com/adrighem/PyPluginStore/compare/v2.7.0...v2.8.0) (2026-06-20)
+
+
+### Features
+
+* support local registry overlays ([36f3bcf](https://github.com/adrighem/PyPluginStore/commit/36f3bcf79bbdc942999517f55e074a3d0a0653e8))
+
 ## [2.7.0](https://github.com/adrighem/PyPluginStore/compare/v2.6.0...v2.7.0) (2026-06-15)
 
 
