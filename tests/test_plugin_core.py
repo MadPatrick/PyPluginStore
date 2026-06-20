@@ -244,6 +244,19 @@ def test_build_git_clone_url_accepts_owner_repo_and_full_urls(plugin_core_module
     assert plugin.build_git_clone_url("file:///srv/git/local-plugin", "") == "file:///srv/git/local-plugin"
 
 
+def test_build_git_clone_url_only_normalizes_real_github_hosts(plugin_core_module):
+    plugin = plugin_core_module.BasePlugin()
+
+    assert plugin.build_git_clone_url(
+        "https://github.com.evil/owner/repo/tree/main",
+        "",
+    ) == "https://github.com.evil/owner/repo/tree/main"
+    assert plugin.build_git_clone_url(
+        "https://example.com/github.com/owner/repo/tree/main",
+        "",
+    ) == "https://example.com/github.com/owner/repo/tree/main"
+
+
 def test_refresh_installed_update_statuses_checks_managed_plugins_in_order(plugin_core_module, tmp_path, monkeypatch):
     plugin = plugin_core_module.BasePlugin()
     plugin.plugin_data = {

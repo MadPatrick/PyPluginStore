@@ -42,6 +42,7 @@ import subprocess
 import sys
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 import json
 from datetime import datetime
@@ -108,20 +109,25 @@ class BasePlugin:
         if author.startswith("git@") or author.startswith("ssh://") or author.startswith("file://"):
             return author.rstrip("/")
 
-        if author.startswith("github.com/"):
-            author = "https://" + author
-
         if author.startswith("http://") or author.startswith("https://"):
             clone_url = author.rstrip("/")
-            if "github.com/" in clone_url:
-                clone_url = clone_url.split("/tree/", 1)[0]
-                clone_url = clone_url.split("/blob/", 1)[0]
-                match = re.match(r"^(https?://github\.com/[^/]+/[^/]+)", clone_url)
-                if match:
-                    clone_url = match.group(1)
+            parsed_url = urllib.parse.urlparse(clone_url)
+            if parsed_url.scheme in ("http", "https") and parsed_url.hostname == "github.com":
+                path_parts = [part for part in parsed_url.path.split("/") if part]
+                if len(path_parts) >= 2:
+                    clone_url = parsed_url.scheme + "://github.com/" + path_parts[0] + "/" + path_parts[1]
+                    if not clone_url.endswith(".git"):
+                        clone_url += ".git"
+            return clone_url
+
+        shorthand_url = urllib.parse.urlparse("//" + author)
+        if shorthand_url.hostname == "github.com":
+            path_parts = [part for part in shorthand_url.path.split("/") if part]
+            if len(path_parts) >= 2:
+                clone_url = "https://github.com/" + path_parts[0] + "/" + path_parts[1]
                 if not clone_url.endswith(".git"):
                     clone_url += ".git"
-            return clone_url
+                return clone_url
 
         return f"https://github.com/{author}/{repository}.git"
 
