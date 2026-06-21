@@ -14,3 +14,38 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: googleapis/release-please-action@v4
+        id: release
+
+      - uses: actions/checkout@v4
+        if: ${{ steps.release.outputs.release_created }}
+
+      - name: Upload release branding assets
+        if: ${{ steps.release.outputs.release_created }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="${{ steps.release.outputs.tag_name }}"
+
+          gh release upload "$tag" \
+            pypluginstore.png \
+            pypluginstore-icon.png \
+            pypluginstore-social-preview.jpg \
+            --clobber
+
+          notes_file="$(mktemp)"
+          gh release view "$tag" --json body --jq .body > "$notes_file"
+          if ! grep -q "pypluginstore-social-preview.jpg" "$notes_file"; then
+            cat >> "$notes_file" <<'EOF'
+
+          ### Assets
+
+          Branding assets:
+
+          * `pypluginstore.png` - README/project logo.
+          * `pypluginstore-icon.png` - icon artwork.
+          * `pypluginstore-social-preview.jpg` - GitHub social preview card.
+          EOF
+          fi
+
+          gh release edit "$tag" --notes-file "$notes_file"
+          gh release edit "$tag" --draft=false

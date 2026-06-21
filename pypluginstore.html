@@ -37,6 +37,20 @@
         border-bottom: 1px solid var(--border-color);
     }
 
+    #pypluginstore-container .header-title {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        min-width: 220px;
+    }
+
+    #pypluginstore-container .app-icon {
+        width: 44px;
+        height: 44px;
+        object-fit: contain;
+        flex: 0 0 auto;
+    }
+
     #pypluginstore-container h1 {
         margin: 0;
         font-size: 1.4em;
@@ -345,7 +359,10 @@
 
 <div id="pypluginstore-container">
     <div class="header">
-        <h1>PyPluginStore: Plugin Store</h1>
+        <div class="header-title">
+            <img class="app-icon" src="pypluginstore-icon.png" alt="" aria-hidden="true">
+            <h1>PyPluginStore: Plugin Store</h1>
+        </div>
         <div class="header-actions">
             <button id="refresh-update-status" class="btn-refresh" type="button">Refresh status</button>
             <button id="restart-domoticz" class="btn-restart" type="button">Restart Domoticz</button>

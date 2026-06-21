@@ -3,6 +3,7 @@
     ".": {
       "release-type": "python",
       "initial-version": "2.0.0",
+      "draft": true,
       "extra-files": [
         ".github/scripts/generate_plugin.py",
         "plugin.py"

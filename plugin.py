@@ -580,6 +580,7 @@ class BasePlugin:
             # Determine paths
             home_folder_param = Parameters.get("HomeFolder", str(os.getcwd()) + "/")
             html_src = os.path.join(home_folder_param, "pypluginstore.html")
+            ui_asset_names = ["pypluginstore-icon.png"]
             
             # Find templates directory (relative to plugins folder)
             domoticz_dir = os.path.abspath(os.path.join(home_folder_param, "..", ".."))
@@ -615,6 +616,14 @@ class BasePlugin:
                     Domoticz.Log(f"Custom UI autoinstalled/updated: {html_dst}")
                 else:
                     Domoticz.Debug("Custom UI is already up to date.")
+
+                for asset_name in ui_asset_names:
+                    asset_src = os.path.join(home_folder_param, asset_name)
+                    asset_dst = os.path.join(templates_dir, asset_name)
+                    if os.path.isfile(asset_src):
+                        shutil.copyfile(asset_src, asset_dst)
+                        os.chmod(asset_dst, 0o644)
+                        Domoticz.Debug(f"Custom UI asset installed/updated: {asset_dst}")
         except Exception as e:
             Domoticz.Error(f"Custom UI autoinstall failed: {e}")
             Domoticz.Debug(f"Check permissions for: {templates_dir}")

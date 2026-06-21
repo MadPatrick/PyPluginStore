@@ -101,6 +101,13 @@ def test_refresh_status_button_is_wired_to_backend_command():
     assert "sendCommand('refresh_update_status', {})" in script
 
 
+def test_custom_ui_references_existing_icon_asset():
+    html = (REPO_ROOT / "pypluginstore.html").read_text()
+
+    assert 'src="pypluginstore-icon.png"' in html
+    assert (REPO_ROOT / "pypluginstore-icon.png").is_file()
+
+
 def load_inline_script():
     html = (REPO_ROOT / "pypluginstore.html").read_text()
     parser = InlineScriptParser()
