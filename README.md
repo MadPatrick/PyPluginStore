@@ -6,29 +6,29 @@ A robust and modern plugin manager for Domoticz that allows you to install and a
 
 <img src="pypluginstore.png" alt="PyPluginStore" width="627" height="627">
 
-> **A Fork for the Future:** This repository is a modernized fork of the original [ycahome/pp-manager](https://github.com/ycahome/pp-manager). It was created to clean up the codebase, ensure full compatibility with modern Python versions (including Python 3.13 and up), and introduce significantly advanced security and dependency management features.
+> This project is based on the original [ycahome/pp-manager](https://github.com/ycahome/pp-manager). Thanks to the original maintainers and contributors for their hard work.
 
 ---
 
 ## 🚀 Key Features
 
-*   **Custom Plugin Store UI:** A clean, modern web interface accessible via the Domoticz **Custom** menu.
-*   **Search & Filter:** Easily find plugins in the curated registry with type-ahead search and "Installed" toggles.
-*   **Install/Remove/Update:** Manage your entire Python plugin ecosystem with a single click—no manual folder management required.
+*   **Custom Plugin Store UI:** A clean, modern web interface accessible from the Domoticz **Custom** menu.
+*   **Search, Sort & Filter:** Find plugins in the registry with type-ahead search, sorting, and installed-plugin filtering.
+*   **Install, Remove & Update:** Manage Domoticz Python plugins without manual folder management.
 *   **Self Update:** PyPluginStore appears in the store under its installed folder name, so it can update itself like any other plugin.
-*   **Update Status Buttons:** Installed plugins show a grey Update button when they are already current and a blue Update button when a git update is available.
+*   **Update Status Checks:** Installed plugins show whether their git checkout is current or has updates available.
+*   **Auto Updates & Notifications:** Automatically update installed plugins or run in notification-only mode.
 *   **Restart Domoticz:** Request a Domoticz service restart from the Plugin Store UI after installs or updates.
-*   **Auto Updates:** Automatically checks and pulls updates for installed plugins.
-*   **Flexible Dependency Management:** Supports automatic dependency installation using `uv` (recommended) or `pip`. Also allows for manual sysadmin-managed dependencies.
-*   **PEP 668 Compliant:** When using `uv` or `pip`, dependencies are safely installed into a local `.shared_deps` isolated folder without requiring `sudo` or global `pip` access.
-*   **Update Notifications:** Opt-in to receive email/system notifications when a plugin update is available.
-*   **Decoupled Registry:** Uses `registry.json` dynamically fetched from GitHub, with a bundled fallback and an optional local-only `registry_local.json` overlay for private plugins.
+*   **Dependency Management:** Install plugin dependencies with `uv` (recommended) or `pip`, or manage them manually.
+*   **PEP 668 Compliant Isolation:** Dependencies are installed into `.shared_deps` without requiring `sudo` or global `pip` access.
+*   **Remote and Local Registries:** Fetches the public `registry.json`, falls back to the bundled copy, and supports private/local overrides in `registry_local.json`.
+*   **Security Scanning:** Uses AST-based scanning to flag risky plugin code before it is installed.
 
 ![PyPluginStore dashboard screenshot](store-screenshot.png)
 
 ## 🛡️ Advanced Security Scanning
 
-This fork introduces a vastly improved **Abstract Syntax Tree (AST)** based security scanner to protect your Domoticz instance from malicious plugins:
+PyPluginStore includes **Abstract Syntax Tree (AST)** based security scanning to help protect your Domoticz instance from malicious plugins:
 *   **Deep Execution Detection:** Detects calls to dangerous functions like `os.system`, `subprocess` (specifically `shell=True`), `eval`, `exec`, and `pickle`.
 *   **Smart IP Filtering:** Automatically ignores private, loopback, and broadcast IP addresses, as well as version numbers in User Agents, to reduce false positives.
 *   **Developer Overrides:** Supports `# security-ignore` or `# nosec` comments to manually silence known-safe code findings.
@@ -137,4 +137,4 @@ Auto-updating plugins without manually reviewing the code changes exposes your s
 
 ## 💬 Discussion & Support
 Join the conversation on the official Domoticz forums:
-https://forum.domoticz.com/viewtopic.php?t=22339
+https://forum.domoticz.com/viewtopic.php?t=44626
