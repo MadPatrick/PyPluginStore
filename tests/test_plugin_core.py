@@ -387,12 +387,26 @@ def test_refresh_update_status_command_runs_serial_refresh(plugin_core_module, t
         "OtherPlugin": ["owner", "repo", "description", "main", ""],
     }
     responses = []
+    calls = []
+
+    def fake_fetch_registry():
+        calls.append("fetch_registry")
+        plugin.plugin_data["LocalPlugin"] = [
+            "git@github.com:owner/private-plugin.git",
+            "",
+            "local description",
+            "main",
+            "",
+        ]
+        plugin.local_plugin_keys = ["LocalPlugin"]
 
     def fake_refresh(installed, actual_plugins_dir):
+        calls.append("refresh_status")
         assert Path(actual_plugins_dir) == plugins_dir
         assert set(installed) == {"00-PyPluginStore", "OtherPlugin"}
         return {"00-PyPluginStore": "unknown", "OtherPlugin": "available"}
 
+    monkeypatch.setattr(plugin, "fetch_registry", fake_fetch_registry)
     monkeypatch.setattr(plugin, "refreshInstalledUpdateStatuses", fake_refresh)
     monkeypatch.setattr(plugin, "sendApiResponse", responses.append)
 
@@ -406,7 +420,8 @@ def test_refresh_update_status_command_runs_serial_refresh(plugin_core_module, t
         "OtherPlugin": "available",
     }
     assert response["data"] == plugin.plugin_data
-    assert response["local_plugins"] == []
+    assert response["local_plugins"] == ["LocalPlugin"]
+    assert calls == ["fetch_registry", "refresh_status"]
 
 
 def test_install_command_reports_clone_failure(plugin_core_module, tmp_path, monkeypatch):

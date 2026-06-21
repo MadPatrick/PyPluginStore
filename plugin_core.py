@@ -720,6 +720,7 @@ class BasePlugin:
                 "update_status": self.getCachedUpdateStatuses(installed_plugins)
             })
         elif action == "refresh_update_status":
+            self.fetch_registry()
             installed_plugins = self.getInstalledPlugins(plugins_dir)
             update_status = self.refreshInstalledUpdateStatuses(installed_plugins, plugins_dir)
             self.sendApiResponse({
