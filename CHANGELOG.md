@@ -1,5 +1,19 @@
 # Changelog
 
+## [2.9.0](https://github.com/adrighem/PyPluginStore/compare/v2.8.2...v2.9.0) (2026-06-21)
+
+
+### Features
+
+* add new Domoticz Python plugins ([4c2fa40](https://github.com/adrighem/PyPluginStore/commit/4c2fa406f1a795e97c32783c084ce539532985bd))
+
+
+### Documentation
+
+* refine README logo presentation ([79c1911](https://github.com/adrighem/PyPluginStore/commit/79c1911a6290b70c3e52b39cbe919c172a0e59f7))
+* rename store screenshot asset ([dbe78fc](https://github.com/adrighem/PyPluginStore/commit/dbe78fc15582c91d4dd97286cd9aaf4bb70eca5e))
+* update README wording ([04216d1](https://github.com/adrighem/PyPluginStore/commit/04216d190d9ff89c9c293a3d8d8f15f6d81e6370))
+
 ## [2.8.2](https://github.com/adrighem/PyPluginStore/compare/v2.8.1...v2.8.2) (2026-06-21)
 
 
