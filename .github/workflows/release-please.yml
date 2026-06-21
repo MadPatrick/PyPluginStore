@@ -10,17 +10,28 @@ permissions:
 name: release-please
 
 jobs:
-  release-please:
+  release-pr:
+    if: ${{ !contains(github.event.head_commit.message, 'release-please--branches--master') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: googleapis/release-please-action@v4
+        with:
+          skip-github-release: true
+
+  publish-release:
+    if: ${{ contains(github.event.head_commit.message, 'release-please--branches--master') }}
     runs-on: ubuntu-latest
     steps:
       - uses: googleapis/release-please-action@v4
         id: release
+        with:
+          skip-github-pull-request: true
 
       - uses: actions/checkout@v4
-        if: ${{ steps.release.outputs.release_created }}
+        if: ${{ steps.release.outputs.release_created == 'true' }}
 
       - name: Upload release branding assets
-        if: ${{ steps.release.outputs.release_created }}
+        if: ${{ steps.release.outputs.release_created == 'true' }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
