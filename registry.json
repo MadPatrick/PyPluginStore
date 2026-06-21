@@ -1894,5 +1894,41 @@
         "domoticz-zonneplan",
         "Unofficial Zonneplan integration for Domoticz",
         "main"
+    ],
+    "Solaredge_modbustcp": [
+        "MadPatrick",
+        "Solaredge_modbustcp",
+        "A Domoticz plugin to collect data from SolarEdge power inverters over ModbusTCP.",
+        "main"
+    ],
+    "easee-domoticz": [
+        "rleunk",
+        "easee-domoticz",
+        "Easee - Domoticz plugin",
+        "main"
+    ],
+    "Detect-Presence-at-Home---Domoticz-plugin": [
+        "blooesky",
+        "Detect-Presence-at-Home---Domoticz-plugin",
+        "Detect Presence at Home is a Domoticz plugin that detects whether one or more phones are connected to your home network using arp-scan.",
+        "main"
+    ],
+    "Domoticz-AnkerSolixX1-Plugin": [
+        "lemassykoi",
+        "Domoticz-AnkerSolixX1-Plugin",
+        "Domoticz plugin for the Anker SOLIX X1 home battery via local Modbus TCP (no cloud). Verified on X1-H12K-T.",
+        "main"
+    ],
+    "Domoticz-Veolia": [
+        "Smanar",
+        "Domoticz-Veolia",
+        "Domoticz plugin to retrieve the Veolia water meter readings",
+        "main"
+    ],
+    "Domoticz-OpenWeatherMap": [
+        "cth35",
+        "Domoticz-OpenWeatherMap",
+        "OpenWeatherMap plugin with TTL cache",
+        "main"
     ]
 }
