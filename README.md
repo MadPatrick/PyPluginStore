@@ -4,9 +4,7 @@ A robust and modern plugin manager for Domoticz that allows you to install and a
 
 **Note:** This plugin runs exclusively on Linux Systems (including Raspberry Pi).
 
-![PyPluginStore](pypluginstore.png)
-
-![PyPluginStore dashboard screenshot](store-screenshot.png)
+<img src="pypluginstore.png" alt="PyPluginStore" width="627" height="627">
 
 > **A Fork for the Future:** This repository is a modernized fork of the original [ycahome/pp-manager](https://github.com/ycahome/pp-manager). It was created to clean up the codebase, ensure full compatibility with modern Python versions (including Python 3.13 and up), and introduce significantly advanced security and dependency management features.
 
@@ -25,6 +23,8 @@ A robust and modern plugin manager for Domoticz that allows you to install and a
 *   **PEP 668 Compliant:** When using `uv` or `pip`, dependencies are safely installed into a local `.shared_deps` isolated folder without requiring `sudo` or global `pip` access.
 *   **Update Notifications:** Opt-in to receive email/system notifications when a plugin update is available.
 *   **Decoupled Registry:** Uses `registry.json` dynamically fetched from GitHub, with a bundled fallback and an optional local-only `registry_local.json` overlay for private plugins.
+
+![PyPluginStore dashboard screenshot](store-screenshot.png)
 
 ## 🛡️ Advanced Security Scanning
 
