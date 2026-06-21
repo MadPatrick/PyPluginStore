@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.8.2](https://github.com/adrighem/PyPluginStore/compare/v2.8.1...v2.8.2) (2026-06-21)
+
+
+### Bug Fixes
+
+* apply MadPatrick registry refresh intent ([c88f4d3](https://github.com/adrighem/PyPluginStore/commit/c88f4d319a41f2c3fe679e90cbe0af277a3148ef))
+
 ## [2.8.1](https://github.com/adrighem/PyPluginStore/compare/v2.8.0...v2.8.1) (2026-06-20)
 
 
