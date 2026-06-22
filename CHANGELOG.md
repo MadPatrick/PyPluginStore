@@ -1,5 +1,17 @@
 # Changelog
 
+## [2.9.1](https://github.com/adrighem/PyPluginStore/compare/v2.9.0...v2.9.1) (2026-06-22)
+
+
+### Bug Fixes
+
+* install custom UI icon under Domoticz images ([84eb18e](https://github.com/adrighem/PyPluginStore/commit/84eb18ebb7d2a1d51d1a4ba179cca64e078fb87d))
+
+
+### Documentation
+
+* document release-please commit requirements ([abb8bd8](https://github.com/adrighem/PyPluginStore/commit/abb8bd86a7fee2e57fe5d228dfbb094b1e022772))
+
 ## [2.9.0](https://github.com/adrighem/PyPluginStore/compare/v2.8.2...v2.9.0) (2026-06-21)
 
 
