@@ -582,15 +582,19 @@ class BasePlugin:
             html_src = os.path.join(home_folder_param, "pypluginstore.html")
             ui_asset_names = ["pypluginstore-icon.png"]
             
-            # Find templates directory (relative to plugins folder)
+            # Find UI directories (relative to plugins folder)
             domoticz_dir = os.path.abspath(os.path.join(home_folder_param, "..", ".."))
             templates_dir = os.path.join(domoticz_dir, "www", "templates")
+            images_dir = os.path.join(domoticz_dir, "www", "images")
             html_dst = os.path.join(templates_dir, "pypluginstore.html")
             
             if os.path.isfile(html_src):
                 if not os.path.exists(templates_dir):
                     Domoticz.Debug(f"Creating templates directory: {templates_dir}")
                     os.makedirs(templates_dir, exist_ok=True)
+                if not os.path.exists(images_dir):
+                    Domoticz.Debug(f"Creating images directory: {images_dir}")
+                    os.makedirs(images_dir, exist_ok=True)
                 
                 # Remove legacy UI if it exists
                 old_html_dst = os.path.join(templates_dir, "pp-manager.html")
@@ -619,7 +623,7 @@ class BasePlugin:
 
                 for asset_name in ui_asset_names:
                     asset_src = os.path.join(home_folder_param, asset_name)
-                    asset_dst = os.path.join(templates_dir, asset_name)
+                    asset_dst = os.path.join(images_dir, asset_name)
                     if os.path.isfile(asset_src):
                         shutil.copyfile(asset_src, asset_dst)
                         os.chmod(asset_dst, 0o644)

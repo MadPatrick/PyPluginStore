@@ -72,7 +72,7 @@ Once installed and Domoticz is restarted:
 2.  Make sure the **Custom** menu is enabled for your Domoticz user in **Setup -> Users**.
 3.  Navigate to **Custom -> pypluginstore** in the top menu to open the Plugin Store dashboard.
 
-PyPluginStore copies `pypluginstore.html` into `domoticz/www/templates` on startup. Domoticz only shows the **Custom** menu when custom pages exist there and the menu is enabled for the current user. If you run Domoticz in Docker, make sure the templates directory is mounted persistently so the copied page is visible to the Domoticz web UI.
+PyPluginStore copies `pypluginstore.html` into `domoticz/www/templates` and its icon into `domoticz/www/images` on startup. Domoticz only shows the **Custom** menu when custom pages exist there and the menu is enabled for the current user. If you run Domoticz in Docker, make sure the web directories are mounted persistently so the copied page and image are visible to the Domoticz web UI.
 
 ### Settings (Hardware Page)
 

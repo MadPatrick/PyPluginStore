@@ -10,6 +10,7 @@ def configure_home(plugin_core_module, tmp_path):
     plugin_core_module.Parameters = {
         "HomeFolder": str(manager_dir) + "/",
         "Mode4": "None",
+        "Mode6": "Normal",
     }
     return plugins_dir, manager_dir
 
@@ -104,6 +105,30 @@ def test_get_installed_update_status_skips_unmanaged_plugins(plugin_core_module,
         "KnownPlugin": "current",
         "LooseFolder": "unknown",
     }
+
+
+def test_on_start_installs_custom_ui_and_icon_image(plugin_core_module, tmp_path, monkeypatch):
+    _, manager_dir = configure_home(plugin_core_module, tmp_path)
+    (manager_dir / "pypluginstore.html").write_text("<div>Plugin Store</div>")
+    (manager_dir / "pypluginstore-icon.png").write_bytes(b"icon")
+    plugin_core_module.Devices = {}
+
+    class FakeDevice:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+
+        def Create(self):
+            return None
+
+    monkeypatch.setattr(plugin_core_module.Domoticz, "Device", FakeDevice, raising=False)
+    monkeypatch.setattr(plugin_core_module.BasePlugin, "fetch_registry", lambda self: None)
+
+    plugin_core_module.BasePlugin().onStart()
+
+    domoticz_dir = tmp_path / "domoticz"
+    assert (domoticz_dir / "www" / "templates" / "pypluginstore.html").read_text() == "<div>Plugin Store</div>"
+    assert (domoticz_dir / "www" / "images" / "pypluginstore-icon.png").read_bytes() == b"icon"
+    assert not (domoticz_dir / "www" / "templates" / "pypluginstore-icon.png").exists()
 
 
 def test_load_update_times_falls_back_to_bundled_file(plugin_core_module, tmp_path, monkeypatch):
