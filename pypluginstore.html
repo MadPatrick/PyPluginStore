@@ -344,18 +344,49 @@
         letter-spacing: 0.03em;
     }
 
-    .local-badge {
-        display: inline-block;
-        background: rgba(74, 158, 218, 0.18);
-        color: var(--primary);
-        border: 1px solid rgba(74, 158, 218, 0.4);
+	    .local-badge {
+	        display: inline-block;
+	        background: rgba(74, 158, 218, 0.18);
+	        color: var(--primary);
+	        border: 1px solid rgba(74, 158, 218, 0.4);
         padding: 2px 8px;
         border-radius: 10px;
         font-size: 0.7em;
-        font-weight: 600;
-        letter-spacing: 0.03em;
-    }
-</style>
+	        font-weight: 600;
+	        letter-spacing: 0.03em;
+	    }
+
+	    .platform-badges {
+	        display: flex;
+	        align-items: center;
+	        gap: 5px;
+	        flex-wrap: wrap;
+	    }
+
+	    .platform-badge {
+	        display: inline-block;
+	        background: rgba(107, 130, 160, 0.15);
+	        color: #8ea8c0;
+	        border: 1px solid rgba(107, 130, 160, 0.5);
+	        padding: 2px 7px;
+	        border-radius: 10px;
+	        font-size: 0.68em;
+	        font-weight: 600;
+	        letter-spacing: 0;
+	    }
+
+	    .platform-badge-linux {
+	        background: rgba(58, 191, 126, 0.14);
+	        color: var(--success);
+	        border-color: rgba(58, 191, 126, 0.42);
+	    }
+
+	    .platform-badge-windows {
+	        background: rgba(74, 158, 218, 0.16);
+	        color: var(--primary);
+	        border-color: rgba(74, 158, 218, 0.45);
+	    }
+	</style>
 
 <div id="pypluginstore-container">
     <div class="header">
@@ -403,10 +434,11 @@
     let isLoading = false;
     let pluginCache = null;
     let installedCache = [];
-    let localCache = [];
-    let updateStatusCache = {};
-    let managerKey = null;
-    let currentSort = 'name';
+	    let localCache = [];
+	    let updateStatusCache = {};
+	    let platformCache = {};
+	    let managerKey = null;
+	    let currentSort = 'name';
 
     function setStatus(msg) {
         console.log("PyPluginStore Status: " + msg);
@@ -511,10 +543,11 @@
             const response = await sendCommand('list_plugins', {});
             if (response && response.status === 'success') {
                 pluginCache = response.data;
-                installedCache = response.installed;
-                localCache = response.local_plugins || [];
-                updateStatusCache = response.update_status || {};
-                managerKey = response.manager_key || null;
+	                installedCache = response.installed;
+	                localCache = response.local_plugins || [];
+	                updateStatusCache = response.update_status || {};
+	                platformCache = response.platforms || {};
+	                managerKey = response.manager_key || null;
                 filterAndRender();
                 setStatus(`Loaded ${Object.keys(response.data).length} plugins.`);
             } else {
@@ -638,10 +671,11 @@
             const description = String(info[2] || '');
             const branch = String(info[3] || '');
             const updatedAt = info[4];
-            const isInstalled = installedList.indexOf(key) !== -1;
-            const isLocal = localCache.indexOf(key) !== -1;
-            const updateStatus = updateStatusCache[key] || 'unknown';
-            const displayName = formatPluginDisplayName(key);
+	            const isInstalled = installedList.indexOf(key) !== -1;
+	            const isLocal = localCache.indexOf(key) !== -1;
+	            const updateStatus = updateStatusCache[key] || 'unknown';
+	            const platforms = platformCache[key] || ['unknown'];
+	            const displayName = formatPluginDisplayName(key);
 
             let timeStr = "";
             if (updatedAt) {
@@ -675,12 +709,25 @@
 
             header.appendChild(headerLeft);
 
-            if (isLocal) {
-                const localBadge = document.createElement('span');
-                localBadge.className = 'local-badge';
-                localBadge.textContent = 'Local';
-                header.appendChild(localBadge);
-            }
+	            if (isLocal) {
+	                const localBadge = document.createElement('span');
+	                localBadge.className = 'local-badge';
+	                localBadge.textContent = 'Local';
+	                header.appendChild(localBadge);
+	            }
+
+	            const knownPlatforms = platforms.filter(platformName => platformName === 'linux' || platformName === 'windows');
+	            if (knownPlatforms.length > 0) {
+	                const platformBadges = document.createElement('div');
+	                platformBadges.className = 'platform-badges';
+	                knownPlatforms.forEach(platformName => {
+	                    const platformBadge = document.createElement('span');
+	                    platformBadge.className = 'platform-badge platform-badge-' + platformName;
+	                    platformBadge.textContent = platformName === 'linux' ? 'Linux' : 'Windows';
+	                    platformBadges.appendChild(platformBadge);
+	                });
+	                header.appendChild(platformBadges);
+	            }
 
             const desc = document.createElement('div');
             desc.className = 'card-desc';
@@ -784,10 +831,11 @@
             const response = await sendCommand('refresh_update_status', {});
             if (response && response.status === 'success') {
                 pluginCache = response.data || pluginCache;
-                installedCache = response.installed || installedCache;
-                localCache = response.local_plugins || localCache;
-                updateStatusCache = response.update_status || {};
-                managerKey = response.manager_key || managerKey;
+	                installedCache = response.installed || installedCache;
+	                localCache = response.local_plugins || localCache;
+	                updateStatusCache = response.update_status || {};
+	                platformCache = response.platforms || platformCache;
+	                managerKey = response.manager_key || managerKey;
                 filterAndRender();
                 setStatus("Update status refreshed.");
             } else {
