@@ -583,81 +583,99 @@ def test_remove_command_rejects_traversal(plugin_core_module, tmp_path):
     assert "Invalid plugin key" in message
 
 
-def test_windows_restart_uses_windows_service_commands(plugin_core_module, tmp_path, monkeypatch):
+def test_windows_restart_schedules_system_task(plugin_core_module, tmp_path, monkeypatch):
     _, manager_dir = configure_home(plugin_core_module, tmp_path)
     monkeypatch.setattr(plugin_core_module.platform, "system", lambda: "Windows")
     plugin = plugin_core_module.BasePlugin()
-    popen_calls = []
+    schtasks_calls = []
 
-    class FakePopen:
-        def __init__(self, command, **kwargs):
-            popen_calls.append((command, kwargs))
-
-    monkeypatch.setattr(plugin_core_module.subprocess, "Popen", FakePopen)
     monkeypatch.setattr(plugin_core_module.WindowsHostRuntime, "probe_powershell_file_execution", lambda self: True)
     monkeypatch.setattr(plugin_core_module.WindowsHostRuntime, "probe_powershell_encoded_command", lambda self: True)
+    monkeypatch.setattr(
+        plugin_core_module.WindowsHostRuntime,
+        "run_schtasks",
+        lambda self, args, timeout=20: schtasks_calls.append(args) or True,
+    )
 
     success, message = plugin.restartDomoticz()
 
     assert success is True
     assert message == "Domoticz restart requested"
-    assert "-EncodedCommand" in popen_calls[0][0]
-    assert "-File" not in popen_calls[0][0]
     helper = (manager_dir / "restart_domoticz.ps1").read_text()
+    command_helper = (manager_dir / "restart_domoticz.cmd").read_text()
     assert "Restart-Service -Name " in helper
     assert "@(\"sc.exe\", \"stop\", $serviceName)" in helper
+    assert "Invoke-Expression $script" in command_helper
+    assert schtasks_calls[0][:2] == ["/Create", "/TN"]
+    assert "/RU" in schtasks_calls[0]
+    assert "SYSTEM" in schtasks_calls[0]
+    assert schtasks_calls[1] == ["/Run", "/TN", r"\PyPluginStore-Domoticz-Restart"]
     assert (manager_dir / "restart_domoticz.log").exists()
-    assert "launching Windows PowerShell restart helper via EncodedCommand" in (
+    assert "launching Windows scheduled restart task" in (
         manager_dir / "restart_domoticz.log"
     ).read_text()
-    assert "start_new_session" not in popen_calls[0][1]
 
 
-def test_windows_restart_uses_encoded_command_when_script_files_are_blocked(
+def test_windows_restart_schedules_system_task_when_script_files_are_blocked(
     plugin_core_module, tmp_path, monkeypatch
 ):
     _, manager_dir = configure_home(plugin_core_module, tmp_path)
     monkeypatch.setattr(plugin_core_module.platform, "system", lambda: "Windows")
     plugin = plugin_core_module.BasePlugin()
-    popen_calls = []
+    schtasks_calls = []
 
-    class FakePopen:
-        def __init__(self, command, **kwargs):
-            popen_calls.append((command, kwargs))
-
-    monkeypatch.setattr(plugin_core_module.subprocess, "Popen", FakePopen)
     monkeypatch.setattr(plugin_core_module.WindowsHostRuntime, "probe_powershell_file_execution", lambda self: False)
     monkeypatch.setattr(plugin_core_module.WindowsHostRuntime, "probe_powershell_encoded_command", lambda self: True)
+    monkeypatch.setattr(
+        plugin_core_module.WindowsHostRuntime,
+        "run_schtasks",
+        lambda self, args, timeout=20: schtasks_calls.append(args) or True,
+    )
 
     success, message = plugin.restartDomoticz()
 
     assert success is True
     assert message == "Domoticz restart requested"
-    assert "-EncodedCommand" in popen_calls[0][0]
-    assert "-File" not in popen_calls[0][0]
     assert (manager_dir / "restart_domoticz.ps1").exists()
-    assert "via EncodedCommand" in (manager_dir / "restart_domoticz.log").read_text()
+    assert (manager_dir / "restart_domoticz.cmd").exists()
+    assert schtasks_calls[1] == ["/Run", "/TN", r"\PyPluginStore-Domoticz-Restart"]
+    assert "launching Windows scheduled restart task" in (manager_dir / "restart_domoticz.log").read_text()
 
 
 def test_windows_restart_reports_encoded_command_probe_failure(plugin_core_module, tmp_path, monkeypatch):
     configure_home(plugin_core_module, tmp_path)
     monkeypatch.setattr(plugin_core_module.platform, "system", lambda: "Windows")
     plugin = plugin_core_module.BasePlugin()
-    popen_calls = []
+    schtasks_calls = []
 
-    class FakePopen:
-        def __init__(self, command, **kwargs):
-            popen_calls.append((command, kwargs))
-
-    monkeypatch.setattr(plugin_core_module.subprocess, "Popen", FakePopen)
     monkeypatch.setattr(plugin_core_module.WindowsHostRuntime, "probe_powershell_file_execution", lambda self: False)
     monkeypatch.setattr(plugin_core_module.WindowsHostRuntime, "probe_powershell_encoded_command", lambda self: False)
+    monkeypatch.setattr(
+        plugin_core_module.WindowsHostRuntime,
+        "run_schtasks",
+        lambda self, args, timeout=20: schtasks_calls.append(args) or True,
+    )
 
     success, message = plugin.restartDomoticz()
 
     assert success is False
     assert message == "PowerShell EncodedCommand probe failed. See restart_domoticz.log."
-    assert popen_calls == []
+    assert schtasks_calls == []
+
+
+def test_windows_restart_reports_schtasks_failure(plugin_core_module, tmp_path, monkeypatch):
+    configure_home(plugin_core_module, tmp_path)
+    monkeypatch.setattr(plugin_core_module.platform, "system", lambda: "Windows")
+    plugin = plugin_core_module.BasePlugin()
+
+    monkeypatch.setattr(plugin_core_module.WindowsHostRuntime, "probe_powershell_file_execution", lambda self: True)
+    monkeypatch.setattr(plugin_core_module.WindowsHostRuntime, "probe_powershell_encoded_command", lambda self: True)
+    monkeypatch.setattr(plugin_core_module.WindowsHostRuntime, "run_schtasks", lambda self, args, timeout=20: False)
+
+    success, message = plugin.restartDomoticz()
+
+    assert success is False
+    assert message == "Failed to schedule Windows restart task. See restart_domoticz.log."
 
 
 def test_windows_restart_probe_detects_script_execution_policy(plugin_core_module, tmp_path, monkeypatch):

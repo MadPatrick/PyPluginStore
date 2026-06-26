@@ -12,7 +12,7 @@ import urllib.parse
 import urllib.request
 import json
 import shutil
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import Domoticz
 
@@ -326,8 +326,21 @@ class WindowsHostRuntime(HostRuntime):
     def windows_restart_script_file(self):
         return os.path.join(self.plugin_home_folder(), "restart_domoticz.ps1")
 
+    def windows_restart_command_file(self):
+        return os.path.join(self.plugin_home_folder(), "restart_domoticz.cmd")
+
     def windows_restart_probe_file(self):
         return os.path.join(self.plugin_home_folder(), "restart_domoticz_probe.ps1")
+
+    def windows_restart_task_name(self):
+        return r"\PyPluginStore-Domoticz-Restart"
+
+    def schtasks_executable(self):
+        system_root = os.environ.get("SystemRoot", r"C:\Windows")
+        candidate = os.path.join(system_root, "System32", "schtasks.exe")
+        if os.path.isfile(candidate):
+            return candidate
+        return "schtasks.exe"
 
     def powershell_executable(self):
         system_root = os.environ.get("SystemRoot", r"C:\Windows")
@@ -492,36 +505,92 @@ exit 1
             .replace("__SERVICE_NAMES__", ", ".join(service_names))
         )
 
+    def build_windows_restart_command(self, script_file):
+        powershell_command = (
+            "$ErrorActionPreference = 'Stop'; "
+            "$LogFile = {log_file}; "
+            "function Write-RestartLog {{ "
+            "param([string]$Message) "
+            "try {{ "
+            "$timestamp = (Get-Date).ToString('s'); "
+            "Add-Content -LiteralPath $LogFile -Value ('[{{0}}] {{1}}' -f $timestamp, $Message) -Encoding UTF8 "
+            "}} catch {{}} "
+            "}}; "
+            "try {{ "
+            "Write-RestartLog 'scheduled task helper started'; "
+            "$script = [System.IO.File]::ReadAllText({script_file}); "
+            "Invoke-Expression $script; "
+            "exit $LASTEXITCODE "
+            "}} catch {{ "
+            "Write-RestartLog ('scheduled task helper exception: ' + $_.Exception.Message); "
+            "exit 1 "
+            "}}"
+        ).format(
+            log_file=self.powershell_quote(self.restart_log_file()),
+            script_file=self.powershell_quote(script_file),
+        )
+        return '@echo off\r\n"{}" -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "{}"\r\n'.format(
+            self.powershell_executable(),
+            powershell_command,
+        )
+
+    def run_schtasks(self, args, timeout=20):
+        command = [self.schtasks_executable()] + args
+        self.append_restart_log("running: " + subprocess.list2cmdline(command))
+        try:
+            result = subprocess.run(
+                command,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                timeout=timeout,
+            )
+            self.append_restart_log("return code: " + str(result.returncode))
+            if result.stdout:
+                self.append_restart_log("stdout: " + result.stdout.strip())
+            if result.stderr:
+                self.append_restart_log("stderr: " + result.stderr.strip())
+            return result.returncode == 0
+        except Exception as e:
+            self.append_restart_log("exception: " + str(e))
+            return False
+
+    def schedule_windows_restart_task(self, command_file):
+        task_time = (datetime.now() + timedelta(minutes=1)).strftime("%H:%M")
+        task_action = 'cmd.exe /d /c ""{}""'.format(command_file)
+        task_name = self.windows_restart_task_name()
+        if not self.run_schtasks([
+            "/Create",
+            "/TN", task_name,
+            "/SC", "ONCE",
+            "/ST", task_time,
+            "/TR", task_action,
+            "/RU", "SYSTEM",
+            "/RL", "HIGHEST",
+            "/F",
+        ]):
+            return False
+        return self.run_schtasks(["/Run", "/TN", task_name])
+
     def restart_domoticz(self):
         script_file = self.windows_restart_script_file()
+        command_file = self.windows_restart_command_file()
         try:
             self.append_restart_log("restart requested")
             script = self.build_windows_restart_script()
             with open(script_file, "w", encoding="utf-8", newline="\r\n") as restart_script:
                 restart_script.write(script)
+            with open(command_file, "w", encoding="utf-8", newline="\r\n") as restart_command:
+                restart_command.write(self.build_windows_restart_command(script_file))
 
             self.probe_powershell_file_execution()
             if not self.probe_powershell_encoded_command():
                 return False, "PowerShell EncodedCommand probe failed. See restart_domoticz.log."
 
-            command = [
-                self.powershell_executable(),
-                "-NoProfile",
-                "-NonInteractive",
-                "-ExecutionPolicy",
-                "Bypass",
-                "-EncodedCommand",
-                self.powershell_encoded_command(script),
-            ]
-            self.append_restart_log("launching Windows PowerShell restart helper via EncodedCommand")
-
-            subprocess.Popen(
-                command,
-                stdin=subprocess.DEVNULL,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                **self.detached_popen_kwargs()
-            )
+            self.append_restart_log("launching Windows scheduled restart task: " + command_file)
+            if not self.schedule_windows_restart_task(command_file):
+                return False, "Failed to schedule Windows restart task. See restart_domoticz.log."
             return True, "Domoticz restart requested"
         except Exception as e:
             self.append_restart_log("failed to schedule restart: " + str(e))
