@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.11.0](https://github.com/adrighem/PyPluginStore/compare/v2.10.0...v2.11.0) (2026-06-26)
+
+
+### Features
+
+* detect pre-existing plugin installs ([4cdf56a](https://github.com/adrighem/PyPluginStore/commit/4cdf56a2345a11df5571f0d860722345701b12fa))
+
 ## [2.10.0](https://github.com/adrighem/PyPluginStore/compare/v2.9.1...v2.10.0) (2026-06-26)
 
 
