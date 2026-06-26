@@ -7,12 +7,26 @@ def configure_home(plugin_core_module, tmp_path):
     plugins_dir = tmp_path / "domoticz" / "plugins"
     manager_dir = plugins_dir / "00-PyPluginStore"
     manager_dir.mkdir(parents=True)
+    write_plugin_py(
+        manager_dir,
+        key="PP-MANAGER",
+        name="PyPluginStore",
+        externallink="https://github.com/adrighem/PyPluginStore",
+    )
     plugin_core_module.Parameters = {
         "HomeFolder": str(manager_dir) + "/",
         "Mode4": "None",
         "Mode6": "Normal",
     }
     return plugins_dir, manager_dir
+
+
+def write_plugin_py(plugin_dir, key, name, externallink=""):
+    plugin_dir.mkdir(parents=True, exist_ok=True)
+    externallink_attr = f' externallink="{externallink}"' if externallink else ""
+    (plugin_dir / "plugin.py").write_text(
+        f'"""\n<plugin key="{key}" name="{name}" author="tester"{externallink_attr}>\n</plugin>\n"""\n'
+    )
 
 
 def test_add_self_to_registry_uses_installed_folder(plugin_core_module, tmp_path):
@@ -335,9 +349,31 @@ def test_refresh_installed_update_statuses_checks_managed_plugins_in_order(plugi
     }
 
 
+def test_refresh_installed_update_status_uses_detected_folder(plugin_core_module, tmp_path, monkeypatch):
+    plugins_dir, _ = configure_home(plugin_core_module, tmp_path)
+    plugin_dir = plugins_dir / "Domoticz-deCONZ"
+    write_plugin_py(plugin_dir, key="DECONZ", name="deCONZ")
+    plugin = plugin_core_module.BasePlugin()
+    plugin.plugin_data = {
+        "deCONZ": ["Smanar", "Domoticz-deCONZ", "description", "master", ""],
+    }
+    checked_plugins = []
+
+    def fake_status(actual_plugin_dir, plugin_key=None, fetch_first=True):
+        checked_plugins.append((Path(actual_plugin_dir), plugin_key))
+        return "current"
+
+    monkeypatch.setattr(plugin, "getGitUpdateStatus", fake_status)
+
+    installed = plugin.getInstalledPlugins(plugins_dir)
+
+    assert plugin.refreshInstalledUpdateStatuses(installed, plugins_dir)["deCONZ"] == "current"
+    assert checked_plugins == [(plugin_dir, "deCONZ")]
+
+
 def test_list_plugins_response_includes_manager_and_update_status(plugin_core_module, tmp_path, monkeypatch):
     plugins_dir, _ = configure_home(plugin_core_module, tmp_path)
-    (plugins_dir / "OtherPlugin").mkdir()
+    write_plugin_py(plugins_dir / "OtherPlugin", key="OTHER", name="OtherPlugin")
     (plugins_dir / ".hidden").mkdir()
     plugin = plugin_core_module.BasePlugin()
     plugin.plugin_data = {
@@ -367,9 +403,121 @@ def test_list_plugins_response_includes_manager_and_update_status(plugin_core_mo
     assert response["platforms"] == {}
 
 
+def test_list_plugins_detects_repository_named_existing_folder(plugin_core_module, tmp_path, monkeypatch):
+    plugins_dir, _ = configure_home(plugin_core_module, tmp_path)
+    write_plugin_py(
+        plugins_dir / "Domoticz-deCONZ",
+        key="DECONZ",
+        name="deCONZ",
+        externallink="https://github.com/Smanar/Domoticz-deCONZ",
+    )
+    plugin = plugin_core_module.BasePlugin()
+    plugin.plugin_data = {
+        "deCONZ": ["Smanar", "Domoticz-deCONZ", "description", "master", ""],
+    }
+    responses = []
+
+    monkeypatch.setattr(plugin, "sendApiResponse", responses.append)
+
+    plugin.handleApiCommand({"action": "list_plugins"})
+
+    response = responses[0]
+    assert "deCONZ" in response["installed"]
+    assert "Domoticz-deCONZ" in response["installed"]
+    assert plugin.installed_plugin_folders["deCONZ"] == "Domoticz-deCONZ"
+
+
+def test_get_installed_plugins_detects_matching_git_remote(plugin_core_module, tmp_path):
+    plugins_dir, _ = configure_home(plugin_core_module, tmp_path)
+    renamed_dir = plugins_dir / "MyZigbeePlugin"
+    (renamed_dir / ".git").mkdir(parents=True)
+    write_plugin_py(renamed_dir, key="DECONZ", name="deCONZ")
+    plugin = plugin_core_module.BasePlugin()
+    plugin.plugin_data = {
+        "deCONZ": ["Smanar", "Domoticz-deCONZ", "description", "master", ""],
+    }
+
+    class FakeGitResult:
+        stdout = "origin\tgit@github.com:Smanar/Domoticz-deCONZ.git (fetch)\n"
+        stderr = ""
+        returncode = 0
+
+    plugin.run_git_command = lambda *args, **kwargs: FakeGitResult()
+
+    installed = plugin.getInstalledPlugins(plugins_dir)
+
+    assert "deCONZ" in installed
+    assert plugin.installed_plugin_folders["deCONZ"] == "MyZigbeePlugin"
+
+
+def test_exact_registry_folder_requires_plugin_metadata(plugin_core_module, tmp_path):
+    plugins_dir, _ = configure_home(plugin_core_module, tmp_path)
+    (plugins_dir / "deCONZ").mkdir()
+    plugin = plugin_core_module.BasePlugin()
+    plugin.plugin_data = {
+        "deCONZ": ["Smanar", "Domoticz-deCONZ", "description", "master", ""],
+    }
+
+    installed = plugin.getInstalledPlugins(plugins_dir)
+
+    assert "deCONZ" not in installed
+    assert "deCONZ" not in plugin.installed_plugin_folders
+
+
+def test_exact_registry_folder_rejects_conflicting_metadata(plugin_core_module, tmp_path):
+    plugins_dir, _ = configure_home(plugin_core_module, tmp_path)
+    write_plugin_py(
+        plugins_dir / "deCONZ",
+        key="OTHER",
+        name="OtherPlugin",
+        externallink="https://github.com/example/OtherPlugin",
+    )
+    plugin = plugin_core_module.BasePlugin()
+    plugin.plugin_data = {
+        "deCONZ": ["Smanar", "Domoticz-deCONZ", "description", "master", ""],
+    }
+
+    installed = plugin.getInstalledPlugins(plugins_dir)
+
+    assert "deCONZ" not in installed
+    assert "deCONZ" not in plugin.installed_plugin_folders
+
+
+def test_archive_folder_rejects_ambiguous_repository_name(plugin_core_module, tmp_path):
+    plugins_dir, _ = configure_home(plugin_core_module, tmp_path)
+    write_plugin_py(plugins_dir / "SharedRepo-master", key="SHARED", name="SharedRepo")
+    plugin = plugin_core_module.BasePlugin()
+    plugin.plugin_data = {
+        "FirstPlugin": ["owner-a", "SharedRepo", "description", "master", ""],
+        "SecondPlugin": ["owner-b", "SharedRepo", "description", "master", ""],
+    }
+
+    installed = plugin.getInstalledPlugins(plugins_dir)
+
+    assert "FirstPlugin" not in installed
+    assert "SecondPlugin" not in installed
+
+
+def test_archive_folder_does_not_accept_author_only_match(plugin_core_module, tmp_path):
+    plugins_dir, _ = configure_home(plugin_core_module, tmp_path)
+    plugin_dir = plugins_dir / "Domoticz-deCONZ-master"
+    plugin_dir.mkdir()
+    (plugin_dir / "plugin.py").write_text(
+        '"""\n<plugin key="OTHER" name="OtherPlugin" author="Smanar">\n</plugin>\n"""\n'
+    )
+    plugin = plugin_core_module.BasePlugin()
+    plugin.plugin_data = {
+        "deCONZ": ["Smanar", "Domoticz-deCONZ", "description", "master", ""],
+    }
+
+    installed = plugin.getInstalledPlugins(plugins_dir)
+
+    assert "deCONZ" not in installed
+
+
 def test_list_plugins_response_includes_local_plugin_keys(plugin_core_module, tmp_path, monkeypatch):
     plugins_dir, _ = configure_home(plugin_core_module, tmp_path)
-    (plugins_dir / "LocalPlugin").mkdir()
+    write_plugin_py(plugins_dir / "LocalPlugin", key="PRIVATE", name="LocalPlugin")
     plugin = plugin_core_module.BasePlugin()
     plugin.plugin_data = {
         "LocalPlugin": ["git@github.com:owner/private-plugin.git", "", "description", "main", ""],
@@ -389,6 +537,7 @@ def test_update_command_refreshes_cached_status_for_next_list(plugin_core_module
     plugins_dir, _ = configure_home(plugin_core_module, tmp_path)
     plugin_dir = plugins_dir / "OtherPlugin"
     (plugin_dir / ".git").mkdir(parents=True)
+    write_plugin_py(plugin_dir, key="OTHER", name="OtherPlugin")
     plugin = plugin_core_module.BasePlugin()
     plugin.plugin_data = {
         "OtherPlugin": ["owner", "repo", "description", "main", ""],
@@ -425,9 +574,64 @@ def test_update_command_refreshes_cached_status_for_next_list(plugin_core_module
     assert status_calls == [(plugin_dir, "OtherPlugin", False)]
 
 
+def test_update_command_uses_detected_repository_folder(plugin_core_module, tmp_path, monkeypatch):
+    plugins_dir, _ = configure_home(plugin_core_module, tmp_path)
+    plugin_dir = plugins_dir / "Domoticz-deCONZ"
+    (plugin_dir / ".git").mkdir(parents=True)
+    write_plugin_py(plugin_dir, key="DECONZ", name="deCONZ")
+    plugin = plugin_core_module.BasePlugin()
+    plugin.plugin_data = {
+        "deCONZ": ["Smanar", "Domoticz-deCONZ", "description", "master", ""],
+    }
+    responses = []
+    git_calls = []
+    status_calls = []
+
+    class FakeGitResult:
+        stdout = "Already up to date."
+        stderr = ""
+        returncode = 0
+
+    def fake_run(command, cwd=None, **kwargs):
+        git_calls.append((command, Path(cwd)))
+        if command == ["git", "remote", "-v"]:
+            class FakeRemoteResult:
+                stdout = "origin\tgit@github.com:Smanar/Domoticz-deCONZ.git (fetch)\n"
+                stderr = ""
+                returncode = 0
+
+            return FakeRemoteResult()
+        return FakeGitResult()
+
+    def fake_refresh_status(plugin_key, actual_plugin_dir, fetch_first=True):
+        status_calls.append((plugin_key, Path(actual_plugin_dir), fetch_first))
+        plugin.update_status[plugin_key] = "current"
+        return "current"
+
+    monkeypatch.setattr(plugin_core_module.subprocess, "run", fake_run)
+    monkeypatch.setattr(plugin, "refresh_single_plugin_update_time", lambda *args, **kwargs: False)
+    monkeypatch.setattr(plugin, "refresh_single_plugin_update_status", fake_refresh_status)
+    monkeypatch.setattr(plugin, "installDependencies", lambda plugin_key: None)
+    monkeypatch.setattr(plugin, "sendApiResponse", responses.append)
+
+    plugin.handleApiCommand({"action": "update", "plugin_key": "deCONZ"})
+
+    assert responses[0] == {
+        "status": "success",
+        "action": "update",
+        "plugin_key": "deCONZ",
+    }
+    assert all(cwd == plugin_dir for _, cwd in git_calls)
+    assert [command for command, _ in git_calls[-2:]] == [
+        ["git", "reset", "--hard", "HEAD"],
+        ["git", "pull", "--force"],
+    ]
+    assert status_calls == [("deCONZ", plugin_dir, False)]
+
+
 def test_refresh_update_status_command_runs_serial_refresh(plugin_core_module, tmp_path, monkeypatch):
     plugins_dir, _ = configure_home(plugin_core_module, tmp_path)
-    (plugins_dir / "OtherPlugin").mkdir()
+    write_plugin_py(plugins_dir / "OtherPlugin", key="OTHER", name="OtherPlugin")
     plugin = plugin_core_module.BasePlugin()
     plugin.plugin_data = {
         "OtherPlugin": ["owner", "repo", "description", "main", ""],

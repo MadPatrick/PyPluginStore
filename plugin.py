@@ -36,6 +36,7 @@
 
 
 import base64
+import html
 import os
 import platform
 import re
@@ -701,6 +702,7 @@ class BasePlugin:
         self.last_update_date = None
         self.last_update_status_refresh_date = None
         self.host = None
+        self.installed_plugin_folders = {}
 
     def get_host(self):
         parameters = globals().get("Parameters", {})
@@ -763,6 +765,257 @@ class BasePlugin:
                 return clone_url
 
         return f"https://github.com/{author}/{repository}.git"
+
+    def normalize_plugin_folder_name(self, folder_name):
+        folder_name = str(folder_name or "").strip().strip("/\\")
+        if folder_name.endswith(".git"):
+            folder_name = folder_name[:-4]
+        return folder_name.lower()
+
+    def plugin_folder_name_from_clone_url(self, clone_url):
+        clone_url = str(clone_url or "").strip().rstrip("/")
+        if not clone_url:
+            return ""
+        if clone_url.endswith(".git"):
+            clone_url = clone_url[:-4]
+
+        if re.match(r"^[^/@:]+@[^:]+:.+", clone_url):
+            path = clone_url.split(":", 1)[1]
+        else:
+            parsed_url = urllib.parse.urlparse(clone_url)
+            path = parsed_url.path if parsed_url.scheme else clone_url
+
+        return os.path.basename(path.rstrip("/"))
+
+    def normalize_git_remote_url(self, remote_url):
+        remote_url = str(remote_url or "").strip()
+        if not remote_url:
+            return ""
+
+        remote_url = remote_url.replace(" (fetch)", "").replace(" (push)", "").strip()
+        if re.match(r"^[^/@:]+@[^:]+:.+", remote_url):
+            user_host, path = remote_url.split(":", 1)
+            host = user_host.split("@")[-1]
+            path = path.strip("/")
+            if path.endswith(".git"):
+                path = path[:-4]
+            return (host + "/" + path).lower()
+
+        parsed_url = urllib.parse.urlparse(remote_url)
+        if parsed_url.scheme == "file":
+            file_path = urllib.request.url2pathname(parsed_url.path)
+            return "file://" + os.path.normcase(os.path.abspath(file_path)).rstrip(os.sep).lower()
+
+        if parsed_url.hostname:
+            path = parsed_url.path.strip("/")
+            if path.endswith(".git"):
+                path = path[:-4]
+            return (parsed_url.hostname + "/" + path).lower()
+
+        remote_url = remote_url.rstrip("/")
+        if remote_url.endswith(".git"):
+            remote_url = remote_url[:-4]
+        return remote_url.lower()
+
+    def normalize_github_repo_identity(self, repo_url):
+        repo_url = str(repo_url or "").strip()
+        if not repo_url:
+            return ""
+
+        if re.match(r"^[^/@:]+@github\.com:.+", repo_url, re.IGNORECASE):
+            path = repo_url.split(":", 1)[1]
+            path_parts = [part for part in path.split("/") if part]
+            if len(path_parts) >= 2:
+                repository = path_parts[1]
+                if repository.endswith(".git"):
+                    repository = repository[:-4]
+                return ("github.com/" + path_parts[0] + "/" + repository).lower()
+
+        parsed_url = urllib.parse.urlparse(repo_url)
+        if parsed_url.hostname and parsed_url.hostname.lower() == "github.com":
+            path_parts = [part for part in parsed_url.path.split("/") if part]
+            if len(path_parts) >= 2:
+                repository = path_parts[1]
+                if repository.endswith(".git"):
+                    repository = repository[:-4]
+                return ("github.com/" + path_parts[0] + "/" + repository).lower()
+
+        shorthand_url = urllib.parse.urlparse("//" + repo_url)
+        if shorthand_url.hostname and shorthand_url.hostname.lower() == "github.com":
+            path_parts = [part for part in shorthand_url.path.split("/") if part]
+            if len(path_parts) >= 2:
+                repository = path_parts[1]
+                if repository.endswith(".git"):
+                    repository = repository[:-4]
+                return ("github.com/" + path_parts[0] + "/" + repository).lower()
+
+        return ""
+
+    def normalize_plugin_metadata_value(self, value):
+        return re.sub(r"[^a-z0-9]+", "", str(value or "").lower())
+
+    def parse_domoticz_plugin_metadata(self, plugin_dir):
+        plugin_file = os.path.join(plugin_dir, "plugin.py")
+        if not os.path.isfile(plugin_file):
+            return None
+
+        try:
+            with open(plugin_file, "r", encoding="utf-8", errors="ignore") as f:
+                source_code = f.read(256 * 1024)
+        except Exception as e:
+            Domoticz.Debug("Could not read plugin metadata from " + plugin_file + ": " + str(e))
+            return None
+
+        plugin_tag = re.search(r"<plugin\b([^>]*)>", source_code, re.IGNORECASE | re.DOTALL)
+        if not plugin_tag:
+            return None
+
+        metadata = {}
+        for match in re.finditer(r"([A-Za-z_][\w:.-]*)\s*=\s*(\"([^\"]*)\"|'([^']*)')", plugin_tag.group(1)):
+            value = match.group(3) if match.group(3) is not None else match.group(4)
+            metadata[match.group(1).lower()] = html.unescape(value or "")
+        return metadata
+
+    def plugin_metadata_matches_registry(self, plugin_key, plugin_dir):
+        data = self.plugin_data.get(plugin_key)
+        if not isinstance(data, list) or len(data) < 4:
+            return False
+
+        metadata = self.parse_domoticz_plugin_metadata(plugin_dir)
+        if metadata is None:
+            Domoticz.Debug("Skipped possible plugin match for folder " + os.path.basename(plugin_dir) + " because plugin.py metadata could not be verified.")
+            return False
+
+        clone_url = self.build_git_clone_url(data[0], data[1])
+        expected_repo_identity = self.normalize_github_repo_identity(clone_url)
+        externallink = metadata.get("externallink", "")
+        externallink_identity = self.normalize_github_repo_identity(externallink)
+        if externallink_identity:
+            if externallink_identity == expected_repo_identity:
+                return True
+            Domoticz.Debug("Skipped possible plugin match for folder " + os.path.basename(plugin_dir) + " because externallink points to another repository.")
+            return False
+
+        repo_folder = self.plugin_folder_name_from_clone_url(clone_url)
+        expected_names = {
+            self.normalize_plugin_metadata_value(plugin_key),
+            self.normalize_plugin_metadata_value(data[1]),
+            self.normalize_plugin_metadata_value(repo_folder),
+        }
+        expected_names.discard("")
+
+        metadata_names = [
+            self.normalize_plugin_metadata_value(metadata.get("key", "")),
+            self.normalize_plugin_metadata_value(metadata.get("name", "")),
+        ]
+        if any(metadata_name in expected_names for metadata_name in metadata_names if metadata_name):
+            return True
+
+        plugin_key_metadata = self.normalize_plugin_metadata_value(metadata.get("key", ""))
+        if plugin_key_metadata and plugin_key_metadata not in expected_names:
+            Domoticz.Debug("Skipped possible plugin match for folder " + os.path.basename(plugin_dir) + " because plugin metadata key does not match.")
+            return False
+
+        return True
+
+    def add_install_name_candidate(self, name_lookup, candidate, plugin_key):
+        candidate = self.normalize_plugin_folder_name(candidate)
+        if not candidate:
+            return
+        if candidate not in name_lookup:
+            name_lookup[candidate] = []
+        if plugin_key not in name_lookup[candidate]:
+            name_lookup[candidate].append(plugin_key)
+
+    def build_installed_plugin_lookup(self):
+        exact_name_lookup = {}
+        archive_name_lookup = {}
+        remote_lookup = {}
+
+        for plugin_key, data in self.plugin_data.items():
+            if plugin_key == "Idle" or not isinstance(data, list) or len(data) < 4:
+                continue
+
+            exact_name_lookup[self.normalize_plugin_folder_name(plugin_key)] = plugin_key
+
+        for plugin_key, data in self.plugin_data.items():
+            if plugin_key == "Idle" or not isinstance(data, list) or len(data) < 4:
+                continue
+
+            author = data[0]
+            repository = data[1]
+            branch = data[3]
+            clone_url = self.build_git_clone_url(author, repository)
+            repo_folder = self.plugin_folder_name_from_clone_url(clone_url)
+            name_candidates = [repository, repo_folder]
+
+            for candidate in name_candidates:
+                if not candidate:
+                    continue
+                self.add_install_name_candidate(archive_name_lookup, candidate, plugin_key)
+                if branch:
+                    self.add_install_name_candidate(archive_name_lookup, candidate + "-" + branch, plugin_key)
+                    self.add_install_name_candidate(archive_name_lookup, candidate + "_" + branch, plugin_key)
+
+            remote_key = self.normalize_git_remote_url(clone_url)
+            if remote_key and remote_key not in remote_lookup:
+                remote_lookup[remote_key] = plugin_key
+
+        return exact_name_lookup, archive_name_lookup, remote_lookup
+
+    def get_git_remote_urls(self, plugin_dir):
+        result = self.run_git_command(plugin_dir, ["git", "remote", "-v"], timeout=10)
+        remote_urls = []
+        if result is not None and result.returncode == 0:
+            for line in result.stdout.splitlines():
+                parts = line.split()
+                if len(parts) >= 3 and parts[2] in ("(fetch)", "(push)") and parts[1] not in remote_urls:
+                    remote_urls.append(parts[1])
+
+        if not remote_urls:
+            remote_url = self.get_git_remote_url(plugin_dir, "origin")
+            if remote_url and not any(char.isspace() for char in remote_url):
+                remote_urls.append(remote_url)
+        return remote_urls
+
+    def match_unique_archive_candidate(self, plugin_folder, archive_name_lookup):
+        matched_keys = archive_name_lookup.get(self.normalize_plugin_folder_name(plugin_folder), [])
+        if len(matched_keys) == 1:
+            return matched_keys[0]
+        if len(matched_keys) > 1:
+            Domoticz.Debug("Skipped possible plugin match for folder " + plugin_folder + " because the folder name is ambiguous.")
+        return ""
+
+    def match_installed_plugin_key(self, plugin_folder, plugin_path, exact_name_lookup, archive_name_lookup, remote_lookup):
+        plugin_file = os.path.join(plugin_path, "plugin.py")
+        if not os.path.isfile(plugin_file):
+            Domoticz.Debug("Skipped possible plugin match for folder " + plugin_folder + " because plugin.py was not found.")
+            return ""
+
+        is_git_repo = os.path.isdir(os.path.join(plugin_path, ".git"))
+        remote_urls = self.get_git_remote_urls(plugin_path) if is_git_repo else []
+        for remote_url in remote_urls:
+            matched_key = remote_lookup.get(self.normalize_git_remote_url(remote_url), "")
+            if matched_key:
+                if self.plugin_metadata_matches_registry(matched_key, plugin_path):
+                    return matched_key
+                return ""
+
+        if remote_urls:
+            Domoticz.Debug("Skipped possible plugin match for folder " + plugin_folder + " because its git remote does not match the registry.")
+            return ""
+
+        matched_key = exact_name_lookup.get(self.normalize_plugin_folder_name(plugin_folder), "")
+        if matched_key and self.plugin_metadata_matches_registry(matched_key, plugin_path):
+            return matched_key
+
+        if is_git_repo:
+            return ""
+
+        matched_key = self.match_unique_archive_candidate(plugin_folder, archive_name_lookup)
+        if matched_key and self.plugin_metadata_matches_registry(matched_key, plugin_path):
+            return matched_key
+        return ""
 
     def load_registry_file(self, registry_file, label, missing_is_error=False):
         if not os.path.isfile(registry_file):
@@ -1071,12 +1324,73 @@ class BasePlugin:
             self.apply_update_times(update_times)
         return changed
 
+    def add_installed_plugin(self, installed_plugins, plugin_key):
+        if plugin_key and plugin_key not in installed_plugins:
+            installed_plugins.append(plugin_key)
+
     def getInstalledPlugins(self, plugins_dir):
         installed_plugins = []
-        for d in os.listdir(plugins_dir):
-            if os.path.isdir(os.path.join(plugins_dir, d)) and not d.startswith("."):
-                installed_plugins.append(d)
+        installed_plugin_folders = {}
+        exact_name_lookup, archive_name_lookup, remote_lookup = self.build_installed_plugin_lookup()
+
+        try:
+            plugin_folders = os.listdir(plugins_dir)
+        except Exception as e:
+            Domoticz.Error("Could not scan Domoticz plugins folder: " + str(e))
+            self.installed_plugin_folders = {}
+            return installed_plugins
+
+        for plugin_folder in plugin_folders:
+            plugin_path = os.path.join(plugins_dir, plugin_folder)
+            if not os.path.isdir(plugin_path) or plugin_folder.startswith("."):
+                continue
+
+            matched_key = self.match_installed_plugin_key(
+                plugin_folder,
+                plugin_path,
+                exact_name_lookup,
+                archive_name_lookup,
+                remote_lookup,
+            )
+            if matched_key:
+                self.add_installed_plugin(installed_plugins, matched_key)
+                installed_plugin_folders[matched_key] = plugin_folder
+                if matched_key != plugin_folder:
+                    Domoticz.Debug("Detected installed plugin " + matched_key + " in folder " + plugin_folder)
+                if plugin_folder not in self.plugin_data:
+                    self.add_installed_plugin(installed_plugins, plugin_folder)
+                    installed_plugin_folders[plugin_folder] = plugin_folder
+            elif plugin_folder not in self.plugin_data:
+                self.add_installed_plugin(installed_plugins, plugin_folder)
+                installed_plugin_folders[plugin_folder] = plugin_folder
+
+        self.installed_plugin_folders = installed_plugin_folders
         return installed_plugins
+
+    def get_installed_plugin_folder(self, plugin_key, plugins_dir=None):
+        plugin_key = self.get_host().validate_plugin_key(plugin_key)
+        if plugins_dir is None:
+            plugins_dir = self.get_host().plugins_dir()
+
+        plugin_folder = self.installed_plugin_folders.get(plugin_key, "")
+        if plugin_folder and os.path.isdir(os.path.join(plugins_dir, plugin_folder)):
+            return plugin_folder
+
+        self.getInstalledPlugins(plugins_dir)
+        return self.installed_plugin_folders.get(plugin_key, plugin_key)
+
+    def resolve_installed_plugin_dir(self, plugin_key, plugins_dir=None):
+        host = self.get_host()
+        plugin_key = host.validate_plugin_key(plugin_key)
+        if plugins_dir is None:
+            plugins_dir = host.plugins_dir()
+
+        plugins_dir = os.path.abspath(plugins_dir)
+        plugin_folder = host.validate_plugin_key(self.get_installed_plugin_folder(plugin_key, plugins_dir))
+        plugin_dir = os.path.abspath(os.path.join(plugins_dir, plugin_folder))
+        if not host.is_path_inside(plugin_dir, plugins_dir):
+            raise ValueError("Invalid plugin path")
+        return plugin_dir
 
     def getCachedUpdateStatuses(self, installed_plugins):
         update_status = {}
@@ -1108,11 +1422,26 @@ class BasePlugin:
                 update_status[plugin_key] = "unknown"
                 continue
 
-            plugin_dir = os.path.join(plugins_dir, plugin_key)
+            try:
+                plugin_dir = self.resolve_installed_plugin_dir(plugin_key, plugins_dir)
+            except ValueError as e:
+                Domoticz.Error(str(e))
+                update_status[plugin_key] = "unknown"
+                continue
             update_status[plugin_key] = self.refresh_single_plugin_update_status(plugin_key, plugin_dir)
 
         self.update_status.update(update_status)
         return update_status
+
+    def get_managed_installed_plugin_keys(self, plugins_dir=None):
+        if plugins_dir is None:
+            plugins_dir = self.get_host().plugins_dir()
+
+        managed_plugins = []
+        for plugin_key in self.getInstalledPlugins(plugins_dir):
+            if plugin_key in self.plugin_data and plugin_key not in managed_plugins:
+                managed_plugins.append(plugin_key)
+        return managed_plugins
 
     def add_self_to_registry(self):
         self_key = self.get_current_plugin_folder()
@@ -1368,29 +1697,13 @@ class BasePlugin:
 
         if Parameters["Mode4"] == 'All':
             Domoticz.Log("Updating All Plugins!!!")
-            for root, dirs, files in os.walk(plugins_dir):
-                for d in dirs:
-                    if d:
-                        if d in self.plugin_data:
-                            self.UpdatePythonPlugin(self.plugin_data[d][0], self.plugin_data[d][1], d)
-                        elif d == self.get_current_plugin_folder():
-                            Domoticz.Debug("PyPluginStore Folder found. Skipping!!")
-                        else:
-                            Domoticz.Log(f"Plugin: {d} cannot be managed with PyPluginStore!!.")
-                break
+            for plugin_key in self.get_managed_installed_plugin_keys(plugins_dir):
+                self.UpdatePythonPlugin(self.plugin_data[plugin_key][0], self.plugin_data[plugin_key][1], plugin_key)
 
         if Parameters["Mode4"] == 'AllNotify':
             Domoticz.Log("Collecting Updates for All Plugins!!!")
-            for root, dirs, files in os.walk(plugins_dir):
-                for d in dirs:
-                    if d:
-                        if d in self.plugin_data:
-                            self.CheckForUpdatePythonPlugin(self.plugin_data[d][0], self.plugin_data[d][1], d)
-                        elif d == self.get_current_plugin_folder():
-                            Domoticz.Debug("PyPluginStore Folder found. Skipping!!")
-                        else:
-                            Domoticz.Log(f"Plugin: {d} cannot be managed with PyPluginStore!!.")
-                break
+            for plugin_key in self.get_managed_installed_plugin_keys(plugins_dir):
+                self.CheckForUpdatePythonPlugin(self.plugin_data[plugin_key][0], self.plugin_data[plugin_key][1], plugin_key)
 
         Domoticz.Log("Plugin Manager Ready. Use the 'Custom' menu to manage plugins.")
         Domoticz.Heartbeat(60)
@@ -1512,11 +1825,11 @@ class BasePlugin:
         host = self.get_host()
         try:
             plugin_key = host.validate_plugin_key(plugin_key)
-            plugin_target_dir = host.resolve_plugin_dir(plugin_key)
+            plugin_target_dir = self.resolve_installed_plugin_dir(plugin_key)
         except ValueError as e:
             return False, str(e)
 
-        if plugin_key == self.get_current_plugin_folder():
+        if os.path.basename(plugin_target_dir) == self.get_current_plugin_folder():
             return False, "Plugin directory not found or cannot remove self"
 
         if not os.path.isdir(plugin_target_dir):
@@ -1524,6 +1837,12 @@ class BasePlugin:
 
         try:
             shutil.rmtree(plugin_target_dir)
+            removed_folder = os.path.basename(plugin_target_dir)
+            self.installed_plugin_folders = {
+                key: folder
+                for key, folder in self.installed_plugin_folders.items()
+                if folder != removed_folder
+            }
             return True, ""
         except Exception as e:
             if queue_on_lock and host.is_locked_file_error(e):
@@ -1672,29 +1991,13 @@ class BasePlugin:
 
             if Parameters["Mode4"] == 'All':
                 Domoticz.Log("Checking Updates for All Plugins!!!")
-                for root, dirs, files in os.walk(plugins_dir):
-                    for d in dirs:
-                        if d:
-                            if d in self.plugin_data:
-                                self.UpdatePythonPlugin(self.plugin_data[d][0], self.plugin_data[d][1], d)
-                            elif d == self.get_current_plugin_folder():
-                                Domoticz.Debug("PyPluginStore Folder found. Skipping!!")
-                            else:
-                                Domoticz.Log(f"Plugin: {d} cannot be managed with PyPluginStore!!.")
-                    break
+                for plugin_key in self.get_managed_installed_plugin_keys(plugins_dir):
+                    self.UpdatePythonPlugin(self.plugin_data[plugin_key][0], self.plugin_data[plugin_key][1], plugin_key)
 
             if Parameters["Mode4"] == 'AllNotify':
                 Domoticz.Log("Collecting Updates for All Plugins!!!")
-                for root, dirs, files in os.walk(plugins_dir):
-                    for d in dirs:
-                        if d:
-                            if d in self.plugin_data:
-                                self.CheckForUpdatePythonPlugin(self.plugin_data[d][0], self.plugin_data[d][1], d)
-                            elif d == self.get_current_plugin_folder():
-                                Domoticz.Debug("PyPluginStore Folder found. Skipping!!")
-                            else:
-                                Domoticz.Log(f"Plugin: {d} cannot be managed with PyPluginStore!!.")
-                    break
+                for plugin_key in self.get_managed_installed_plugin_keys(plugins_dir):
+                    self.CheckForUpdatePythonPlugin(self.plugin_data[plugin_key][0], self.plugin_data[plugin_key][1], plugin_key)
 
     def InstallPythonPlugin(self, ppAuthor, ppRepository, ppKey, ppBranch):
         Domoticz.Debug("InstallPythonPlugin called")
@@ -1707,6 +2010,20 @@ class BasePlugin:
         except ValueError as e:
             Domoticz.Error(str(e))
             return False, str(e)
+
+        try:
+            existing_plugin_dir = self.resolve_installed_plugin_dir(ppKey, plugins_dir)
+        except ValueError as e:
+            Domoticz.Error(str(e))
+            return False, str(e)
+
+        if os.path.isdir(existing_plugin_dir):
+            existing_folder = os.path.basename(existing_plugin_dir)
+            Domoticz.Log("Plugin " + ppKey + " is already installed in folder " + existing_folder + ".")
+            self.refresh_single_plugin_update_time(ppKey, existing_plugin_dir, fetch_first=False)
+            self.refresh_single_plugin_update_status(ppKey, existing_plugin_dir, fetch_first=False)
+            self.installDependencies(ppKey)
+            return True, "Plugin already installed."
 
         Domoticz.Log("Installing Plugin:" + self.plugin_data[ppKey][2])
         ppCloneCmd = ["git", "clone", "-b", ppBranch, self.build_git_clone_url(ppAuthor, ppRepository), ppKey]
@@ -1739,8 +2056,8 @@ class BasePlugin:
 
         host = self.get_host()
         try:
-            plugin_dir = host.resolve_plugin_dir(ppKey)
             ppKey = host.validate_plugin_key(ppKey)
+            plugin_dir = self.resolve_installed_plugin_dir(ppKey)
         except ValueError as e:
             Domoticz.Error(str(e))
             return False, str(e)
@@ -1817,7 +2134,7 @@ class BasePlugin:
         Domoticz.Debug("Checking Plugin:" + ppKey + " for updates")
 
         try:
-            plugin_dir = self.get_host().resolve_plugin_dir(ppKey)
+            plugin_dir = self.resolve_installed_plugin_dir(ppKey)
         except ValueError as e:
             Domoticz.Error(str(e))
             return None
@@ -2015,7 +2332,7 @@ class BasePlugin:
         Domoticz.Debug("installDependencies called")
         host = self.get_host()
         try:
-            requirements_file = host.requirements_file(plugin_key)
+            requirements_file = os.path.join(self.resolve_installed_plugin_dir(plugin_key), "requirements.txt")
         except ValueError as e:
             Domoticz.Error(str(e))
             return False, str(e)
