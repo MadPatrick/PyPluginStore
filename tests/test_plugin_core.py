@@ -584,7 +584,7 @@ def test_remove_command_rejects_traversal(plugin_core_module, tmp_path):
 
 
 def test_windows_restart_uses_windows_service_commands(plugin_core_module, tmp_path, monkeypatch):
-    configure_home(plugin_core_module, tmp_path)
+    _, manager_dir = configure_home(plugin_core_module, tmp_path)
     monkeypatch.setattr(plugin_core_module.platform, "system", lambda: "Windows")
     plugin = plugin_core_module.BasePlugin()
     popen_calls = []
@@ -599,9 +599,12 @@ def test_windows_restart_uses_windows_service_commands(plugin_core_module, tmp_p
 
     assert success is True
     assert message == "Domoticz restart requested"
-    helper = popen_calls[0][0][2]
-    assert "Restart-Service -Name 'Domoticz'" in helper
-    assert "['sc', 'stop', 'Domoticz']" in helper
+    assert popen_calls[0][0][-2:] == ["-File", str(manager_dir / "restart_domoticz.ps1")]
+    helper = (manager_dir / "restart_domoticz.ps1").read_text()
+    assert "Restart-Service -Name " in helper
+    assert "@(\"sc.exe\", \"stop\", $serviceName)" in helper
+    assert (manager_dir / "restart_domoticz.log").exists()
+    assert "launching Windows PowerShell restart helper" in (manager_dir / "restart_domoticz.log").read_text()
     assert "start_new_session" not in popen_calls[0][1]
 
 

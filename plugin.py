@@ -112,6 +112,16 @@ class HostRuntime:
     def restart_log_file(self):
         return os.path.join(self.plugin_home_folder(), "restart_domoticz.log")
 
+    def append_restart_log(self, message):
+        timestamp = datetime.now().isoformat(timespec="seconds")
+        try:
+            with open(self.restart_log_file(), "a", encoding="utf-8") as restart_log:
+                restart_log.write("[{}] {}\n".format(timestamp, message))
+            return True
+        except Exception as e:
+            Domoticz.Error(f"Failed to write Domoticz restart log: {e}")
+            return False
+
     def get_git_env(self):
         env = os.environ.copy()
         env["GIT_TERMINAL_PROMPT"] = "0"
@@ -255,6 +265,8 @@ else:
             return False, "Domoticz restart is not configured for this platform."
 
         helper = self.build_restart_helper(command_groups, self.restart_log_file())
+        self.append_restart_log("restart requested")
+        self.append_restart_log("launching Python restart helper: " + str(sys.executable))
         popen_kwargs = {
             "stdin": subprocess.DEVNULL,
             "stdout": subprocess.DEVNULL,
@@ -344,6 +356,126 @@ class LinuxHostRuntime(HostRuntime):
 
 class WindowsHostRuntime(HostRuntime):
     platform_name = "windows"
+
+    def windows_restart_script_file(self):
+        return os.path.join(self.plugin_home_folder(), "restart_domoticz.ps1")
+
+    def powershell_executable(self):
+        system_root = os.environ.get("SystemRoot", r"C:\Windows")
+        candidate = os.path.join(system_root, "System32", "WindowsPowerShell", "v1.0", "powershell.exe")
+        if os.path.isfile(candidate):
+            return candidate
+        return "powershell.exe"
+
+    def powershell_quote(self, value):
+        return "'" + str(value).replace("'", "''") + "'"
+
+    def build_windows_restart_script(self):
+        script = r"""
+$ErrorActionPreference = "Continue"
+$LogFile = __LOG_FILE__
+$ServiceNames = @(__SERVICE_NAMES__)
+
+function Write-RestartLog {
+    param([string]$Message)
+    try {
+        $timestamp = (Get-Date).ToString("s")
+        Add-Content -LiteralPath $LogFile -Value "[$timestamp] $Message" -Encoding UTF8
+    } catch {
+    }
+}
+
+function Write-CommandOutput {
+    param($Output)
+    if ($null -eq $Output) {
+        return
+    }
+    foreach ($line in $Output) {
+        Write-RestartLog ("output: " + [string]$line)
+    }
+}
+
+function Invoke-ExternalCommand {
+    param([string[]]$Command)
+    Write-RestartLog ("running: " + ($Command -join " "))
+    try {
+        $commandArgs = @()
+        if ($Command.Count -gt 1) {
+            $commandArgs = $Command[1..($Command.Count - 1)]
+        }
+        $output = & $Command[0] @commandArgs 2>&1
+        $exitCode = $LASTEXITCODE
+        Write-CommandOutput $output
+        Write-RestartLog ("return code: " + $exitCode)
+        return ($exitCode -eq 0)
+    } catch {
+        Write-RestartLog ("exception: " + $_.Exception.Message)
+        return $false
+    }
+}
+
+Write-RestartLog "restart helper started"
+Start-Sleep -Seconds 2
+
+foreach ($serviceName in $ServiceNames) {
+    Write-RestartLog ("running: Restart-Service -Name " + $serviceName + " -Force")
+    try {
+        $output = Restart-Service -Name $serviceName -Force -ErrorAction Stop 2>&1
+        Write-CommandOutput $output
+        Write-RestartLog ("Restart-Service completed for " + $serviceName)
+        exit 0
+    } catch {
+        Write-RestartLog ("exception: " + $_.Exception.Message)
+    }
+}
+
+foreach ($serviceName in $ServiceNames) {
+    $stopOk = Invoke-ExternalCommand @("sc.exe", "stop", $serviceName)
+    Start-Sleep -Seconds 3
+    $startOk = Invoke-ExternalCommand @("sc.exe", "start", $serviceName)
+    if ($stopOk -and $startOk) {
+        Write-RestartLog ("sc stop/start completed for " + $serviceName)
+        exit 0
+    }
+}
+
+Write-RestartLog "all restart command groups failed"
+exit 1
+"""
+        service_names = [self.powershell_quote("Domoticz"), self.powershell_quote("domoticz")]
+        return (
+            script
+            .replace("__LOG_FILE__", self.powershell_quote(self.restart_log_file()))
+            .replace("__SERVICE_NAMES__", ", ".join(service_names))
+        )
+
+    def restart_domoticz(self):
+        script_file = self.windows_restart_script_file()
+        try:
+            self.append_restart_log("restart requested")
+            with open(script_file, "w", encoding="utf-8", newline="\r\n") as restart_script:
+                restart_script.write(self.build_windows_restart_script())
+            self.append_restart_log("launching Windows PowerShell restart helper: " + script_file)
+
+            subprocess.Popen(
+                [
+                    self.powershell_executable(),
+                    "-NoProfile",
+                    "-ExecutionPolicy",
+                    "Bypass",
+                    "-File",
+                    script_file,
+                ],
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                **self.detached_popen_kwargs()
+            )
+            return True, "Domoticz restart requested"
+        except Exception as e:
+            self.append_restart_log("failed to schedule restart: " + str(e))
+            Domoticz.Error(f"Failed to schedule Domoticz restart: {e}")
+            return False, str(e)
 
     def restart_command_groups(self):
         return [
