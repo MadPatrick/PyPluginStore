@@ -109,6 +109,9 @@ class HostRuntime:
     def pending_operations_file(self):
         return os.path.join(self.plugin_home_folder(), "pending_operations.json")
 
+    def restart_log_file(self):
+        return os.path.join(self.plugin_home_folder(), "restart_domoticz.log")
+
     def get_git_env(self):
         env = os.environ.copy()
         env["GIT_TERMINAL_PROMPT"] = "0"
@@ -185,37 +188,73 @@ class HostRuntime:
     def detached_popen_kwargs(self):
         return {}
 
-    def build_restart_helper(self, command_groups):
-        return """
+    def build_restart_helper(self, command_groups, log_file):
+        helper = """
+import datetime
 import subprocess
 import time
+import traceback
 
-command_groups = {command_groups!r}
+command_groups = __COMMAND_GROUPS__
+log_file = __LOG_FILE__
 
+def write_log(message):
+    timestamp = datetime.datetime.now().isoformat(timespec="seconds")
+    try:
+        with open(log_file, "a", encoding="utf-8") as restart_log:
+            restart_log.write("[{}] {}\\n".format(timestamp, message))
+    except Exception:
+        pass
+
+write_log("restart helper started")
 time.sleep(2)
-for command_group in command_groups:
+for group_index, command_group in enumerate(command_groups, start=1):
+    write_log("trying command group {}".format(group_index))
     success = True
     for index, command in enumerate(command_group):
+        write_log("running: {}".format(subprocess.list2cmdline(command)))
         try:
-            result = subprocess.run(command, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=20)
+            result = subprocess.run(
+                command,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                timeout=20
+            )
+            write_log("return code: {}".format(result.returncode))
+            if result.stdout:
+                write_log("stdout: {}".format(result.stdout.strip()))
+            if result.stderr:
+                write_log("stderr: {}".format(result.stderr.strip()))
             if result.returncode != 0:
                 success = False
                 break
             if index < len(command_group) - 1:
                 time.sleep(3)
-        except Exception:
+        except Exception as e:
+            write_log("exception: {}".format(e))
+            write_log(traceback.format_exc().strip())
             success = False
             break
     if success:
+        write_log("restart command group completed")
         break
-""".format(command_groups=command_groups)
+else:
+    write_log("all restart command groups failed")
+"""
+        return (
+            helper
+            .replace("__COMMAND_GROUPS__", repr(command_groups))
+            .replace("__LOG_FILE__", repr(log_file))
+        )
 
     def restart_domoticz(self):
         command_groups = self.restart_command_groups()
         if not command_groups:
             return False, "Domoticz restart is not configured for this platform."
 
-        helper = self.build_restart_helper(command_groups)
+        helper = self.build_restart_helper(command_groups, self.restart_log_file())
         popen_kwargs = {
             "stdin": subprocess.DEVNULL,
             "stdout": subprocess.DEVNULL,

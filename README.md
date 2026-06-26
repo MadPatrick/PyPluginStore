@@ -107,6 +107,8 @@ On Windows it tries service commands such as PowerShell `Restart-Service -Name D
 
 For the button to work, the user running Domoticz must have permission to restart the service. On Linux this may require a tightly scoped passwordless sudo rule. On Windows this may require running Domoticz under an account that can control the Domoticz service. If restart permissions are not configured, PyPluginStore reports the scheduling failure and Domoticz keeps running.
 
+Restart command diagnostics are written to `restart_domoticz.log` in the PyPluginStore plugin folder. On Windows, if the log stops after the `Restart-Service` or `sc stop` command, the detached helper is probably being terminated when the Domoticz service stops. If it records a non-zero return code, stdout, or stderr, use that command output to fix the service name, permissions, or local Windows service configuration.
+
 ---
 
 ## 📦 Manual Dependency Management

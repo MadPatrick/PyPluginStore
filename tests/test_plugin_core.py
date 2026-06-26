@@ -605,6 +605,34 @@ def test_windows_restart_uses_windows_service_commands(plugin_core_module, tmp_p
     assert "start_new_session" not in popen_calls[0][1]
 
 
+def test_restart_helper_logs_command_output(plugin_core_module, tmp_path):
+    runtime = plugin_core_module.HostRuntime({})
+    log_file = tmp_path / "restart_domoticz.log"
+    command_groups = [
+        [[
+            plugin_core_module.sys.executable,
+            "-c",
+            "import sys; sys.stderr.write('restart failed'); sys.exit(7)",
+        ]],
+        [[plugin_core_module.sys.executable, "-c", "print('restart ok')"]],
+    ]
+
+    helper = runtime.build_restart_helper(command_groups, str(log_file))
+    result = plugin_core_module.subprocess.run(
+        [plugin_core_module.sys.executable, "-c", helper],
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+
+    assert result.returncode == 0
+    log_text = log_file.read_text()
+    assert "return code: 7" in log_text
+    assert "stderr: restart failed" in log_text
+    assert "stdout: restart ok" in log_text
+    assert "restart command group completed" in log_text
+
+
 def test_dependency_install_command_prefers_uv_with_active_python(plugin_core_module, tmp_path):
     runtime = plugin_core_module.LinuxHostRuntime({})
     runtime.command_available = lambda command: command == "uv"
