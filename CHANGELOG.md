@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.10.0](https://github.com/adrighem/PyPluginStore/compare/v2.9.1...v2.10.0) (2026-06-26)
+
+
+### Features
+
+* add Windows support runtime ([3bab033](https://github.com/adrighem/PyPluginStore/commit/3bab03358e5f99fa42d04848eacf626689ec045a))
+
 ## [2.9.1](https://github.com/adrighem/PyPluginStore/compare/v2.9.0...v2.9.1) (2026-06-22)
 
 
