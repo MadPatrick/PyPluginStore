@@ -35,6 +35,7 @@
 
 
 
+import base64
 import os
 import platform
 import re
@@ -45,9 +46,636 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import json
-from datetime import datetime
+import shutil
+from datetime import datetime, timedelta
 
 import Domoticz
+
+
+def parameter_get(parameters, key, default):
+    try:
+        return parameters.get(key, default)
+    except AttributeError:
+        try:
+            return parameters[key]
+        except Exception:
+            return default
+
+
+class HostRuntime:
+    platform_name = "generic"
+
+    def __init__(self, parameters):
+        self.parameters = parameters
+
+    def parameter(self, key, default):
+        return parameter_get(self.parameters, key, default)
+
+    def plugin_home_folder(self):
+        return os.path.abspath(self.parameter("HomeFolder", str(os.getcwd()) + os.sep))
+
+    def current_plugin_folder(self):
+        return os.path.basename(os.path.normpath(self.plugin_home_folder()))
+
+    def plugins_dir(self):
+        return os.path.abspath(os.path.join(self.plugin_home_folder(), ".."))
+
+    def domoticz_dir(self):
+        return os.path.abspath(os.path.join(self.plugin_home_folder(), "..", ".."))
+
+    def shared_deps_dir(self):
+        return os.path.join(self.plugin_home_folder(), ".shared_deps")
+
+    def templates_dir(self):
+        return os.path.join(self.domoticz_dir(), "www", "templates")
+
+    def images_dir(self):
+        return os.path.join(self.domoticz_dir(), "www", "images")
+
+    def ui_html_source(self):
+        return os.path.join(self.plugin_home_folder(), "pypluginstore.html")
+
+    def ui_html_destination(self):
+        return os.path.join(self.templates_dir(), "pypluginstore.html")
+
+    def ui_asset_source(self, asset_name):
+        return os.path.join(self.plugin_home_folder(), asset_name)
+
+    def ui_asset_destination(self, asset_name):
+        return os.path.join(self.images_dir(), asset_name)
+
+    def requirements_file(self, plugin_key):
+        return os.path.join(self.resolve_plugin_dir(plugin_key), "requirements.txt")
+
+    def pending_operations_file(self):
+        return os.path.join(self.plugin_home_folder(), "pending_operations.json")
+
+    def restart_log_file(self):
+        return os.path.join(self.plugin_home_folder(), "restart_domoticz.log")
+
+    def append_restart_log(self, message):
+        timestamp = datetime.now().isoformat(timespec="seconds")
+        try:
+            with open(self.restart_log_file(), "a", encoding="utf-8") as restart_log:
+                restart_log.write("[{}] {}\n".format(timestamp, message))
+            return True
+        except Exception as e:
+            Domoticz.Error(f"Failed to write Domoticz restart log: {e}")
+            return False
+
+    def get_git_env(self):
+        env = os.environ.copy()
+        env["GIT_TERMINAL_PROMPT"] = "0"
+        return env
+
+    def format_command(self, command):
+        return " ".join(str(part) for part in command)
+
+    def command_available(self, command):
+        return shutil.which(command) is not None
+
+    def command_can_run(self, command, timeout=10):
+        try:
+            result = subprocess.run(
+                command,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=timeout
+            )
+            return result.returncode == 0
+        except Exception:
+            return False
+
+    def run_git(self, command, cwd, timeout=15):
+        try:
+            return subprocess.run(
+                command,
+                cwd=cwd,
+                env=self.get_git_env(),
+                capture_output=True,
+                text=True,
+                timeout=timeout
+            )
+        except subprocess.TimeoutExpired:
+            Domoticz.Error("Git command timed out in " + str(cwd) + ": " + self.format_command(command))
+        except OSError as e:
+            Domoticz.Error("Git ErrorNo:" + str(e.errno))
+            Domoticz.Error("Git StrError:" + str(e.strerror))
+        except Exception as e:
+            Domoticz.Error("Git command failed in " + str(cwd) + ": " + str(e))
+        return None
+
+    def make_web_readable(self, path):
+        return None
+
+    def validate_plugin_key(self, plugin_key):
+        plugin_key = str(plugin_key or "").strip()
+        if not plugin_key or plugin_key in (".", ".."):
+            raise ValueError("Invalid plugin key")
+        if plugin_key.startswith(".") or "/" in plugin_key or "\\" in plugin_key:
+            raise ValueError("Invalid plugin key")
+        if os.path.basename(plugin_key) != plugin_key:
+            raise ValueError("Invalid plugin key")
+        return plugin_key
+
+    def is_path_inside(self, target_path, base_path):
+        target_path = os.path.normcase(os.path.abspath(target_path))
+        base_path = os.path.normcase(os.path.abspath(base_path))
+        try:
+            return os.path.commonpath([target_path, base_path]) == base_path
+        except ValueError:
+            return False
+
+    def resolve_plugin_dir(self, plugin_key):
+        plugin_key = self.validate_plugin_key(plugin_key)
+        plugin_dir = os.path.abspath(os.path.join(self.plugins_dir(), plugin_key))
+        if not self.is_path_inside(plugin_dir, self.plugins_dir()):
+            raise ValueError("Invalid plugin path")
+        return plugin_dir
+
+    def restart_command_groups(self):
+        return []
+
+    def detached_popen_kwargs(self):
+        return {}
+
+    def build_restart_helper(self, command_groups, log_file):
+        helper = """
+import datetime
+import subprocess
+import time
+import traceback
+
+command_groups = __COMMAND_GROUPS__
+log_file = __LOG_FILE__
+
+def write_log(message):
+    timestamp = datetime.datetime.now().isoformat(timespec="seconds")
+    try:
+        with open(log_file, "a", encoding="utf-8") as restart_log:
+            restart_log.write("[{}] {}\\n".format(timestamp, message))
+    except Exception:
+        pass
+
+write_log("restart helper started")
+time.sleep(2)
+for group_index, command_group in enumerate(command_groups, start=1):
+    write_log("trying command group {}".format(group_index))
+    success = True
+    for index, command in enumerate(command_group):
+        write_log("running: {}".format(subprocess.list2cmdline(command)))
+        try:
+            result = subprocess.run(
+                command,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                timeout=20
+            )
+            write_log("return code: {}".format(result.returncode))
+            if result.stdout:
+                write_log("stdout: {}".format(result.stdout.strip()))
+            if result.stderr:
+                write_log("stderr: {}".format(result.stderr.strip()))
+            if result.returncode != 0:
+                success = False
+                break
+            if index < len(command_group) - 1:
+                time.sleep(3)
+        except Exception as e:
+            write_log("exception: {}".format(e))
+            write_log(traceback.format_exc().strip())
+            success = False
+            break
+    if success:
+        write_log("restart command group completed")
+        break
+else:
+    write_log("all restart command groups failed")
+"""
+        return (
+            helper
+            .replace("__COMMAND_GROUPS__", repr(command_groups))
+            .replace("__LOG_FILE__", repr(log_file))
+        )
+
+    def restart_domoticz(self):
+        command_groups = self.restart_command_groups()
+        if not command_groups:
+            return False, "Domoticz restart is not configured for this platform."
+
+        helper = self.build_restart_helper(command_groups, self.restart_log_file())
+        self.append_restart_log("restart requested")
+        self.append_restart_log("launching Python restart helper: " + str(sys.executable))
+        popen_kwargs = {
+            "stdin": subprocess.DEVNULL,
+            "stdout": subprocess.DEVNULL,
+            "stderr": subprocess.DEVNULL,
+        }
+        popen_kwargs.update(self.detached_popen_kwargs())
+
+        try:
+            subprocess.Popen([sys.executable, "-c", helper], **popen_kwargs)
+            return True, "Domoticz restart requested"
+        except Exception as e:
+            Domoticz.Error(f"Failed to schedule Domoticz restart: {e}")
+            return False, str(e)
+
+    def dependency_install_command(self, requirements_file, target_dir):
+        if self.command_available("uv") and sys.executable:
+            return ["uv", "pip", "install", "--python", sys.executable, "-r", requirements_file, "--target", target_dir]
+
+        if sys.executable and self.command_can_run([sys.executable, "-m", "pip", "--version"]):
+            return [sys.executable, "-m", "pip", "install", "-r", requirements_file, "--target", target_dir]
+
+        for command in ("pip3", "pip"):
+            if self.command_available(command):
+                return [command, "install", "-r", requirements_file, "--target", target_dir]
+        return None
+
+    def install_requirements(self, requirements_file, target_dir, plugin_key):
+        if not os.path.isfile(requirements_file):
+            Domoticz.Log("No requirements.txt found for plugin: " + plugin_key)
+            return True, "No requirements.txt found"
+
+        Domoticz.Log("requirements.txt found for plugin: " + plugin_key)
+        os.makedirs(target_dir, exist_ok=True)
+
+        install_command = self.dependency_install_command(requirements_file, target_dir)
+        if not install_command:
+            Domoticz.Log("Neither 'uv' nor a working pip command found. Skipping automatic dependency installation.")
+            Domoticz.Log(f"Please install dependencies manually from {requirements_file} into {target_dir}")
+            return False, "No Python dependency installer found"
+
+        Domoticz.Log("Installing dependencies using: " + self.format_command(install_command))
+        try:
+            pr = subprocess.Popen(install_command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            out, error = pr.communicate()
+            if pr.returncode == 0:
+                Domoticz.Log("Dependencies installed successfully: " + out.strip())
+                return True, ""
+            Domoticz.Error("Error installing dependencies: " + error.strip())
+            return False, error.strip()
+        except Exception as e:
+            Domoticz.Error("Error running installation command: " + str(e))
+            return False, str(e)
+
+    def is_locked_file_error(self, error):
+        return False
+
+    def is_locked_file_message(self, message):
+        return False
+
+
+class LinuxHostRuntime(HostRuntime):
+    platform_name = "linux"
+
+    def get_git_env(self):
+        env = super().get_git_env()
+        env["LANG"] = "en_US.UTF-8"
+        env["LC_ALL"] = "en_US.UTF-8"
+        return env
+
+    def make_web_readable(self, path):
+        try:
+            os.chmod(path, 0o644)
+        except Exception as e:
+            Domoticz.Debug(f"Could not update file permissions for {path}: {e}")
+
+    def restart_command_groups(self):
+        return [
+            [["sudo", "-n", "systemctl", "restart", "domoticz.service"]],
+            [["systemctl", "restart", "domoticz.service"]],
+            [["sudo", "-n", "service", "domoticz", "restart"]],
+            [["service", "domoticz", "restart"]],
+        ]
+
+    def detached_popen_kwargs(self):
+        return {"start_new_session": True}
+
+
+class WindowsHostRuntime(HostRuntime):
+    platform_name = "windows"
+
+    def windows_restart_script_file(self):
+        return os.path.join(self.plugin_home_folder(), "restart_domoticz.ps1")
+
+    def windows_restart_command_file(self):
+        return os.path.join(self.plugin_home_folder(), "restart_domoticz.cmd")
+
+    def windows_restart_probe_file(self):
+        return os.path.join(self.plugin_home_folder(), "restart_domoticz_probe.ps1")
+
+    def windows_restart_task_name(self):
+        return r"\PyPluginStore-Domoticz-Restart"
+
+    def schtasks_executable(self):
+        system_root = os.environ.get("SystemRoot", r"C:\Windows")
+        candidate = os.path.join(system_root, "System32", "schtasks.exe")
+        if os.path.isfile(candidate):
+            return candidate
+        return "schtasks.exe"
+
+    def powershell_executable(self):
+        system_root = os.environ.get("SystemRoot", r"C:\Windows")
+        candidate = os.path.join(system_root, "System32", "WindowsPowerShell", "v1.0", "powershell.exe")
+        if os.path.isfile(candidate):
+            return candidate
+        return "powershell.exe"
+
+    def powershell_quote(self, value):
+        return "'" + str(value).replace("'", "''") + "'"
+
+    def powershell_encoded_command(self, script):
+        return base64.b64encode(script.encode("utf-16le")).decode("ascii")
+
+    def probe_powershell_file_execution(self):
+        probe_file = self.windows_restart_probe_file()
+        try:
+            with open(probe_file, "w", encoding="utf-8", newline="\r\n") as probe_script:
+                probe_script.write("Write-Output 'PyPluginStore PowerShell file execution probe'\n")
+
+            result = subprocess.run(
+                [
+                    self.powershell_executable(),
+                    "-NoProfile",
+                    "-ExecutionPolicy",
+                    "Bypass",
+                    "-File",
+                    probe_file,
+                ],
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                timeout=10,
+            )
+            self.append_restart_log("PowerShell .ps1 probe return code: " + str(result.returncode))
+            if result.stdout:
+                self.append_restart_log("PowerShell .ps1 probe stdout: " + result.stdout.strip())
+            if result.stderr:
+                self.append_restart_log("PowerShell .ps1 probe stderr: " + result.stderr.strip())
+            if result.returncode != 0:
+                self.append_restart_log("PowerShell .ps1 execution probe failed")
+                if "running scripts is disabled" in str(result.stderr).lower():
+                    self.append_restart_log("PowerShell execution policy blocks .ps1 files")
+                return False
+            return True
+        except Exception as e:
+            self.append_restart_log("PowerShell .ps1 probe exception: " + str(e))
+            return False
+
+    def probe_powershell_encoded_command(self):
+        script = (
+            "$LogFile = {log_file}\n"
+            "$timestamp = (Get-Date).ToString(\"s\")\n"
+            "Add-Content -LiteralPath $LogFile -Value \"[$timestamp] PowerShell EncodedCommand probe succeeded\" -Encoding UTF8\n"
+            "Write-Output 'PyPluginStore PowerShell EncodedCommand probe'\n"
+        ).format(log_file=self.powershell_quote(self.restart_log_file()))
+
+        try:
+            result = subprocess.run(
+                [
+                    self.powershell_executable(),
+                    "-NoProfile",
+                    "-NonInteractive",
+                    "-ExecutionPolicy",
+                    "Bypass",
+                    "-EncodedCommand",
+                    self.powershell_encoded_command(script),
+                ],
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                timeout=10,
+            )
+            self.append_restart_log("PowerShell EncodedCommand probe return code: " + str(result.returncode))
+            if result.stdout:
+                self.append_restart_log("PowerShell EncodedCommand probe stdout: " + result.stdout.strip())
+            if result.stderr:
+                self.append_restart_log("PowerShell EncodedCommand probe stderr: " + result.stderr.strip())
+            return result.returncode == 0
+        except Exception as e:
+            self.append_restart_log("PowerShell EncodedCommand probe exception: " + str(e))
+            return False
+
+    def build_windows_restart_script(self):
+        script = r"""
+$ErrorActionPreference = "Continue"
+$LogFile = __LOG_FILE__
+$ServiceNames = @(__SERVICE_NAMES__)
+
+function Write-RestartLog {
+    param([string]$Message)
+    try {
+        $timestamp = (Get-Date).ToString("s")
+        Add-Content -LiteralPath $LogFile -Value "[$timestamp] $Message" -Encoding UTF8
+    } catch {
+    }
+}
+
+function Write-CommandOutput {
+    param($Output)
+    if ($null -eq $Output) {
+        return
+    }
+    foreach ($line in $Output) {
+        Write-RestartLog ("output: " + [string]$line)
+    }
+}
+
+function Invoke-ExternalCommand {
+    param([string[]]$Command)
+    Write-RestartLog ("running: " + ($Command -join " "))
+    try {
+        $commandArgs = @()
+        if ($Command.Count -gt 1) {
+            $commandArgs = $Command[1..($Command.Count - 1)]
+        }
+        $output = & $Command[0] @commandArgs 2>&1
+        $exitCode = $LASTEXITCODE
+        Write-CommandOutput $output
+        Write-RestartLog ("return code: " + $exitCode)
+        return ($exitCode -eq 0)
+    } catch {
+        Write-RestartLog ("exception: " + $_.Exception.Message)
+        return $false
+    }
+}
+
+Write-RestartLog "restart helper started"
+Start-Sleep -Seconds 2
+
+foreach ($serviceName in $ServiceNames) {
+    Write-RestartLog ("running: Restart-Service -Name " + $serviceName + " -Force")
+    try {
+        $output = Restart-Service -Name $serviceName -Force -ErrorAction Stop 2>&1
+        Write-CommandOutput $output
+        Write-RestartLog ("Restart-Service completed for " + $serviceName)
+        exit 0
+    } catch {
+        Write-RestartLog ("exception: " + $_.Exception.Message)
+    }
+}
+
+foreach ($serviceName in $ServiceNames) {
+    $stopOk = Invoke-ExternalCommand @("sc.exe", "stop", $serviceName)
+    Start-Sleep -Seconds 3
+    $startOk = Invoke-ExternalCommand @("sc.exe", "start", $serviceName)
+    if ($stopOk -and $startOk) {
+        Write-RestartLog ("sc stop/start completed for " + $serviceName)
+        exit 0
+    }
+}
+
+Write-RestartLog "all restart command groups failed"
+exit 1
+"""
+        service_names = [self.powershell_quote("Domoticz"), self.powershell_quote("domoticz")]
+        return (
+            script
+            .replace("__LOG_FILE__", self.powershell_quote(self.restart_log_file()))
+            .replace("__SERVICE_NAMES__", ", ".join(service_names))
+        )
+
+    def build_windows_restart_command(self, script_file):
+        powershell_command = (
+            "$ErrorActionPreference = 'Stop'; "
+            "$LogFile = {log_file}; "
+            "function Write-RestartLog {{ "
+            "param([string]$Message) "
+            "try {{ "
+            "$timestamp = (Get-Date).ToString('s'); "
+            "Add-Content -LiteralPath $LogFile -Value ('[{{0}}] {{1}}' -f $timestamp, $Message) -Encoding UTF8 "
+            "}} catch {{}} "
+            "}}; "
+            "try {{ "
+            "Write-RestartLog 'scheduled task helper started'; "
+            "$script = [System.IO.File]::ReadAllText({script_file}); "
+            "Invoke-Expression $script; "
+            "exit $LASTEXITCODE "
+            "}} catch {{ "
+            "Write-RestartLog ('scheduled task helper exception: ' + $_.Exception.Message); "
+            "exit 1 "
+            "}}"
+        ).format(
+            log_file=self.powershell_quote(self.restart_log_file()),
+            script_file=self.powershell_quote(script_file),
+        )
+        return '@echo off\r\n"{}" -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "{}"\r\n'.format(
+            self.powershell_executable(),
+            powershell_command,
+        )
+
+    def run_schtasks(self, args, timeout=20):
+        command = [self.schtasks_executable()] + args
+        self.append_restart_log("running: " + subprocess.list2cmdline(command))
+        try:
+            result = subprocess.run(
+                command,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                timeout=timeout,
+            )
+            self.append_restart_log("return code: " + str(result.returncode))
+            if result.stdout:
+                self.append_restart_log("stdout: " + result.stdout.strip())
+            if result.stderr:
+                self.append_restart_log("stderr: " + result.stderr.strip())
+            return result.returncode == 0
+        except Exception as e:
+            self.append_restart_log("exception: " + str(e))
+            return False
+
+    def schedule_windows_restart_task(self, command_file):
+        task_time = (datetime.now() + timedelta(minutes=1)).strftime("%H:%M")
+        task_action = 'cmd.exe /d /c ""{}""'.format(command_file)
+        task_name = self.windows_restart_task_name()
+        if not self.run_schtasks([
+            "/Create",
+            "/TN", task_name,
+            "/SC", "ONCE",
+            "/ST", task_time,
+            "/TR", task_action,
+            "/RU", "SYSTEM",
+            "/RL", "HIGHEST",
+            "/F",
+        ]):
+            return False
+        return self.run_schtasks(["/Run", "/TN", task_name])
+
+    def restart_domoticz(self):
+        script_file = self.windows_restart_script_file()
+        command_file = self.windows_restart_command_file()
+        try:
+            self.append_restart_log("restart requested")
+            script = self.build_windows_restart_script()
+            with open(script_file, "w", encoding="utf-8", newline="\r\n") as restart_script:
+                restart_script.write(script)
+            with open(command_file, "w", encoding="utf-8", newline="\r\n") as restart_command:
+                restart_command.write(self.build_windows_restart_command(script_file))
+
+            self.probe_powershell_file_execution()
+            if not self.probe_powershell_encoded_command():
+                return False, "PowerShell EncodedCommand probe failed. See restart_domoticz.log."
+
+            self.append_restart_log("launching Windows scheduled restart task: " + command_file)
+            if not self.schedule_windows_restart_task(command_file):
+                return False, "Failed to schedule Windows restart task. See restart_domoticz.log."
+            return True, "Domoticz restart requested"
+        except Exception as e:
+            self.append_restart_log("failed to schedule restart: " + str(e))
+            Domoticz.Error(f"Failed to schedule Domoticz restart: {e}")
+            return False, str(e)
+
+    def restart_command_groups(self):
+        return [
+            [[
+                "powershell",
+                "-NoProfile",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-Command",
+                "Restart-Service -Name 'Domoticz' -Force -ErrorAction Stop",
+            ]],
+            [["sc", "stop", "Domoticz"], ["sc", "start", "Domoticz"]],
+            [["sc", "stop", "domoticz"], ["sc", "start", "domoticz"]],
+        ]
+
+    def detached_popen_kwargs(self):
+        creationflags = 0
+        creationflags |= getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+        creationflags |= getattr(subprocess, "DETACHED_PROCESS", 0)
+        if creationflags:
+            return {"creationflags": creationflags}
+        return {}
+
+    def is_locked_file_error(self, error):
+        winerror = getattr(error, "winerror", None)
+        if winerror in (5, 32, 33):
+            return True
+        return isinstance(error, PermissionError)
+
+    def is_locked_file_message(self, message):
+        message = str(message or "").lower()
+        locked_markers = (
+            "access is denied",
+            "being used by another process",
+            "could not unlink",
+            "unable to unlink",
+            "permission denied",
+        )
+        return any(marker in message for marker in locked_markers)
+
+
+def make_host_runtime(parameters):
+    if platform.system() == "Windows":
+        return WindowsHostRuntime(parameters)
+    return LinuxHostRuntime(parameters)
 
 
 
@@ -69,20 +697,25 @@ class BasePlugin:
         self.local_plugin_keys = []
         self.update_times = {}
         self.update_status = {}
+        self.plugin_platforms = {}
         self.last_update_date = None
         self.last_update_status_refresh_date = None
+        self.host = None
+
+    def get_host(self):
+        parameters = globals().get("Parameters", {})
+        if self.host is None or self.host.parameters is not parameters:
+            self.host = make_host_runtime(parameters)
+        return self.host
 
     def get_current_plugin_folder(self):
-        return os.path.basename(os.path.normpath(Parameters.get('HomeFolder', str(os.getcwd()) + '/')))
+        return self.get_host().current_plugin_folder()
 
     def get_git_env(self):
-        env = os.environ.copy()
-        env['LANG'] = 'en_US.UTF-8'
-        env['LC_ALL'] = 'en_US.UTF-8'
-        return env
+        return self.get_host().get_git_env()
 
     def get_plugin_home_folder(self):
-        return os.path.abspath(Parameters.get("HomeFolder", str(os.getcwd()) + "/"))
+        return self.get_host().plugin_home_folder()
 
     def get_bundled_update_times_file(self):
         return os.path.join(self.get_plugin_home_folder(), "update_times.json")
@@ -299,23 +932,7 @@ class BasePlugin:
         return True
 
     def run_git_command(self, plugin_dir, command, timeout=15):
-        try:
-            return subprocess.run(
-                command,
-                cwd=plugin_dir,
-                env=self.get_git_env(),
-                capture_output=True,
-                text=True,
-                timeout=timeout
-            )
-        except subprocess.TimeoutExpired:
-            Domoticz.Error("Git command timed out in " + plugin_dir + ": " + " ".join(command))
-        except OSError as e:
-            Domoticz.Error("Git ErrorNo:" + str(e.errno))
-            Domoticz.Error("Git StrError:" + str(e.strerror))
-        except Exception as e:
-            Domoticz.Error("Git command failed in " + plugin_dir + ": " + str(e))
-        return None
+        return self.get_host().run_git(command, plugin_dir, timeout=timeout)
 
     def fetch_git_repo(self, plugin_dir):
         result = self.run_git_command(plugin_dir, ["git", "fetch", "--quiet"], timeout=15)
@@ -481,7 +1098,7 @@ class BasePlugin:
 
     def refreshInstalledUpdateStatuses(self, installed_plugins=None, plugins_dir=None):
         if plugins_dir is None:
-            plugins_dir = os.path.abspath(os.path.join(Parameters.get("HomeFolder", str(os.getcwd()) + "/"), ".."))
+            plugins_dir = self.get_host().plugins_dir()
         if installed_plugins is None:
             installed_plugins = self.getInstalledPlugins(plugins_dir)
 
@@ -509,6 +1126,71 @@ class BasePlugin:
             "master",
             self.update_times.get(self_key, "")
         ]
+        self.plugin_platforms[self_key] = ["linux", "windows"]
+
+    def normalize_platforms(self, platforms):
+        if not platforms:
+            return ["unknown"]
+        if isinstance(platforms, str):
+            platforms = [platforms]
+        if not isinstance(platforms, list):
+            return ["unknown"]
+
+        normalized = []
+        for platform_name in platforms:
+            platform_name = str(platform_name or "").strip().lower()
+            if platform_name in ("linux", "windows") and platform_name not in normalized:
+                normalized.append(platform_name)
+
+        return normalized or ["unknown"]
+
+    def normalize_registry_entry(self, key, data):
+        platforms = ["unknown"]
+        if isinstance(data, dict):
+            author = data.get("author", data.get("owner", ""))
+            repository = data.get("repository", data.get("repo", ""))
+            description = data.get("description", "")
+            branch = data.get("branch", "master")
+            updated_at = data.get("updated_at", "")
+            platforms = self.normalize_platforms(data.get("platforms", data.get("platform", None)))
+            entry = [author, repository, description, branch]
+            if updated_at:
+                entry.append(updated_at)
+        elif isinstance(data, list):
+            entry = list(data[:5])
+            if len(data) > 5:
+                platforms = self.normalize_platforms(data[5])
+        else:
+            Domoticz.Error("Plugin '" + str(key) + "' has an invalid registry entry.")
+            return None, ["unknown"]
+
+        if len(entry) < 4:
+            Domoticz.Error("Plugin '" + str(key) + "' registry entry must contain owner, repository, description and branch.")
+            return None, ["unknown"]
+
+        return entry, platforms
+
+    def normalize_registry(self, registry):
+        normalized_registry = {}
+        plugin_platforms = {}
+        for key, data in registry.items():
+            if key == "Idle":
+                normalized_registry[key] = data
+                plugin_platforms[key] = ["unknown"]
+                continue
+
+            try:
+                self.get_host().validate_plugin_key(key)
+            except ValueError as e:
+                Domoticz.Error("Skipping invalid plugin key '" + str(key) + "': " + str(e))
+                continue
+
+            entry, platforms = self.normalize_registry_entry(key, data)
+            if entry is None:
+                continue
+            normalized_registry[key] = entry
+            plugin_platforms[key] = platforms
+        return normalized_registry, plugin_platforms
 
     def fetch_registry(self):
         registry = self.fetch_remote_registry()
@@ -526,12 +1208,13 @@ class BasePlugin:
             Domoticz.Log("Merged " + str(len(local_registry)) + " local plugin registry entries.")
 
         if registry_loaded:
-            self.plugin_data = merged_registry
+            self.plugin_data, self.plugin_platforms = self.normalize_registry(merged_registry)
             self.local_plugin_keys = local_plugin_keys
         elif self.plugin_data:
             Domoticz.Error("No plugin registry found. Keeping existing plugin registry.")
         else:
             self.plugin_data = {}
+            self.plugin_platforms = {}
             self.local_plugin_keys = []
             Domoticz.Error("No plugin registry found. Plugins cannot be managed.")
 
@@ -556,37 +1239,30 @@ class BasePlugin:
         Domoticz.Debug(f"Domoticz Platform Version is: {platform.version()}")
         Domoticz.Log(f"Default Python Version is: {sys.version_info[0]}.{sys.version_info[1]}.{sys.version_info[2]}")
 
-        if platform.system() == "Windows":
-            Domoticz.Error("Windows Platform NOT YET SUPPORTED!!")
-            return
+        host = self.get_host()
+        Domoticz.Log(f"PyPluginStore host runtime is: {host.platform_name}")
 
-        plugins_dir = os.path.abspath(os.path.join(Parameters.get("HomeFolder", str(os.getcwd()) + "/"), ".."))
+        plugins_dir = host.plugins_dir()
 
-        current_folder = os.path.basename(os.path.normpath(Parameters.get('HomeFolder', str(os.getcwd()) + '/')))
+        current_folder = self.get_current_plugin_folder()
         if not current_folder.startswith("00-"):
             warn_msg = f"PyPluginStore is in '{current_folder}'. It is strongly advised to rename the folder to start with '00-' (e.g., '00-PyPluginStore') so it loads first."
             Domoticz.Error(warn_msg)
             Domoticz.SendNotification("PyPluginStore Setup Warning", warn_msg)
 
         # Inject shared dependencies into sys.path
-        shared_deps_dir = os.path.join(plugins_dir, os.path.basename(os.path.normpath(Parameters.get('HomeFolder', str(os.getcwd()) + '/'))), ".shared_deps")
+        shared_deps_dir = host.shared_deps_dir()
         if os.path.isdir(shared_deps_dir) and shared_deps_dir not in sys.path:
             sys.path.insert(0, shared_deps_dir)
             Domoticz.Log(f"Injected PyPluginStore shared dependencies into sys.path: {shared_deps_dir}")
 
         # Autoinstall/Update Custom UI
+        templates_dir = host.templates_dir()
         try:
-            import shutil
-            # Determine paths
-            home_folder_param = Parameters.get("HomeFolder", str(os.getcwd()) + "/")
-            html_src = os.path.join(home_folder_param, "pypluginstore.html")
+            html_src = host.ui_html_source()
             ui_asset_names = ["pypluginstore-icon.png"]
-            
-            # Find UI directories (relative to plugins folder)
-            domoticz_dir = os.path.abspath(os.path.join(home_folder_param, "..", ".."))
-            templates_dir = os.path.join(domoticz_dir, "www", "templates")
-            images_dir = os.path.join(domoticz_dir, "www", "images")
-            html_dst = os.path.join(templates_dir, "pypluginstore.html")
+            images_dir = host.images_dir()
+            html_dst = host.ui_html_destination()
             
             if os.path.isfile(html_src):
                 if not os.path.exists(templates_dir):
@@ -615,18 +1291,17 @@ class BasePlugin:
                 
                 if should_copy:
                     shutil.copyfile(html_src, html_dst)
-                    # Try to ensure it is readable by the web server
-                    os.chmod(html_dst, 0o644)
+                    host.make_web_readable(html_dst)
                     Domoticz.Log(f"Custom UI autoinstalled/updated: {html_dst}")
                 else:
                     Domoticz.Debug("Custom UI is already up to date.")
 
                 for asset_name in ui_asset_names:
-                    asset_src = os.path.join(home_folder_param, asset_name)
-                    asset_dst = os.path.join(images_dir, asset_name)
+                    asset_src = host.ui_asset_source(asset_name)
+                    asset_dst = host.ui_asset_destination(asset_name)
                     if os.path.isfile(asset_src):
                         shutil.copyfile(asset_src, asset_dst)
-                        os.chmod(asset_dst, 0o644)
+                        host.make_web_readable(asset_dst)
                         Domoticz.Debug(f"Custom UI asset installed/updated: {asset_dst}")
         except Exception as e:
             Domoticz.Error(f"Custom UI autoinstall failed: {e}")
@@ -638,10 +1313,11 @@ class BasePlugin:
             Domoticz.Device(Name="API Trigger", Unit=2, Type=244, Subtype=73, Switchtype=9, DeviceID="PPM_API_TRIGGER", Used=1).Create()
             
         self.fetch_registry()
+        self.processPendingOperations()
 
         if Parameters.get("Mode5") == 'True':
             Domoticz.Log("Plugin Security Scan is enabled")
-            secpoluserFile = os.path.join(plugins_dir, os.path.basename(os.path.normpath(Parameters.get('HomeFolder', str(os.getcwd()) + '/'))), "secpoluser.txt")
+            secpoluserFile = os.path.join(self.get_plugin_home_folder(), "secpoluser.txt")
             Domoticz.Debug("Checking for SecPolUser file on:" + secpoluserFile)
             if os.path.isfile(secpoluserFile):
                 Domoticz.Log("secpoluser file found. Processing!!!")
@@ -665,7 +1341,7 @@ class BasePlugin:
                 plugin_path = os.path.join(plugins_dir, plugin_folder)
 
                 # Make sure it's a directory and not the manager itself
-                if os.path.isdir(plugin_path) and plugin_folder != os.path.basename(os.path.normpath(Parameters.get('HomeFolder', str(os.getcwd()) + '/'))):
+                if os.path.isdir(plugin_path) and plugin_folder != self.get_current_plugin_folder():
 
                     # Recursively walk through the plugin's folder to find all .py files
                     for root, _, files in os.walk(plugin_path):
@@ -678,7 +1354,7 @@ class BasePlugin:
                                 py_file = os.path.join(root, file)
                                 self.parseFileForSecurityIssues(py_file, plugin_folder)
 
-        exceptionFile = os.path.join(plugins_dir, os.path.basename(os.path.normpath(Parameters.get('HomeFolder', str(os.getcwd()) + '/'))), "exceptions.txt")
+        exceptionFile = os.path.join(self.get_plugin_home_folder(), "exceptions.txt")
         Domoticz.Debug("Checking for Exception file on:" + exceptionFile)
         if os.path.isfile(exceptionFile):
             Domoticz.Log("Exception file found. Processing!!!")
@@ -697,7 +1373,7 @@ class BasePlugin:
                     if d:
                         if d in self.plugin_data:
                             self.UpdatePythonPlugin(self.plugin_data[d][0], self.plugin_data[d][1], d)
-                        elif d == os.path.basename(os.path.normpath(Parameters.get('HomeFolder', str(os.getcwd()) + '/'))):
+                        elif d == self.get_current_plugin_folder():
                             Domoticz.Debug("PyPluginStore Folder found. Skipping!!")
                         else:
                             Domoticz.Log(f"Plugin: {d} cannot be managed with PyPluginStore!!.")
@@ -710,7 +1386,7 @@ class BasePlugin:
                     if d:
                         if d in self.plugin_data:
                             self.CheckForUpdatePythonPlugin(self.plugin_data[d][0], self.plugin_data[d][1], d)
-                        elif d == os.path.basename(os.path.normpath(Parameters.get('HomeFolder', str(os.getcwd()) + '/'))):
+                        elif d == self.get_current_plugin_folder():
                             Domoticz.Debug("PyPluginStore Folder found. Skipping!!")
                         else:
                             Domoticz.Log(f"Plugin: {d} cannot be managed with PyPluginStore!!.")
@@ -749,11 +1425,116 @@ class BasePlugin:
                     Domoticz.Error(f"Failed to parse API payload: {e}")
                     self.sendApiResponse({"status": "error", "message": "Invalid JSON payload or structure"})
 
+    def loadPendingOperations(self):
+        pending_file = self.get_host().pending_operations_file()
+        if not os.path.isfile(pending_file):
+            return []
+        try:
+            with open(pending_file, "r", encoding="utf-8") as f:
+                operations = json.load(f)
+            if isinstance(operations, list):
+                return operations
+            Domoticz.Error("pending_operations.json does not contain a JSON list.")
+        except Exception as e:
+            Domoticz.Error("Error reading pending_operations.json: " + str(e))
+        return []
+
+    def savePendingOperations(self, operations):
+        pending_file = self.get_host().pending_operations_file()
+        try:
+            if operations:
+                with open(pending_file, "w", encoding="utf-8") as f:
+                    json.dump(operations, f, indent=4)
+                    f.write("\n")
+            elif os.path.isfile(pending_file):
+                os.remove(pending_file)
+            return True
+        except Exception as e:
+            Domoticz.Error("Error writing pending_operations.json: " + str(e))
+            return False
+
+    def queuePendingOperation(self, action, plugin_key):
+        try:
+            plugin_key = self.get_host().validate_plugin_key(plugin_key)
+        except ValueError as e:
+            Domoticz.Error(str(e))
+            return False
+
+        operations = self.loadPendingOperations()
+        operation = {"action": action, "plugin_key": plugin_key}
+        for existing_operation in operations:
+            if existing_operation.get("action") == action and existing_operation.get("plugin_key") == plugin_key:
+                Domoticz.Debug("Pending operation already queued: " + action + " " + plugin_key)
+                return True
+
+        operations.append(operation)
+        if self.savePendingOperations(operations):
+            Domoticz.Log("Queued pending operation: " + action + " " + plugin_key)
+            return True
+        return False
+
+    def processPendingOperations(self):
+        operations = self.loadPendingOperations()
+        if not operations:
+            return
+
+        Domoticz.Log("Processing pending plugin operations.")
+        remaining_operations = []
+        for operation in operations:
+            action = operation.get("action")
+            plugin_key = operation.get("plugin_key")
+            if action == "remove":
+                success, message = self.removePlugin(plugin_key, queue_on_lock=False)
+            elif action == "update":
+                if plugin_key in self.plugin_data:
+                    success, message = self.UpdatePythonPlugin(
+                        self.plugin_data[plugin_key][0],
+                        self.plugin_data[plugin_key][1],
+                        plugin_key,
+                        queue_on_lock=False
+                    )
+                else:
+                    success = False
+                    message = "Plugin not found in registry"
+            else:
+                success = True
+                message = "Unknown pending operation ignored"
+
+            if success:
+                Domoticz.Log("Completed pending operation: " + str(action) + " " + str(plugin_key))
+            else:
+                Domoticz.Error("Pending operation failed for " + str(plugin_key) + ": " + str(message))
+                remaining_operations.append(operation)
+
+        self.savePendingOperations(remaining_operations)
+
+    def removePlugin(self, plugin_key, queue_on_lock=True):
+        host = self.get_host()
+        try:
+            plugin_key = host.validate_plugin_key(plugin_key)
+            plugin_target_dir = host.resolve_plugin_dir(plugin_key)
+        except ValueError as e:
+            return False, str(e)
+
+        if plugin_key == self.get_current_plugin_folder():
+            return False, "Plugin directory not found or cannot remove self"
+
+        if not os.path.isdir(plugin_target_dir):
+            return False, "Plugin directory not found or cannot remove self"
+
+        try:
+            shutil.rmtree(plugin_target_dir)
+            return True, ""
+        except Exception as e:
+            if queue_on_lock and host.is_locked_file_error(e):
+                self.queuePendingOperation("remove", plugin_key)
+                return False, "Plugin files are in use; removal queued for the next startup."
+            return False, str(e)
+
     def handleApiCommand(self, payload):
-        import shutil
         # Ensure action is a safe string
         action = str(payload.get("action", ""))
-        plugins_dir = os.path.abspath(os.path.join(Parameters.get("HomeFolder", str(os.getcwd()) + "/"), ".."))
+        plugins_dir = self.get_host().plugins_dir()
         
         if action == "list_plugins":
             installed_plugins = self.getInstalledPlugins(plugins_dir)
@@ -765,7 +1546,8 @@ class BasePlugin:
                 "installed": installed_plugins,
                 "manager_key": self.get_current_plugin_folder(),
                 "local_plugins": self.local_plugin_keys,
-                "update_status": self.getCachedUpdateStatuses(installed_plugins)
+                "update_status": self.getCachedUpdateStatuses(installed_plugins),
+                "platforms": self.plugin_platforms
             })
         elif action == "refresh_update_status":
             self.fetch_registry()
@@ -778,7 +1560,8 @@ class BasePlugin:
                 "installed": installed_plugins,
                 "manager_key": self.get_current_plugin_folder(),
                 "local_plugins": self.local_plugin_keys,
-                "update_status": update_status
+                "update_status": update_status,
+                "platforms": self.plugin_platforms
             })
         elif action == "install":
             plugin_key = payload.get("plugin_key")
@@ -798,36 +1581,30 @@ class BasePlugin:
             if plugin_key in self.plugin_data:
                 plugin_author = self.plugin_data[plugin_key][0]
                 plugin_repository = self.plugin_data[plugin_key][1]
-                self.UpdatePythonPlugin(plugin_author, plugin_repository, plugin_key)
-                self.sendApiResponse({"status": "success", "action": action, "plugin_key": plugin_key})
+                update_success, update_message = self.UpdatePythonPlugin(plugin_author, plugin_repository, plugin_key)
+                if update_success:
+                    self.sendApiResponse({"status": "success", "action": action, "plugin_key": plugin_key})
+                else:
+                    self.sendApiResponse({"status": "error", "message": update_message or "Plugin update failed"})
             else:
                 self.sendApiResponse({"status": "error", "message": "Plugin not found"})
         elif action == "restart_domoticz":
-            self.sendApiResponse({
-                "status": "success",
-                "action": action,
-                "message": "Domoticz restart requested"
-            })
-            self.restartDomoticz()
+            restart_success, restart_message = self.restartDomoticz()
+            if restart_success:
+                self.sendApiResponse({
+                    "status": "success",
+                    "action": action,
+                    "message": restart_message
+                })
+            else:
+                self.sendApiResponse({"status": "error", "message": restart_message})
         elif action == "remove":
             plugin_key = payload.get("plugin_key", "")
-            # Security: Prevent path traversal and accidental deletion of core folders
-            plugin_key = os.path.basename(plugin_key)
-            plugin_target_dir = os.path.abspath(os.path.join(plugins_dir, plugin_key))
-            
-            # Ensure the resolved path is still inside the plugins directory
-            if not plugin_target_dir.startswith(plugins_dir):
-                 self.sendApiResponse({"status": "error", "message": "Invalid plugin path"})
-                 return
-
-            if os.path.isdir(plugin_target_dir) and plugin_key != os.path.basename(os.path.normpath(Parameters.get('HomeFolder', str(os.getcwd()) + '/'))):
-                try:
-                    shutil.rmtree(plugin_target_dir)
-                    self.sendApiResponse({"status": "success", "action": action, "plugin_key": plugin_key})
-                except Exception as e:
-                    self.sendApiResponse({"status": "error", "message": str(e)})
+            remove_success, remove_message = self.removePlugin(plugin_key)
+            if remove_success:
+                self.sendApiResponse({"status": "success", "action": action, "plugin_key": plugin_key})
             else:
-                self.sendApiResponse({"status": "error", "message": "Plugin directory not found or cannot remove self"})
+                self.sendApiResponse({"status": "error", "message": remove_message})
         else:
             self.sendApiResponse({"status": "error", "message": f"Unknown action: {action}"})
 
@@ -882,8 +1659,7 @@ class BasePlugin:
         now = datetime.now()
         Domoticz.Debug(f"Current time: {now.strftime('%H:%M')}")
 
-        home_folder = os.path.abspath(os.path.join(Parameters.get("HomeFolder", str(os.getcwd()) + "/"), "..", ".."))
-        plugins_dir = os.path.join(home_folder, "plugins")
+        plugins_dir = self.get_host().plugins_dir()
 
         if self.last_update_status_refresh_date is None or self.last_update_status_refresh_date < now.date():
             Domoticz.Log("Refreshing plugin update status cache.")
@@ -901,7 +1677,7 @@ class BasePlugin:
                         if d:
                             if d in self.plugin_data:
                                 self.UpdatePythonPlugin(self.plugin_data[d][0], self.plugin_data[d][1], d)
-                            elif d == os.path.basename(os.path.normpath(Parameters.get('HomeFolder', str(os.getcwd()) + '/'))):
+                            elif d == self.get_current_plugin_folder():
                                 Domoticz.Debug("PyPluginStore Folder found. Skipping!!")
                             else:
                                 Domoticz.Log(f"Plugin: {d} cannot be managed with PyPluginStore!!.")
@@ -914,7 +1690,7 @@ class BasePlugin:
                         if d:
                             if d in self.plugin_data:
                                 self.CheckForUpdatePythonPlugin(self.plugin_data[d][0], self.plugin_data[d][1], d)
-                            elif d == os.path.basename(os.path.normpath(Parameters.get('HomeFolder', str(os.getcwd()) + '/'))):
+                            elif d == self.get_current_plugin_folder():
                                 Domoticz.Debug("PyPluginStore Folder found. Skipping!!")
                             else:
                                 Domoticz.Log(f"Plugin: {d} cannot be managed with PyPluginStore!!.")
@@ -923,30 +1699,30 @@ class BasePlugin:
     def InstallPythonPlugin(self, ppAuthor, ppRepository, ppKey, ppBranch):
         Domoticz.Debug("InstallPythonPlugin called")
 
-        plugins_dir = os.path.abspath(os.path.join(Parameters.get("HomeFolder", str(os.getcwd()) + "/"), ".."))
-        plugin_dir = os.path.join(plugins_dir, ppKey)
+        host = self.get_host()
+        plugins_dir = host.plugins_dir()
+        try:
+            plugin_dir = host.resolve_plugin_dir(ppKey)
+            ppKey = host.validate_plugin_key(ppKey)
+        except ValueError as e:
+            Domoticz.Error(str(e))
+            return False, str(e)
 
         Domoticz.Log("Installing Plugin:" + self.plugin_data[ppKey][2])
         ppCloneCmd = ["git", "clone", "-b", ppBranch, self.build_git_clone_url(ppAuthor, ppRepository), ppKey]
         Domoticz.Log("Calling: " + " ".join(ppCloneCmd))
 
-        env = self.get_git_env()
-
-        try:
-            pr = subprocess.Popen(ppCloneCmd, cwd=plugins_dir, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-            out, error = pr.communicate()
-            if out:
-                Domoticz.Debug("Git Response: " + out.strip())
-            if error:
-                Domoticz.Debug("Git Error: " + error.strip())
-            if pr.returncode != 0:
-                Domoticz.Error("Git clone failed for plugin " + ppKey + ".")
-                return False, (error or out or "Git clone failed").strip()
-            Domoticz.Log("Plugin " + ppKey + " installed successfully.")
-        except OSError as e:
-            Domoticz.Error("Git ErrorNo:" + str(e.errno))
-            Domoticz.Error("Git StrError:" + str(e.strerror))
-            return False, str(e)
+        result = host.run_git(ppCloneCmd, plugins_dir, timeout=120)
+        if result is None:
+            return False, "Git clone failed"
+        if result.stdout:
+            Domoticz.Debug("Git Response: " + result.stdout.strip())
+        if result.stderr:
+            Domoticz.Debug("Git Error: " + result.stderr.strip())
+        if result.returncode != 0:
+            Domoticz.Error("Git clone failed for plugin " + ppKey + ".")
+            return False, (result.stderr or result.stdout or "Git clone failed").strip()
+        Domoticz.Log("Plugin " + ppKey + " installed successfully.")
 
         if not os.path.isdir(plugin_dir):
             Domoticz.Error("Plugin folder was not created: " + plugin_dir)
@@ -958,62 +1734,78 @@ class BasePlugin:
         Domoticz.Log("---Restarting Domoticz MAY BE REQUIRED to activate new plugins---")
         return True, ""
 
-    def UpdatePythonPlugin(self, ppAuthor, ppRepository, ppKey):
+    def UpdatePythonPlugin(self, ppAuthor, ppRepository, ppKey, queue_on_lock=True):
         Domoticz.Debug("UpdatePythonPlugin called")
 
-        home_folder = os.path.abspath(os.path.join(Parameters.get("HomeFolder", str(os.getcwd()) + "/"), "..", ".."))
-        plugin_dir = os.path.join(home_folder, "plugins", ppKey)
+        host = self.get_host()
+        try:
+            plugin_dir = host.resolve_plugin_dir(ppKey)
+            ppKey = host.validate_plugin_key(ppKey)
+        except ValueError as e:
+            Domoticz.Error(str(e))
+            return False, str(e)
+
         is_self_update = ppKey == self.get_current_plugin_folder()
 
         if (ppKey in self.plugin_data and self.plugin_data[ppKey][2] in self.exception_list):
             Domoticz.Log("Plugin:" + self.plugin_data[ppKey][2] + " excluded by Exclusion file (exclusion.txt). Skipping!!!")
-            return
+            return True, "Excluded by exception list"
 
         if is_self_update:
             Domoticz.Log("Self update requested for PyPluginStore.")
 
         Domoticz.Log("Resetting and Updating Plugin:" + ppKey)
-        env = self.get_git_env()
 
         ppGitReset = ["git", "reset", "--hard", "HEAD"]
-        try:
-            res_reset = subprocess.run(ppGitReset, cwd=plugin_dir, env=env, capture_output=True, text=True)
-            if res_reset.stdout:
-                Domoticz.Debug("Git Reset Response:" + res_reset.stdout)
-            if res_reset.stderr:
-                Domoticz.Debug("Git Reset Error:" + res_reset.stderr.strip())
-        except OSError as eReset:
-            Domoticz.Error("Git ErrorNo:" + str(eReset.errno))
-            Domoticz.Error("Git StrError:" + str(eReset.strerror))
+        res_reset = host.run_git(ppGitReset, plugin_dir, timeout=30)
+        if res_reset is None:
+            return False, "Git reset failed"
+        if res_reset.stdout:
+            Domoticz.Debug("Git Reset Response:" + res_reset.stdout)
+        if res_reset.stderr:
+            Domoticz.Debug("Git Reset Error:" + res_reset.stderr.strip())
+        if res_reset.returncode != 0 and host.is_locked_file_message(res_reset.stderr + res_reset.stdout):
+            message = "Plugin files are in use; update queued for the next startup."
+            if queue_on_lock:
+                self.queuePendingOperation("update", ppKey)
+            Domoticz.Error(message)
+            return False, message
 
         ppUrl = ["git", "pull", "--force"]
         Domoticz.Debug("Calling: " + " ".join(ppUrl) + " on folder " + plugin_dir)
 
-        try:
-            res = subprocess.run(ppUrl, cwd=plugin_dir, env=env, capture_output=True, text=True)
-            out = res.stdout
-            error = res.stderr
-            if out:
-                Domoticz.Debug("Git Response:" + out)
-                if "Already up to date" in out or "Already up-to-date" in out:
-                   Domoticz.Log("Plugin " + ppKey + " already Up-To-Date")
-                elif "Updating" in out and "error" not in out.lower():
-                   Domoticz.Log("Succesfully pulled gitHub update for plugin " + ppKey)
-                   Domoticz.Log("---Restarting Domoticz MAY BE REQUIRED to activate new plugins---")
-                else:
-                   Domoticz.Error("Something went wrong with update of " + str(ppKey))
-            if error:
-                Domoticz.Debug("Git Error:" + error.strip())
-                if "Not a git repository" in error:
-                   Domoticz.Log("Plugin:" + ppKey + " is not installed from gitHub. Cannot be updated with PyPluginStore!!.")
-        except OSError as e:
-            Domoticz.Error("Git ErrorNo:" + str(e.errno))
-            Domoticz.Error("Git StrError:" + str(e.strerror))
+        res = host.run_git(ppUrl, plugin_dir, timeout=120)
+        if res is None:
+            return False, "Git pull failed"
+
+        out = res.stdout
+        error = res.stderr
+        if out:
+            Domoticz.Debug("Git Response:" + out)
+            if "Already up to date" in out or "Already up-to-date" in out:
+               Domoticz.Log("Plugin " + ppKey + " already Up-To-Date")
+            elif "Updating" in out and "error" not in out.lower():
+               Domoticz.Log("Succesfully pulled gitHub update for plugin " + ppKey)
+               Domoticz.Log("---Restarting Domoticz MAY BE REQUIRED to activate new plugins---")
+            else:
+               Domoticz.Error("Something went wrong with update of " + str(ppKey))
+        if error:
+            Domoticz.Debug("Git Error:" + error.strip())
+            if "Not a git repository" in error:
+               Domoticz.Log("Plugin:" + ppKey + " is not installed from gitHub. Cannot be updated with PyPluginStore!!.")
+
+        if res.returncode != 0:
+            message = (error or out or "Git pull failed").strip()
+            if host.is_locked_file_message(message):
+                message = "Plugin files are in use; update queued for the next startup."
+                if queue_on_lock:
+                    self.queuePendingOperation("update", ppKey)
+            return False, message
 
         self.refresh_single_plugin_update_time(ppKey, plugin_dir, fetch_first=False)
         self.refresh_single_plugin_update_status(ppKey, plugin_dir, fetch_first=False)
         self.installDependencies(ppKey)
-        return None
+        return True, ""
 
     def CheckForUpdatePythonPlugin(self, ppAuthor, ppRepository, ppKey):
         Domoticz.Debug("CheckForUpdatePythonPlugin called")
@@ -1024,8 +1816,11 @@ class BasePlugin:
 
         Domoticz.Debug("Checking Plugin:" + ppKey + " for updates")
 
-        home_folder = os.path.abspath(os.path.join(Parameters.get("HomeFolder", str(os.getcwd()) + "/"), "..", ".."))
-        plugin_dir = os.path.join(home_folder, "plugins", ppKey)
+        try:
+            plugin_dir = self.get_host().resolve_plugin_dir(ppKey)
+        except ValueError as e:
+            Domoticz.Error(str(e))
+            return None
 
         if not os.path.isdir(os.path.join(plugin_dir, ".git")):
             Domoticz.Log("Plugin:" + ppKey + " is not installed from gitHub. Ignoring!!.")
@@ -1214,81 +2009,17 @@ class BasePlugin:
 
     def restartDomoticz(self):
         Domoticz.Log("Domoticz service restart requested from PyPluginStore UI.")
-        helper = r'''
-import subprocess
-import time
-
-commands = [
-    ["sudo", "-n", "systemctl", "restart", "domoticz.service"],
-    ["systemctl", "restart", "domoticz.service"],
-    ["sudo", "-n", "service", "domoticz", "restart"],
-    ["service", "domoticz", "restart"],
-]
-
-time.sleep(2)
-for command in commands:
-    try:
-        result = subprocess.run(command, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=20)
-        if result.returncode == 0:
-            break
-    except Exception:
-        pass
-'''
-        try:
-            subprocess.Popen(
-                [sys.executable, "-c", helper],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                start_new_session=True
-            )
-        except Exception as e:
-            Domoticz.Error(f"Failed to schedule Domoticz restart: {e}")
+        return self.get_host().restart_domoticz()
 
     def installDependencies(self, plugin_key):
         Domoticz.Debug("installDependencies called")
-        plugins_dir = os.path.abspath(os.path.join(Parameters.get("HomeFolder", str(os.getcwd()) + "/"), ".."))
-        plugin_dir = os.path.join(plugins_dir, plugin_key)
-        requirementsFile = os.path.join(plugin_dir, "requirements.txt")
-        home_folder = os.path.abspath(os.path.join(Parameters.get("HomeFolder", str(os.getcwd()) + "/"), "..", ".."))
-        shared_deps_dir = os.path.join(home_folder, "plugins", os.path.basename(os.path.normpath(Parameters.get('HomeFolder', str(os.getcwd()) + '/'))), ".shared_deps")
-
-        def check_cmd(cmd):
-            try:
-                subprocess.run([cmd, "--version"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                return True
-            except:
-                return False
-
-        if os.path.isfile(requirementsFile):
-            Domoticz.Log("requirements.txt found for plugin: " + plugin_key)
-            os.makedirs(shared_deps_dir, exist_ok=True)
-
-            # Check for 'uv' then 'pip' as fallbacks
-            installCmd = None
-            if check_cmd("uv"):
-                installCmd = ["uv", "pip", "install", "-r", requirementsFile, "--target", shared_deps_dir]
-            elif check_cmd("pip3"):
-                installCmd = ["pip3", "install", "-r", requirementsFile, "--target", shared_deps_dir]
-            elif check_cmd("pip"):
-                installCmd = ["pip", "install", "-r", requirementsFile, "--target", shared_deps_dir]
-
-            if installCmd:
-                Domoticz.Log("Installing dependencies using: " + " ".join(installCmd))
-                try:
-                    pr = subprocess.Popen(installCmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-                    out, error = pr.communicate()
-                    if pr.returncode == 0:
-                        Domoticz.Log("Dependencies installed successfully: " + out.strip())
-                    else:
-                        Domoticz.Error("Error installing dependencies: " + error.strip())
-                except Exception as e:
-                    Domoticz.Error("Error running installation command: " + str(e))
-            else:
-                Domoticz.Log("Neither 'uv' nor 'pip' found. Skipping automatic dependency installation.")
-                Domoticz.Log(f"Please install dependencies manually from {requirementsFile} into {shared_deps_dir}")
-        else:
-            Domoticz.Log("No requirements.txt found for plugin: " + plugin_key)
-        return None
+        host = self.get_host()
+        try:
+            requirements_file = host.requirements_file(plugin_key)
+        except ValueError as e:
+            Domoticz.Error(str(e))
+            return False, str(e)
+        return host.install_requirements(requirements_file, host.shared_deps_dir(), plugin_key)
 
 global _plugin
 _plugin = BasePlugin()

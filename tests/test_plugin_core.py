@@ -259,6 +259,26 @@ def test_fetch_registry_falls_back_to_bundled_registry(plugin_core_module, tmp_p
     assert plugin.local_plugin_keys == []
 
 
+def test_registry_normalizer_accepts_object_entries_with_platforms(plugin_core_module):
+    plugin = plugin_core_module.BasePlugin()
+
+    registry, platforms = plugin.normalize_registry({
+        "ObjectPlugin": {
+            "owner": "owner",
+            "repository": "repo",
+            "description": "description",
+            "branch": "main",
+            "platforms": ["Linux", "Windows", "other"],
+        },
+        "ListPlugin": ["owner", "repo", "description", "main", "", ["windows"]],
+    })
+
+    assert registry["ObjectPlugin"] == ["owner", "repo", "description", "main"]
+    assert platforms["ObjectPlugin"] == ["linux", "windows"]
+    assert registry["ListPlugin"] == ["owner", "repo", "description", "main", ""]
+    assert platforms["ListPlugin"] == ["windows"]
+
+
 def test_build_git_clone_url_accepts_owner_repo_and_full_urls(plugin_core_module):
     plugin = plugin_core_module.BasePlugin()
 
@@ -344,6 +364,7 @@ def test_list_plugins_response_includes_manager_and_update_status(plugin_core_mo
         "OtherPlugin": "available",
     }
     assert response["local_plugins"] == []
+    assert response["platforms"] == {}
 
 
 def test_list_plugins_response_includes_local_plugin_keys(plugin_core_module, tmp_path, monkeypatch):
@@ -457,16 +478,12 @@ def test_install_command_reports_clone_failure(plugin_core_module, tmp_path, mon
     }
     responses = []
 
-    class FakePopen:
+    class FakeGitResult:
+        stdout = ""
+        stderr = "fatal: repository not found"
         returncode = 128
 
-        def __init__(self, *args, **kwargs):
-            pass
-
-        def communicate(self):
-            return "", "fatal: repository not found"
-
-    monkeypatch.setattr(plugin_core_module.subprocess, "Popen", FakePopen)
+    monkeypatch.setattr(plugin_core_module.subprocess, "run", lambda *args, **kwargs: FakeGitResult())
     monkeypatch.setattr(plugin, "sendApiResponse", responses.append)
 
     plugin.handleApiCommand({"action": "install", "plugin_key": "PrivatePlugin"})
@@ -495,17 +512,267 @@ def test_daily_heartbeat_refreshes_update_status_once(plugin_core_module, tmp_pa
     assert Path(refresh_calls[0]["plugins_dir"]).name == "plugins"
 
 
-def test_restart_command_responds_before_scheduling_restart(plugin_core_module, tmp_path, monkeypatch):
+def test_restart_command_reports_scheduled_restart(plugin_core_module, tmp_path, monkeypatch):
     configure_home(plugin_core_module, tmp_path)
     plugin = plugin_core_module.BasePlugin()
-    events = []
+    responses = []
 
-    monkeypatch.setattr(plugin, "sendApiResponse", lambda response: events.append(("response", response)))
-    monkeypatch.setattr(plugin, "restartDomoticz", lambda: events.append(("restart", None)))
+    monkeypatch.setattr(plugin, "sendApiResponse", responses.append)
+    monkeypatch.setattr(plugin, "restartDomoticz", lambda: (True, "Domoticz restart requested"))
 
     plugin.handleApiCommand({"action": "restart_domoticz"})
 
-    assert events[0][0] == "response"
-    assert events[0][1]["status"] == "success"
-    assert events[0][1]["action"] == "restart_domoticz"
-    assert events[1] == ("restart", None)
+    assert responses[0]["status"] == "success"
+    assert responses[0]["action"] == "restart_domoticz"
+    assert responses[0]["message"] == "Domoticz restart requested"
+
+
+def test_restart_command_reports_scheduling_failure(plugin_core_module, tmp_path, monkeypatch):
+    configure_home(plugin_core_module, tmp_path)
+    plugin = plugin_core_module.BasePlugin()
+    responses = []
+
+    monkeypatch.setattr(plugin, "sendApiResponse", responses.append)
+    monkeypatch.setattr(plugin, "restartDomoticz", lambda: (False, "restart not configured"))
+
+    plugin.handleApiCommand({"action": "restart_domoticz"})
+
+    assert responses[0] == {"status": "error", "message": "restart not configured"}
+
+
+def test_host_runtime_factory_selects_windows(plugin_core_module, monkeypatch):
+    monkeypatch.setattr(plugin_core_module.platform, "system", lambda: "Windows")
+
+    runtime = plugin_core_module.make_host_runtime({})
+
+    assert isinstance(runtime, plugin_core_module.WindowsHostRuntime)
+    assert runtime.make_web_readable("ignored") is None
+
+
+def test_host_runtime_factory_defaults_to_linux(plugin_core_module, monkeypatch):
+    monkeypatch.setattr(plugin_core_module.platform, "system", lambda: "Linux")
+
+    runtime = plugin_core_module.make_host_runtime({})
+
+    assert isinstance(runtime, plugin_core_module.LinuxHostRuntime)
+
+
+def test_safe_plugin_dir_rejects_traversal(plugin_core_module, tmp_path):
+    configure_home(plugin_core_module, tmp_path)
+    plugin = plugin_core_module.BasePlugin()
+    host = plugin.get_host()
+
+    assert Path(host.resolve_plugin_dir("NormalPlugin")).name == "NormalPlugin"
+
+    for bad_key in ("../outside", "..\\outside", ".hidden", ""):
+        try:
+            host.resolve_plugin_dir(bad_key)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError(f"{bad_key} should be rejected")
+
+
+def test_remove_command_rejects_traversal(plugin_core_module, tmp_path):
+    configure_home(plugin_core_module, tmp_path)
+    plugin = plugin_core_module.BasePlugin()
+
+    success, message = plugin.removePlugin("../outside")
+
+    assert success is False
+    assert "Invalid plugin key" in message
+
+
+def test_windows_restart_schedules_system_task(plugin_core_module, tmp_path, monkeypatch):
+    _, manager_dir = configure_home(plugin_core_module, tmp_path)
+    monkeypatch.setattr(plugin_core_module.platform, "system", lambda: "Windows")
+    plugin = plugin_core_module.BasePlugin()
+    schtasks_calls = []
+
+    monkeypatch.setattr(plugin_core_module.WindowsHostRuntime, "probe_powershell_file_execution", lambda self: True)
+    monkeypatch.setattr(plugin_core_module.WindowsHostRuntime, "probe_powershell_encoded_command", lambda self: True)
+    monkeypatch.setattr(
+        plugin_core_module.WindowsHostRuntime,
+        "run_schtasks",
+        lambda self, args, timeout=20: schtasks_calls.append(args) or True,
+    )
+
+    success, message = plugin.restartDomoticz()
+
+    assert success is True
+    assert message == "Domoticz restart requested"
+    helper = (manager_dir / "restart_domoticz.ps1").read_text()
+    command_helper = (manager_dir / "restart_domoticz.cmd").read_text()
+    assert "Restart-Service -Name " in helper
+    assert "@(\"sc.exe\", \"stop\", $serviceName)" in helper
+    assert "Invoke-Expression $script" in command_helper
+    assert schtasks_calls[0][:2] == ["/Create", "/TN"]
+    assert "/RU" in schtasks_calls[0]
+    assert "SYSTEM" in schtasks_calls[0]
+    assert schtasks_calls[1] == ["/Run", "/TN", r"\PyPluginStore-Domoticz-Restart"]
+    assert (manager_dir / "restart_domoticz.log").exists()
+    assert "launching Windows scheduled restart task" in (
+        manager_dir / "restart_domoticz.log"
+    ).read_text()
+
+
+def test_windows_restart_schedules_system_task_when_script_files_are_blocked(
+    plugin_core_module, tmp_path, monkeypatch
+):
+    _, manager_dir = configure_home(plugin_core_module, tmp_path)
+    monkeypatch.setattr(plugin_core_module.platform, "system", lambda: "Windows")
+    plugin = plugin_core_module.BasePlugin()
+    schtasks_calls = []
+
+    monkeypatch.setattr(plugin_core_module.WindowsHostRuntime, "probe_powershell_file_execution", lambda self: False)
+    monkeypatch.setattr(plugin_core_module.WindowsHostRuntime, "probe_powershell_encoded_command", lambda self: True)
+    monkeypatch.setattr(
+        plugin_core_module.WindowsHostRuntime,
+        "run_schtasks",
+        lambda self, args, timeout=20: schtasks_calls.append(args) or True,
+    )
+
+    success, message = plugin.restartDomoticz()
+
+    assert success is True
+    assert message == "Domoticz restart requested"
+    assert (manager_dir / "restart_domoticz.ps1").exists()
+    assert (manager_dir / "restart_domoticz.cmd").exists()
+    assert schtasks_calls[1] == ["/Run", "/TN", r"\PyPluginStore-Domoticz-Restart"]
+    assert "launching Windows scheduled restart task" in (manager_dir / "restart_domoticz.log").read_text()
+
+
+def test_windows_restart_reports_encoded_command_probe_failure(plugin_core_module, tmp_path, monkeypatch):
+    configure_home(plugin_core_module, tmp_path)
+    monkeypatch.setattr(plugin_core_module.platform, "system", lambda: "Windows")
+    plugin = plugin_core_module.BasePlugin()
+    schtasks_calls = []
+
+    monkeypatch.setattr(plugin_core_module.WindowsHostRuntime, "probe_powershell_file_execution", lambda self: False)
+    monkeypatch.setattr(plugin_core_module.WindowsHostRuntime, "probe_powershell_encoded_command", lambda self: False)
+    monkeypatch.setattr(
+        plugin_core_module.WindowsHostRuntime,
+        "run_schtasks",
+        lambda self, args, timeout=20: schtasks_calls.append(args) or True,
+    )
+
+    success, message = plugin.restartDomoticz()
+
+    assert success is False
+    assert message == "PowerShell EncodedCommand probe failed. See restart_domoticz.log."
+    assert schtasks_calls == []
+
+
+def test_windows_restart_reports_schtasks_failure(plugin_core_module, tmp_path, monkeypatch):
+    configure_home(plugin_core_module, tmp_path)
+    monkeypatch.setattr(plugin_core_module.platform, "system", lambda: "Windows")
+    plugin = plugin_core_module.BasePlugin()
+
+    monkeypatch.setattr(plugin_core_module.WindowsHostRuntime, "probe_powershell_file_execution", lambda self: True)
+    monkeypatch.setattr(plugin_core_module.WindowsHostRuntime, "probe_powershell_encoded_command", lambda self: True)
+    monkeypatch.setattr(plugin_core_module.WindowsHostRuntime, "run_schtasks", lambda self, args, timeout=20: False)
+
+    success, message = plugin.restartDomoticz()
+
+    assert success is False
+    assert message == "Failed to schedule Windows restart task. See restart_domoticz.log."
+
+
+def test_windows_restart_probe_detects_script_execution_policy(plugin_core_module, tmp_path, monkeypatch):
+    _, manager_dir = configure_home(plugin_core_module, tmp_path)
+    runtime = plugin_core_module.WindowsHostRuntime(plugin_core_module.Parameters)
+
+    class FakeResult:
+        returncode = 1
+        stdout = ""
+        stderr = "cannot be loaded because running scripts is disabled on this system"
+
+    monkeypatch.setattr(plugin_core_module.subprocess, "run", lambda *args, **kwargs: FakeResult())
+
+    assert runtime.probe_powershell_file_execution() is False
+    log_text = (manager_dir / "restart_domoticz.log").read_text()
+    assert "PowerShell .ps1 probe return code: 1" in log_text
+    assert "PowerShell .ps1 execution probe failed" in log_text
+    assert "PowerShell execution policy blocks .ps1 files" in log_text
+
+
+def test_windows_restart_probe_checks_encoded_command(plugin_core_module, tmp_path, monkeypatch):
+    _, manager_dir = configure_home(plugin_core_module, tmp_path)
+    runtime = plugin_core_module.WindowsHostRuntime(plugin_core_module.Parameters)
+
+    class FakeResult:
+        returncode = 1
+        stdout = ""
+        stderr = "This program is blocked by group policy"
+
+    monkeypatch.setattr(plugin_core_module.subprocess, "run", lambda *args, **kwargs: FakeResult())
+
+    assert runtime.probe_powershell_encoded_command() is False
+    log_text = (manager_dir / "restart_domoticz.log").read_text()
+    assert "PowerShell EncodedCommand probe return code: 1" in log_text
+    assert "This program is blocked by group policy" in log_text
+
+
+def test_restart_helper_logs_command_output(plugin_core_module, tmp_path):
+    runtime = plugin_core_module.HostRuntime({})
+    log_file = tmp_path / "restart_domoticz.log"
+    command_groups = [
+        [[
+            plugin_core_module.sys.executable,
+            "-c",
+            "import sys; sys.stderr.write('restart failed'); sys.exit(7)",
+        ]],
+        [[plugin_core_module.sys.executable, "-c", "print('restart ok')"]],
+    ]
+
+    helper = runtime.build_restart_helper(command_groups, str(log_file))
+    result = plugin_core_module.subprocess.run(
+        [plugin_core_module.sys.executable, "-c", helper],
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+
+    assert result.returncode == 0
+    log_text = log_file.read_text()
+    assert "return code: 7" in log_text
+    assert "stderr: restart failed" in log_text
+    assert "stdout: restart ok" in log_text
+    assert "restart command group completed" in log_text
+
+
+def test_dependency_install_command_prefers_uv_with_active_python(plugin_core_module, tmp_path):
+    runtime = plugin_core_module.LinuxHostRuntime({})
+    runtime.command_available = lambda command: command == "uv"
+
+    command = runtime.dependency_install_command(str(tmp_path / "requirements.txt"), str(tmp_path / "deps"))
+
+    assert command[:5] == ["uv", "pip", "install", "--python", plugin_core_module.sys.executable]
+
+
+def test_dependency_install_command_prefers_current_python_before_pip3(plugin_core_module, tmp_path):
+    runtime = plugin_core_module.LinuxHostRuntime({})
+    runtime.command_available = lambda command: command == "pip3"
+    runtime.command_can_run = lambda command, timeout=10: command == [plugin_core_module.sys.executable, "-m", "pip", "--version"]
+
+    command = runtime.dependency_install_command(str(tmp_path / "requirements.txt"), str(tmp_path / "deps"))
+
+    assert command[:3] == [plugin_core_module.sys.executable, "-m", "pip"]
+
+
+def test_windows_locked_remove_is_queued(plugin_core_module, tmp_path, monkeypatch):
+    _, manager_dir = configure_home(plugin_core_module, tmp_path)
+    plugin_dir = tmp_path / "domoticz" / "plugins" / "LockedPlugin"
+    plugin_dir.mkdir()
+    plugin = plugin_core_module.BasePlugin()
+    plugin.host = plugin_core_module.WindowsHostRuntime(plugin_core_module.Parameters)
+
+    monkeypatch.setattr(plugin_core_module.shutil, "rmtree", lambda path: (_ for _ in ()).throw(PermissionError("in use")))
+
+    success, message = plugin.removePlugin("LockedPlugin")
+
+    assert success is False
+    assert "queued" in message
+    assert json.loads((manager_dir / "pending_operations.json").read_text()) == [
+        {"action": "remove", "plugin_key": "LockedPlugin"}
+    ]

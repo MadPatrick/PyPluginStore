@@ -101,6 +101,16 @@ def test_refresh_status_button_is_wired_to_backend_command():
     assert "sendCommand('refresh_update_status', {})" in script
 
 
+def test_platform_badges_are_wired_to_backend_response():
+    html = (REPO_ROOT / "pypluginstore.html").read_text()
+    script = load_inline_script()
+
+    assert ".platform-badge-linux" in html
+    assert ".platform-badge-windows" in html
+    assert "platformCache = response.platforms || {}" in script
+    assert "platform-badge platform-badge-" in script
+
+
 def test_custom_ui_references_existing_icon_asset():
     html = (REPO_ROOT / "pypluginstore.html").read_text()
 

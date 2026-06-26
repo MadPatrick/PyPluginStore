@@ -2,7 +2,7 @@
 
 A robust and modern plugin manager for Domoticz that allows you to install and automatically update other Python plugins directly from GitHub.
 
-**Note:** This plugin runs exclusively on Linux Systems (including Raspberry Pi).
+**Supported platforms:** PyPluginStore supports Linux, including Raspberry Pi, and Windows Domoticz installations with Python plugin support. Individual third-party plugins may still be Linux-only or Windows-only depending on their own dependencies and OS integrations.
 
 <img src="pypluginstore.png" alt="PyPluginStore" width="627" height="627">
 
@@ -39,9 +39,10 @@ PyPluginStore includes **Abstract Syntax Tree (AST)** based security scanning to
 
 ## 🛠 Prerequisites
 
-1.  **Git:** Required to clone and update repositories. (`sudo apt install git`)
-2.  **uv (Recommended):** For fast and safe Python dependency resolution. (`curl -LsSf https://astral.sh/uv/install.sh | sh`)
-3.  **pip/pip3 (Optional):** Fallback if `uv` is not installed.
+1.  **Domoticz with Python plugin support.**
+2.  **Git:** Required to clone and update repositories. On Linux, install it with your package manager, for example `sudo apt install git`. On Windows, install Git for Windows and make sure `git` is available on `PATH`.
+3.  **uv (Recommended):** For fast and safe Python dependency resolution.
+4.  **pip:** Fallback when `uv` is not installed. PyPluginStore prefers the Python interpreter running Domoticz via `python -m pip` before standalone `pip3` or `pip` commands.
 
 ---
 
@@ -49,17 +50,31 @@ PyPluginStore includes **Abstract Syntax Tree (AST)** based security scanning to
 
 Navigate to your Domoticz `plugins` folder and clone this repository as `00-PyPluginStore`.
 
+Linux:
 ```bash
 cd domoticz/plugins
+git clone https://github.com/adrighem/PyPluginStore.git 00-PyPluginStore
+```
+
+Windows PowerShell:
+```powershell
+cd C:\path\to\domoticz\plugins
 git clone https://github.com/adrighem/PyPluginStore.git 00-PyPluginStore
 ```
 
 ### Why `00-PyPluginStore`?
 Domoticz loads Python plugins alphabetically by folder name. Prefixing with `00-` ensures that the manager loads first. This enables `PyPluginStore` to set up the shared dependency environment (`.shared_deps`) so other plugins can load their required libraries immediately on startup.
 
-After cloning, restart your Domoticz service:
+After cloning, restart Domoticz.
+
+Linux example:
 ```bash
 sudo systemctl restart domoticz.service
+```
+
+Windows service example:
+```powershell
+Restart-Service -Name Domoticz
 ```
 
 ---
@@ -84,9 +99,15 @@ PyPluginStore copies `pypluginstore.html` into `domoticz/www/templates` and its 
 
 ### Restart Button
 
-The **Restart Domoticz** button asks the host OS to restart `domoticz.service`. This is not handled by a Domoticz JSON API endpoint; it uses non-interactive service commands such as `sudo -n systemctl restart domoticz.service`, `systemctl restart domoticz.service`, and `service domoticz restart`.
+The **Restart Domoticz** button asks the host OS to restart Domoticz. This is not handled by a Domoticz JSON API endpoint.
 
-For the button to work, the user running Domoticz must have permission to restart the service. On many systems this means adding a tightly scoped passwordless sudo rule for the Domoticz service restart command. If permissions are not configured, the request is sent but the service will keep running.
+On Linux it tries non-interactive service commands such as `sudo -n systemctl restart domoticz.service`, `systemctl restart domoticz.service`, and `service domoticz restart`.
+
+On Windows it tries service commands such as PowerShell `Restart-Service -Name Domoticz` and `sc stop/start Domoticz`.
+
+For the button to work, the user running Domoticz must have permission to restart the service. On Linux this may require a tightly scoped passwordless sudo rule. On Windows this may require running Domoticz under an account that can control the Domoticz service. If restart permissions are not configured, PyPluginStore reports the scheduling failure and Domoticz keeps running.
+
+Restart command diagnostics are written to `restart_domoticz.log` in the PyPluginStore plugin folder. On Windows, PyPluginStore probes whether PowerShell can run in the Domoticz service context, writes inspectable `restart_domoticz.ps1` and `restart_domoticz.cmd` helper files, and starts the actual restart through a one-shot Windows Task Scheduler task named `\PyPluginStore-Domoticz-Restart` running as `SYSTEM`. This keeps the restart helper out of the Domoticz service process tree and avoids depending on `.ps1` execution policy. If task creation or launch fails, the log contains the `schtasks.exe` output. If the task launches but no helper output appears, check Task Scheduler history for `\PyPluginStore-Domoticz-Restart`. If the log records a non-zero return code, stdout, or stderr from `Restart-Service` or `sc.exe`, use that command output to fix the service name, permissions, or local Windows service configuration.
 
 ---
 
@@ -101,6 +122,9 @@ To install dependencies for a specific plugin manually:
 2.  Install them into the `00-PyPluginStore/.shared_deps` folder:
     ```bash
     pip install -r /path/to/plugin/requirements.txt --target /path/to/domoticz/plugins/00-PyPluginStore/.shared_deps
+    ```
+    ```powershell
+    python -m pip install -r C:\path\to\domoticz\plugins\PluginName\requirements.txt --target C:\path\to\domoticz\plugins\00-PyPluginStore\.shared_deps
     ```
 
 ---
@@ -129,6 +153,8 @@ Private or local-only plugins can be added to `registry_local.json` in the PyPlu
 Entries in `registry_local.json` override public entries with the same key and show a **Local** badge in the Plugin Store UI. Installing or updating private repositories still requires the Domoticz host to have working git access to those repositories.
 
 The first two values are normally the GitHub owner and repository name. A full Git clone URL is also accepted as the first value for private/local entries; in that case the repository-name value is ignored for cloning.
+
+Registry entries can optionally include platform metadata. Existing list-style entries remain valid; PyPluginStore also accepts object-style entries with a `platforms` field such as `["linux", "windows"]`. Plugins without platform metadata are shown as unknown rather than blocked.
 
 ---
 
