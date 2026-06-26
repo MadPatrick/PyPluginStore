@@ -413,6 +413,41 @@ class WindowsHostRuntime(HostRuntime):
             self.append_restart_log("PowerShell .ps1 probe exception: " + str(e))
             return False
 
+    def probe_powershell_encoded_command(self):
+        script = (
+            "$LogFile = {log_file}\n"
+            "$timestamp = (Get-Date).ToString(\"s\")\n"
+            "Add-Content -LiteralPath $LogFile -Value \"[$timestamp] PowerShell EncodedCommand probe succeeded\" -Encoding UTF8\n"
+            "Write-Output 'PyPluginStore PowerShell EncodedCommand probe'\n"
+        ).format(log_file=self.powershell_quote(self.restart_log_file()))
+
+        try:
+            result = subprocess.run(
+                [
+                    self.powershell_executable(),
+                    "-NoProfile",
+                    "-NonInteractive",
+                    "-ExecutionPolicy",
+                    "Bypass",
+                    "-EncodedCommand",
+                    self.powershell_encoded_command(script),
+                ],
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                timeout=10,
+            )
+            self.append_restart_log("PowerShell EncodedCommand probe return code: " + str(result.returncode))
+            if result.stdout:
+                self.append_restart_log("PowerShell EncodedCommand probe stdout: " + result.stdout.strip())
+            if result.stderr:
+                self.append_restart_log("PowerShell EncodedCommand probe stderr: " + result.stderr.strip())
+            return result.returncode == 0
+        except Exception as e:
+            self.append_restart_log("PowerShell EncodedCommand probe exception: " + str(e))
+            return False
+
     def build_windows_restart_script(self):
         script = r"""
 $ErrorActionPreference = "Continue"
@@ -500,26 +535,20 @@ exit 1
             with open(script_file, "w", encoding="utf-8", newline="\r\n") as restart_script:
                 restart_script.write(script)
 
-            if self.probe_powershell_file_execution():
-                command = [
-                    self.powershell_executable(),
-                    "-NoProfile",
-                    "-ExecutionPolicy",
-                    "Bypass",
-                    "-File",
-                    script_file,
-                ]
-                self.append_restart_log("launching Windows PowerShell restart helper: " + script_file)
-            else:
-                command = [
-                    self.powershell_executable(),
-                    "-NoProfile",
-                    "-ExecutionPolicy",
-                    "Bypass",
-                    "-EncodedCommand",
-                    self.powershell_encoded_command(script),
-                ]
-                self.append_restart_log("launching Windows PowerShell restart helper via EncodedCommand")
+            self.probe_powershell_file_execution()
+            if not self.probe_powershell_encoded_command():
+                return False, "PowerShell EncodedCommand probe failed. See restart_domoticz.log."
+
+            command = [
+                self.powershell_executable(),
+                "-NoProfile",
+                "-NonInteractive",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-EncodedCommand",
+                self.powershell_encoded_command(script),
+            ]
+            self.append_restart_log("launching Windows PowerShell restart helper via EncodedCommand")
 
             subprocess.Popen(
                 command,

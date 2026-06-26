@@ -595,21 +595,27 @@ def test_windows_restart_uses_windows_service_commands(plugin_core_module, tmp_p
 
     monkeypatch.setattr(plugin_core_module.subprocess, "Popen", FakePopen)
     monkeypatch.setattr(plugin_core_module.WindowsHostRuntime, "probe_powershell_file_execution", lambda self: True)
+    monkeypatch.setattr(plugin_core_module.WindowsHostRuntime, "probe_powershell_encoded_command", lambda self: True)
 
     success, message = plugin.restartDomoticz()
 
     assert success is True
     assert message == "Domoticz restart requested"
-    assert popen_calls[0][0][-2:] == ["-File", str(manager_dir / "restart_domoticz.ps1")]
+    assert "-EncodedCommand" in popen_calls[0][0]
+    assert "-File" not in popen_calls[0][0]
     helper = (manager_dir / "restart_domoticz.ps1").read_text()
     assert "Restart-Service -Name " in helper
     assert "@(\"sc.exe\", \"stop\", $serviceName)" in helper
     assert (manager_dir / "restart_domoticz.log").exists()
-    assert "launching Windows PowerShell restart helper" in (manager_dir / "restart_domoticz.log").read_text()
+    assert "launching Windows PowerShell restart helper via EncodedCommand" in (
+        manager_dir / "restart_domoticz.log"
+    ).read_text()
     assert "start_new_session" not in popen_calls[0][1]
 
 
-def test_windows_restart_uses_encoded_command_when_script_files_are_blocked(plugin_core_module, tmp_path, monkeypatch):
+def test_windows_restart_uses_encoded_command_when_script_files_are_blocked(
+    plugin_core_module, tmp_path, monkeypatch
+):
     _, manager_dir = configure_home(plugin_core_module, tmp_path)
     monkeypatch.setattr(plugin_core_module.platform, "system", lambda: "Windows")
     plugin = plugin_core_module.BasePlugin()
@@ -621,6 +627,7 @@ def test_windows_restart_uses_encoded_command_when_script_files_are_blocked(plug
 
     monkeypatch.setattr(plugin_core_module.subprocess, "Popen", FakePopen)
     monkeypatch.setattr(plugin_core_module.WindowsHostRuntime, "probe_powershell_file_execution", lambda self: False)
+    monkeypatch.setattr(plugin_core_module.WindowsHostRuntime, "probe_powershell_encoded_command", lambda self: True)
 
     success, message = plugin.restartDomoticz()
 
@@ -630,6 +637,27 @@ def test_windows_restart_uses_encoded_command_when_script_files_are_blocked(plug
     assert "-File" not in popen_calls[0][0]
     assert (manager_dir / "restart_domoticz.ps1").exists()
     assert "via EncodedCommand" in (manager_dir / "restart_domoticz.log").read_text()
+
+
+def test_windows_restart_reports_encoded_command_probe_failure(plugin_core_module, tmp_path, monkeypatch):
+    configure_home(plugin_core_module, tmp_path)
+    monkeypatch.setattr(plugin_core_module.platform, "system", lambda: "Windows")
+    plugin = plugin_core_module.BasePlugin()
+    popen_calls = []
+
+    class FakePopen:
+        def __init__(self, command, **kwargs):
+            popen_calls.append((command, kwargs))
+
+    monkeypatch.setattr(plugin_core_module.subprocess, "Popen", FakePopen)
+    monkeypatch.setattr(plugin_core_module.WindowsHostRuntime, "probe_powershell_file_execution", lambda self: False)
+    monkeypatch.setattr(plugin_core_module.WindowsHostRuntime, "probe_powershell_encoded_command", lambda self: False)
+
+    success, message = plugin.restartDomoticz()
+
+    assert success is False
+    assert message == "PowerShell EncodedCommand probe failed. See restart_domoticz.log."
+    assert popen_calls == []
 
 
 def test_windows_restart_probe_detects_script_execution_policy(plugin_core_module, tmp_path, monkeypatch):
@@ -648,6 +676,23 @@ def test_windows_restart_probe_detects_script_execution_policy(plugin_core_modul
     assert "PowerShell .ps1 probe return code: 1" in log_text
     assert "PowerShell .ps1 execution probe failed" in log_text
     assert "PowerShell execution policy blocks .ps1 files" in log_text
+
+
+def test_windows_restart_probe_checks_encoded_command(plugin_core_module, tmp_path, monkeypatch):
+    _, manager_dir = configure_home(plugin_core_module, tmp_path)
+    runtime = plugin_core_module.WindowsHostRuntime(plugin_core_module.Parameters)
+
+    class FakeResult:
+        returncode = 1
+        stdout = ""
+        stderr = "This program is blocked by group policy"
+
+    monkeypatch.setattr(plugin_core_module.subprocess, "run", lambda *args, **kwargs: FakeResult())
+
+    assert runtime.probe_powershell_encoded_command() is False
+    log_text = (manager_dir / "restart_domoticz.log").read_text()
+    assert "PowerShell EncodedCommand probe return code: 1" in log_text
+    assert "This program is blocked by group policy" in log_text
 
 
 def test_restart_helper_logs_command_output(plugin_core_module, tmp_path):
