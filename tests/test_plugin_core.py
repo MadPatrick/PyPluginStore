@@ -594,6 +594,7 @@ def test_windows_restart_uses_windows_service_commands(plugin_core_module, tmp_p
             popen_calls.append((command, kwargs))
 
     monkeypatch.setattr(plugin_core_module.subprocess, "Popen", FakePopen)
+    monkeypatch.setattr(plugin_core_module.WindowsHostRuntime, "probe_powershell_file_execution", lambda self: True)
 
     success, message = plugin.restartDomoticz()
 
@@ -606,6 +607,47 @@ def test_windows_restart_uses_windows_service_commands(plugin_core_module, tmp_p
     assert (manager_dir / "restart_domoticz.log").exists()
     assert "launching Windows PowerShell restart helper" in (manager_dir / "restart_domoticz.log").read_text()
     assert "start_new_session" not in popen_calls[0][1]
+
+
+def test_windows_restart_uses_encoded_command_when_script_files_are_blocked(plugin_core_module, tmp_path, monkeypatch):
+    _, manager_dir = configure_home(plugin_core_module, tmp_path)
+    monkeypatch.setattr(plugin_core_module.platform, "system", lambda: "Windows")
+    plugin = plugin_core_module.BasePlugin()
+    popen_calls = []
+
+    class FakePopen:
+        def __init__(self, command, **kwargs):
+            popen_calls.append((command, kwargs))
+
+    monkeypatch.setattr(plugin_core_module.subprocess, "Popen", FakePopen)
+    monkeypatch.setattr(plugin_core_module.WindowsHostRuntime, "probe_powershell_file_execution", lambda self: False)
+
+    success, message = plugin.restartDomoticz()
+
+    assert success is True
+    assert message == "Domoticz restart requested"
+    assert "-EncodedCommand" in popen_calls[0][0]
+    assert "-File" not in popen_calls[0][0]
+    assert (manager_dir / "restart_domoticz.ps1").exists()
+    assert "via EncodedCommand" in (manager_dir / "restart_domoticz.log").read_text()
+
+
+def test_windows_restart_probe_detects_script_execution_policy(plugin_core_module, tmp_path, monkeypatch):
+    _, manager_dir = configure_home(plugin_core_module, tmp_path)
+    runtime = plugin_core_module.WindowsHostRuntime(plugin_core_module.Parameters)
+
+    class FakeResult:
+        returncode = 1
+        stdout = ""
+        stderr = "cannot be loaded because running scripts is disabled on this system"
+
+    monkeypatch.setattr(plugin_core_module.subprocess, "run", lambda *args, **kwargs: FakeResult())
+
+    assert runtime.probe_powershell_file_execution() is False
+    log_text = (manager_dir / "restart_domoticz.log").read_text()
+    assert "PowerShell .ps1 probe return code: 1" in log_text
+    assert "PowerShell .ps1 execution probe failed" in log_text
+    assert "PowerShell execution policy blocks .ps1 files" in log_text
 
 
 def test_restart_helper_logs_command_output(plugin_core_module, tmp_path):

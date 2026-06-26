@@ -35,6 +35,7 @@
 
 
 
+import base64
 import os
 import platform
 import re
@@ -360,6 +361,9 @@ class WindowsHostRuntime(HostRuntime):
     def windows_restart_script_file(self):
         return os.path.join(self.plugin_home_folder(), "restart_domoticz.ps1")
 
+    def windows_restart_probe_file(self):
+        return os.path.join(self.plugin_home_folder(), "restart_domoticz_probe.ps1")
+
     def powershell_executable(self):
         system_root = os.environ.get("SystemRoot", r"C:\Windows")
         candidate = os.path.join(system_root, "System32", "WindowsPowerShell", "v1.0", "powershell.exe")
@@ -369,6 +373,45 @@ class WindowsHostRuntime(HostRuntime):
 
     def powershell_quote(self, value):
         return "'" + str(value).replace("'", "''") + "'"
+
+    def powershell_encoded_command(self, script):
+        return base64.b64encode(script.encode("utf-16le")).decode("ascii")
+
+    def probe_powershell_file_execution(self):
+        probe_file = self.windows_restart_probe_file()
+        try:
+            with open(probe_file, "w", encoding="utf-8", newline="\r\n") as probe_script:
+                probe_script.write("Write-Output 'PyPluginStore PowerShell file execution probe'\n")
+
+            result = subprocess.run(
+                [
+                    self.powershell_executable(),
+                    "-NoProfile",
+                    "-ExecutionPolicy",
+                    "Bypass",
+                    "-File",
+                    probe_file,
+                ],
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                timeout=10,
+            )
+            self.append_restart_log("PowerShell .ps1 probe return code: " + str(result.returncode))
+            if result.stdout:
+                self.append_restart_log("PowerShell .ps1 probe stdout: " + result.stdout.strip())
+            if result.stderr:
+                self.append_restart_log("PowerShell .ps1 probe stderr: " + result.stderr.strip())
+            if result.returncode != 0:
+                self.append_restart_log("PowerShell .ps1 execution probe failed")
+                if "running scripts is disabled" in str(result.stderr).lower():
+                    self.append_restart_log("PowerShell execution policy blocks .ps1 files")
+                return False
+            return True
+        except Exception as e:
+            self.append_restart_log("PowerShell .ps1 probe exception: " + str(e))
+            return False
 
     def build_windows_restart_script(self):
         script = r"""
@@ -453,19 +496,33 @@ exit 1
         script_file = self.windows_restart_script_file()
         try:
             self.append_restart_log("restart requested")
+            script = self.build_windows_restart_script()
             with open(script_file, "w", encoding="utf-8", newline="\r\n") as restart_script:
-                restart_script.write(self.build_windows_restart_script())
-            self.append_restart_log("launching Windows PowerShell restart helper: " + script_file)
+                restart_script.write(script)
 
-            subprocess.Popen(
-                [
+            if self.probe_powershell_file_execution():
+                command = [
                     self.powershell_executable(),
                     "-NoProfile",
                     "-ExecutionPolicy",
                     "Bypass",
                     "-File",
                     script_file,
-                ],
+                ]
+                self.append_restart_log("launching Windows PowerShell restart helper: " + script_file)
+            else:
+                command = [
+                    self.powershell_executable(),
+                    "-NoProfile",
+                    "-ExecutionPolicy",
+                    "Bypass",
+                    "-EncodedCommand",
+                    self.powershell_encoded_command(script),
+                ]
+                self.append_restart_log("launching Windows PowerShell restart helper via EncodedCommand")
+
+            subprocess.Popen(
+                command,
                 stdin=subprocess.DEVNULL,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
