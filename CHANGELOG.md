@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.11.1](https://github.com/adrighem/PyPluginStore/compare/v2.11.0...v2.11.1) (2026-06-27)
+
+
+### Bug Fixes
+
+* improve installed plugin detection ([1395e55](https://github.com/adrighem/PyPluginStore/commit/1395e55dea63062573dc1104ecae465c79584ecf))
+
 ## [2.11.0](https://github.com/adrighem/PyPluginStore/compare/v2.10.0...v2.11.0) (2026-06-26)
 
 
