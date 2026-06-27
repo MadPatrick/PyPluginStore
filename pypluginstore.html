@@ -439,6 +439,7 @@
     let platformCache = {};
     let managerKey = null;
     let currentSort = 'name';
+    const INSTALLED_FILTER_STORAGE_KEY = 'pypluginstore.installedOnly';
 
     function setStatus(msg) {
         console.log("PyPluginStore Status: " + msg);
@@ -446,13 +447,32 @@
         if (el) el.innerText = msg;
     }
 
+    function readStoredInstalledFilter() {
+        try {
+            return window.localStorage.getItem(INSTALLED_FILTER_STORAGE_KEY) === 'true';
+        } catch (e) {
+            return false;
+        }
+    }
+
+    function writeStoredInstalledFilter(checked) {
+        try {
+            window.localStorage.setItem(INSTALLED_FILTER_STORAGE_KEY, checked ? 'true' : 'false');
+        } catch (e) {}
+    }
+
     async function init() {
         if (document.getElementById('pypluginstore-status').innerText !== 'Initializing...') {
             return;
         }
 
+        const installedToggle = document.getElementById('installed-toggle');
+        installedToggle.checked = readStoredInstalledFilter();
         document.getElementById('search-box').oninput = filterAndRender;
-        document.getElementById('installed-toggle').onchange = filterAndRender;
+        installedToggle.onchange = function() {
+            writeStoredInstalledFilter(installedToggle.checked);
+            filterAndRender();
+        };
         document.getElementById('refresh-update-status').onclick = refreshUpdateStatus;
         document.getElementById('restart-domoticz').onclick = restartDomoticz;
         document.getElementById('sort-select').onchange = function() {
