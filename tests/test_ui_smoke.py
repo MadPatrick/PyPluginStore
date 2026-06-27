@@ -101,6 +101,80 @@ def test_refresh_status_button_is_wired_to_backend_command():
     assert "sendCommand('refresh_update_status', {})" in script
 
 
+def test_installed_filter_state_is_persisted_in_local_storage():
+    script = load_inline_script()
+
+    assert "INSTALLED_FILTER_STORAGE_KEY = 'pypluginstore.installedOnly'" in script
+    assert "readStoredInstalledFilter()" in script
+    assert "writeStoredInstalledFilter(installedToggle.checked)" in script
+    assert "installedToggle.checked = readStoredInstalledFilter()" in script
+    assert ".localStorage.getItem(INSTALLED_FILTER_STORAGE_KEY)" in script
+    assert ".localStorage.setItem(INSTALLED_FILTER_STORAGE_KEY" in script
+
+
+def test_installed_filter_storage_helpers_are_tolerant():
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("node is not installed")
+
+    script = load_inline_script()
+    read_function = extract_js_function(script, "readStoredInstalledFilter")
+    write_function = extract_js_function(script, "writeStoredInstalledFilter")
+    node_script = f"""
+const INSTALLED_FILTER_STORAGE_KEY = 'pypluginstore.installedOnly';
+{read_function}
+{write_function}
+
+const values = {{}};
+global.window = {{
+    localStorage: {{
+        getItem: key => values[key] || null,
+        setItem: (key, value) => values[key] = value,
+    }}
+}};
+
+if (readStoredInstalledFilter() !== false) {{
+    throw new Error('default installed filter state should be false');
+}}
+
+writeStoredInstalledFilter(true);
+if (values[INSTALLED_FILTER_STORAGE_KEY] !== 'true') {{
+    throw new Error('true state was not stored');
+}}
+if (readStoredInstalledFilter() !== true) {{
+    throw new Error('true state was not restored');
+}}
+
+writeStoredInstalledFilter(false);
+if (values[INSTALLED_FILTER_STORAGE_KEY] !== 'false') {{
+    throw new Error('false state was not stored');
+}}
+if (readStoredInstalledFilter() !== false) {{
+    throw new Error('false state was not restored');
+}}
+
+global.window = {{
+    localStorage: {{
+        getItem: () => {{ throw new Error('storage unavailable'); }},
+        setItem: () => {{ throw new Error('storage unavailable'); }},
+    }}
+}};
+
+if (readStoredInstalledFilter() !== false) {{
+    throw new Error('unavailable storage should fall back to false');
+}}
+writeStoredInstalledFilter(true);
+"""
+
+    result = subprocess.run(
+        [node, "-"],
+        input=node_script,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stderr
+
+
 def test_platform_badges_are_wired_to_backend_response():
     html = (REPO_ROOT / "pypluginstore.html").read_text()
     script = load_inline_script()
