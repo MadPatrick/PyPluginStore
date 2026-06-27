@@ -174,6 +174,7 @@ import traceback
 
 command_groups = __COMMAND_GROUPS__
 log_file = __LOG_FILE__
+failures = []
 
 def write_log(message):
     timestamp = datetime.datetime.now().isoformat(timespec="seconds")
@@ -182,6 +183,66 @@ def write_log(message):
             restart_log.write("[{}] {}\\n".format(timestamp, message))
     except Exception:
         pass
+
+def classify_restart_failure(failed_attempts):
+    combined_output = "\\n".join(
+        [
+            "\\n".join(
+                [
+                    str(failure.get("stdout", "")),
+                    str(failure.get("stderr", "")),
+                    str(failure.get("exception", "")),
+                ]
+            )
+            for failure in failed_attempts
+        ]
+    ).lower()
+
+    sudo_password_markers = (
+        "a password is required",
+        "password is required",
+        "a terminal is required to read the password",
+        "wachtwoord is verplicht",
+    )
+    permission_markers = (
+        "access denied",
+        "permission denied",
+        "not authorized",
+        "interactive authentication required",
+        "authentication is required",
+    )
+    service_missing_markers = (
+        "unit domoticz.service not found",
+        "domoticz.service not found",
+        "unrecognized service",
+    )
+    command_missing_markers = (
+        "no such file or directory",
+        "command not found",
+        "not found",
+    )
+
+    if any(marker in combined_output for marker in sudo_password_markers):
+        return (
+            "Domoticz restart failed: sudo requires an interactive password. "
+            "Configure a narrowly scoped NOPASSWD sudoers rule for the exact Domoticz restart command, or restart Domoticz manually."
+        )
+    if any(marker in combined_output for marker in permission_markers):
+        return (
+            "Domoticz restart failed: the Domoticz OS user is not allowed to restart domoticz.service. "
+            "Grant only the required service-restart permission, or restart Domoticz manually."
+        )
+    if any(marker in combined_output for marker in service_missing_markers):
+        return (
+            "Domoticz restart failed: domoticz.service was not found. "
+            "Check the Domoticz service name and restart it manually."
+        )
+    if any(marker in combined_output for marker in command_missing_markers):
+        return (
+            "Domoticz restart failed: one or more restart commands were not available on this host. "
+            "Check the Domoticz service manager and restart it manually."
+        )
+    return "Domoticz restart failed: all configured restart commands failed. Review the command output above."
 
 write_log("restart helper started")
 time.sleep(2)
@@ -205,6 +266,12 @@ for group_index, command_group in enumerate(command_groups, start=1):
             if result.stderr:
                 write_log("stderr: {}".format(result.stderr.strip()))
             if result.returncode != 0:
+                failures.append({
+                    "command": subprocess.list2cmdline(command),
+                    "returncode": result.returncode,
+                    "stdout": result.stdout,
+                    "stderr": result.stderr,
+                })
                 success = False
                 break
             if index < len(command_group) - 1:
@@ -212,6 +279,10 @@ for group_index, command_group in enumerate(command_groups, start=1):
         except Exception as e:
             write_log("exception: {}".format(e))
             write_log(traceback.format_exc().strip())
+            failures.append({
+                "command": subprocess.list2cmdline(command),
+                "exception": str(e),
+            })
             success = False
             break
     if success:
@@ -219,6 +290,7 @@ for group_index, command_group in enumerate(command_groups, start=1):
         break
 else:
     write_log("all restart command groups failed")
+    write_log("failure summary: {}".format(classify_restart_failure(failures)))
 """
         return (
             helper

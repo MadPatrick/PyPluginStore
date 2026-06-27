@@ -1282,6 +1282,37 @@ def test_restart_helper_logs_command_output(plugin_core_module, tmp_path):
     assert "restart command group completed" in log_text
 
 
+def test_restart_helper_summarizes_permission_failures(plugin_core_module, tmp_path):
+    runtime = plugin_core_module.HostRuntime({})
+    log_file = tmp_path / "restart_domoticz.log"
+    command_groups = [
+        [[
+            plugin_core_module.sys.executable,
+            "-c",
+            "import sys; sys.stderr.write('sudo: een wachtwoord is verplicht'); sys.exit(1)",
+        ]],
+        [[
+            plugin_core_module.sys.executable,
+            "-c",
+            "import sys; sys.stderr.write('Failed to restart domoticz.service: Access denied'); sys.exit(4)",
+        ]],
+    ]
+
+    helper = runtime.build_restart_helper(command_groups, str(log_file))
+    result = plugin_core_module.subprocess.run(
+        [plugin_core_module.sys.executable, "-c", helper],
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+
+    assert result.returncode == 0
+    log_text = log_file.read_text()
+    assert "all restart command groups failed" in log_text
+    assert "failure summary: Domoticz restart failed: sudo requires an interactive password." in log_text
+    assert "NOPASSWD sudoers rule" in log_text
+
+
 def test_dependency_install_command_prefers_uv_with_active_python(plugin_core_module, tmp_path):
     runtime = plugin_core_module.LinuxHostRuntime({})
     runtime.command_available = lambda command: command == "uv"

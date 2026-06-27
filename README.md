@@ -101,13 +101,79 @@ PyPluginStore copies `pypluginstore.html` into `domoticz/www/templates` and its 
 
 The **Restart Domoticz** button asks the host OS to restart Domoticz. This is not handled by a Domoticz JSON API endpoint.
 
-On Linux it tries non-interactive service commands such as `sudo -n systemctl restart domoticz.service`, `systemctl restart domoticz.service`, and `service domoticz restart`.
+On Linux it tries these non-interactive service commands, in order:
+
+1. `sudo -n systemctl restart domoticz.service`
+2. `systemctl restart domoticz.service`
+3. `sudo -n service domoticz restart`
+4. `service domoticz restart`
 
 On Windows it tries service commands such as PowerShell `Restart-Service -Name Domoticz` and `sc stop/start Domoticz`.
 
-For the button to work, the user running Domoticz must have permission to restart the service. On Linux this may require a tightly scoped passwordless sudo rule. On Windows this may require running Domoticz under an account that can control the Domoticz service. If restart permissions are not configured, PyPluginStore reports the scheduling failure and Domoticz keeps running.
+For the button to work, the user running Domoticz must have permission to restart the service. On Linux, use either a tightly scoped sudoers rule or a tightly scoped polkit rule. Do not grant broad passwordless sudo such as `NOPASSWD: ALL`, and do not allow arbitrary `systemctl` commands.
 
-Restart command diagnostics are written to `restart_domoticz.log` in the PyPluginStore plugin folder. On Windows, PyPluginStore probes whether PowerShell can run in the Domoticz service context, writes inspectable `restart_domoticz.ps1` and `restart_domoticz.cmd` helper files, and starts the actual restart through a one-shot Windows Task Scheduler task named `\PyPluginStore-Domoticz-Restart` running as `SYSTEM`. This keeps the restart helper out of the Domoticz service process tree and avoids depending on `.ps1` execution policy. If task creation or launch fails, the log contains the `schtasks.exe` output. If the task launches but no helper output appears, check Task Scheduler history for `\PyPluginStore-Domoticz-Restart`. If the log records a non-zero return code, stdout, or stderr from `Restart-Service` or `sc.exe`, use that command output to fix the service name, permissions, or local Windows service configuration.
+To configure sudoers, first find the OS user that runs Domoticz and the absolute command path that sudoers must match:
+
+```bash
+systemctl show -p User --value domoticz.service
+ps -o user= -C domoticz
+command -v systemctl
+```
+
+Then create a dedicated sudoers file with `visudo`:
+
+```bash
+sudo visudo -f /etc/sudoers.d/pypluginstore-domoticz-restart
+```
+
+Add one line, replacing `domoticz` with the Domoticz OS user and `/usr/bin/systemctl` with the `command -v systemctl` output:
+
+```sudoers
+domoticz ALL=(root) NOPASSWD: /usr/bin/systemctl restart domoticz.service
+```
+
+This matches the first Linux command PyPluginStore tries: `sudo -n systemctl restart domoticz.service`. The command must stay limited to `restart domoticz.service`; broader rules would let the Domoticz process control unrelated system services.
+
+Validate the sudoers syntax and check the permission without prompting:
+
+```bash
+sudo visudo -c -f /etc/sudoers.d/pypluginstore-domoticz-restart
+sudo chown root:root /etc/sudoers.d/pypluginstore-domoticz-restart
+sudo chmod 0440 /etc/sudoers.d/pypluginstore-domoticz-restart
+sudo -u domoticz sudo -n -l /usr/bin/systemctl restart domoticz.service
+```
+
+If the host does not use systemd, add the same kind of narrow rule for the exact service command path returned by `command -v service`:
+
+```sudoers
+domoticz ALL=(root) NOPASSWD: /usr/sbin/service domoticz restart
+```
+
+As an alternative to sudoers on systemd hosts, polkit can authorize the direct `systemctl restart domoticz.service` attempt. Create `/etc/polkit-1/rules.d/49-pypluginstore-domoticz-restart.rules` as root:
+
+```javascript
+polkit.addRule(function(action, subject) {
+    if (action.id == "org.freedesktop.systemd1.manage-units" &&
+        subject.user == "domoticz" &&
+        action.lookup("unit") == "domoticz.service" &&
+        action.lookup("verb") == "restart") {
+        return polkit.Result.YES;
+    }
+});
+```
+
+Keep the rule owned by root and not writable by the Domoticz user:
+
+```bash
+sudo chown root:root /etc/polkit-1/rules.d/49-pypluginstore-domoticz-restart.rules
+sudo chmod 0644 /etc/polkit-1/rules.d/49-pypluginstore-domoticz-restart.rules
+```
+
+If you use only polkit, the restart log may still show the first sudo attempt failing before the direct `systemctl` attempt succeeds. That is expected because PyPluginStore tries sudo first.
+
+On Windows, restart permissions may require running Domoticz under an account that can control the Domoticz service. If restart permissions are not configured, PyPluginStore logs the command failures and Domoticz keeps running.
+
+Restart command diagnostics are written to `restart_domoticz.log` in the PyPluginStore plugin folder. On Linux, the log ends with a failure summary when every restart command fails. On Windows, PyPluginStore probes whether PowerShell can run in the Domoticz service context, writes inspectable `restart_domoticz.ps1` and `restart_domoticz.cmd` helper files, and starts the actual restart through a one-shot Windows Task Scheduler task named `\PyPluginStore-Domoticz-Restart` running as `SYSTEM`. This keeps the restart helper out of the Domoticz service process tree and avoids depending on `.ps1` execution policy. If task creation or launch fails, the log contains the `schtasks.exe` output. If the task launches but no helper output appears, check Task Scheduler history for `\PyPluginStore-Domoticz-Restart`. If the log records a non-zero return code, stdout, or stderr from `Restart-Service` or `sc.exe`, use that command output to fix the service name, permissions, or local Windows service configuration.
 
 ---
 
