@@ -200,7 +200,7 @@ class HostRuntime:
     def detached_popen_kwargs(self):
         return {}
 
-    def build_restart_helper(self, command_groups, log_file):
+    def build_restart_helper(self, command_groups, log_file, startup_delay=2, command_delay=3):
         helper = """
 import datetime
 import subprocess
@@ -209,6 +209,8 @@ import traceback
 
 command_groups = __COMMAND_GROUPS__
 log_file = __LOG_FILE__
+startup_delay = __STARTUP_DELAY__
+command_delay = __COMMAND_DELAY__
 failures = []
 
 def write_log(message):
@@ -280,7 +282,8 @@ def classify_restart_failure(failed_attempts):
     return "Domoticz restart failed: all configured restart commands failed. Review the command output above."
 
 write_log("restart helper started")
-time.sleep(2)
+if startup_delay:
+    time.sleep(startup_delay)
 for group_index, command_group in enumerate(command_groups, start=1):
     write_log("trying command group {}".format(group_index))
     success = True
@@ -309,8 +312,8 @@ for group_index, command_group in enumerate(command_groups, start=1):
                 })
                 success = False
                 break
-            if index < len(command_group) - 1:
-                time.sleep(3)
+            if index < len(command_group) - 1 and command_delay:
+                time.sleep(command_delay)
         except Exception as e:
             write_log("exception: {}".format(e))
             write_log(traceback.format_exc().strip())
@@ -331,6 +334,8 @@ else:
             helper
             .replace("__COMMAND_GROUPS__", repr(command_groups))
             .replace("__LOG_FILE__", repr(log_file))
+            .replace("__STARTUP_DELAY__", repr(startup_delay))
+            .replace("__COMMAND_DELAY__", repr(command_delay))
         )
 
     def restart_domoticz(self):
