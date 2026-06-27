@@ -668,6 +668,7 @@ class BasePlugin:
         self.last_update_status_refresh_date = None
         self.host = None
         self.installed_plugin_folders = {}
+        self.installed_plugin_match_details = {}
 
     def get_host(self):
         parameters = globals().get("Parameters", {})
@@ -819,6 +820,30 @@ class BasePlugin:
     def normalize_plugin_metadata_value(self, value):
         return re.sub(r"[^a-z0-9]+", "", str(value or "").lower())
 
+    def strip_domoticz_plugin_affixes(self, value):
+        original_value = str(value or "").strip()
+        if original_value.endswith(".git"):
+            original_value = original_value[:-4]
+
+        cleaned_value = original_value
+        for pattern in (
+            r"^domoticz[-_ ]+plugin[-_ ]+",
+            r"^domoticz[-_ ]+for[-_ ]+",
+            r"^domoticz[-_ ]+",
+            r"[-_ ]+domoticz[-_ ]+plugin$",
+            r"[-_ ]+for[-_ ]+domoticz$",
+            r"[-_ ]+domoticz$",
+        ):
+            cleaned_value = re.sub(pattern, "", cleaned_value, flags=re.IGNORECASE)
+
+        cleaned_value = re.sub(r"^[-_ ]+|[-_ ]+$", "", cleaned_value)
+        if cleaned_value != original_value:
+            cleaned_value = re.sub(r"^plugin[-_ ]+", "", cleaned_value, flags=re.IGNORECASE)
+            cleaned_value = re.sub(r"[-_ ]+plugin$", "", cleaned_value, flags=re.IGNORECASE)
+            cleaned_value = re.sub(r"^[-_ ]+|[-_ ]+$", "", cleaned_value)
+
+        return cleaned_value or original_value
+
     def parse_domoticz_plugin_metadata(self, plugin_dir):
         plugin_file = os.path.join(plugin_dir, "plugin.py")
         if not os.path.isfile(plugin_file):
@@ -841,15 +866,16 @@ class BasePlugin:
             metadata[match.group(1).lower()] = html.unescape(value or "")
         return metadata
 
-    def plugin_metadata_matches_registry(self, plugin_key, plugin_dir):
+    def plugin_metadata_matches_registry(self, plugin_key, plugin_dir, metadata=None):
         data = self.plugin_data.get(plugin_key)
         if not isinstance(data, list) or len(data) < 4:
             return False
 
-        metadata = self.parse_domoticz_plugin_metadata(plugin_dir)
         if metadata is None:
-            Domoticz.Debug("Skipped possible plugin match for folder " + os.path.basename(plugin_dir) + " because plugin.py metadata could not be verified.")
-            return False
+            metadata = self.parse_domoticz_plugin_metadata(plugin_dir)
+            if metadata is None:
+                Domoticz.Debug("Skipped possible plugin match for folder " + os.path.basename(plugin_dir) + " because plugin.py metadata could not be verified.")
+                return False
 
         clone_url = self.build_git_clone_url(data[0], data[1])
         expected_repo_identity = self.normalize_github_repo_identity(clone_url)
@@ -883,25 +909,38 @@ class BasePlugin:
 
         return True
 
-    def add_install_name_candidate(self, name_lookup, candidate, plugin_key):
-        candidate = self.normalize_plugin_folder_name(candidate)
-        if not candidate:
+    def add_lookup_candidate(self, lookup, lookup_key, plugin_key):
+        if not lookup_key:
             return
-        if candidate not in name_lookup:
-            name_lookup[candidate] = []
-        if plugin_key not in name_lookup[candidate]:
-            name_lookup[candidate].append(plugin_key)
+        if lookup_key not in lookup:
+            lookup[lookup_key] = []
+        if plugin_key not in lookup[lookup_key]:
+            lookup[lookup_key].append(plugin_key)
+
+    def add_install_name_candidate(self, name_lookup, candidate, plugin_key):
+        self.add_lookup_candidate(name_lookup, self.normalize_plugin_folder_name(candidate), plugin_key)
+
+    def add_flexible_name_candidate(self, name_lookup, candidate, plugin_key):
+        self.add_lookup_candidate(name_lookup, self.normalize_plugin_metadata_value(candidate), plugin_key)
+
+    def add_domoticz_affix_name_candidate(self, name_lookup, candidate, plugin_key):
+        self.add_flexible_name_candidate(name_lookup, self.strip_domoticz_plugin_affixes(candidate), plugin_key)
 
     def build_installed_plugin_lookup(self):
         exact_name_lookup = {}
         archive_name_lookup = {}
+        flexible_name_lookup = {}
+        metadata_name_lookup = {}
         remote_lookup = {}
+        repo_identity_lookup = {}
 
         for plugin_key, data in self.plugin_data.items():
             if plugin_key == "Idle" or not isinstance(data, list) or len(data) < 4:
                 continue
 
             exact_name_lookup[self.normalize_plugin_folder_name(plugin_key)] = plugin_key
+            self.add_flexible_name_candidate(flexible_name_lookup, plugin_key, plugin_key)
+            self.add_flexible_name_candidate(metadata_name_lookup, plugin_key, plugin_key)
 
         for plugin_key, data in self.plugin_data.items():
             if plugin_key == "Idle" or not isinstance(data, list) or len(data) < 4:
@@ -918,15 +957,31 @@ class BasePlugin:
                 if not candidate:
                     continue
                 self.add_install_name_candidate(archive_name_lookup, candidate, plugin_key)
+                self.add_flexible_name_candidate(flexible_name_lookup, candidate, plugin_key)
+                self.add_domoticz_affix_name_candidate(flexible_name_lookup, candidate, plugin_key)
+                self.add_flexible_name_candidate(metadata_name_lookup, candidate, plugin_key)
                 if branch:
                     self.add_install_name_candidate(archive_name_lookup, candidate + "-" + branch, plugin_key)
                     self.add_install_name_candidate(archive_name_lookup, candidate + "_" + branch, plugin_key)
+                    self.add_flexible_name_candidate(flexible_name_lookup, candidate + "-" + branch, plugin_key)
+                    self.add_flexible_name_candidate(flexible_name_lookup, candidate + "_" + branch, plugin_key)
+                    stripped_candidate = self.strip_domoticz_plugin_affixes(candidate)
+                    self.add_flexible_name_candidate(flexible_name_lookup, stripped_candidate + "-" + branch, plugin_key)
+                    self.add_flexible_name_candidate(flexible_name_lookup, stripped_candidate + "_" + branch, plugin_key)
 
             remote_key = self.normalize_git_remote_url(clone_url)
-            if remote_key and remote_key not in remote_lookup:
-                remote_lookup[remote_key] = plugin_key
+            self.add_lookup_candidate(remote_lookup, remote_key, plugin_key)
+            repo_identity = self.normalize_github_repo_identity(clone_url)
+            self.add_lookup_candidate(repo_identity_lookup, repo_identity, plugin_key)
 
-        return exact_name_lookup, archive_name_lookup, remote_lookup
+        return (
+            exact_name_lookup,
+            archive_name_lookup,
+            flexible_name_lookup,
+            metadata_name_lookup,
+            remote_lookup,
+            repo_identity_lookup,
+        )
 
     def get_git_remote_urls(self, plugin_dir):
         result = self.run_git_command(plugin_dir, ["git", "remote", "-v"], timeout=10)
@@ -943,43 +998,288 @@ class BasePlugin:
                 remote_urls.append(remote_url)
         return remote_urls
 
-    def match_unique_archive_candidate(self, plugin_folder, archive_name_lookup):
-        matched_keys = archive_name_lookup.get(self.normalize_plugin_folder_name(plugin_folder), [])
+    def make_installed_plugin_match(self, plugin_key, source, priority, detail):
+        return {
+            "key": plugin_key,
+            "source": source,
+            "priority": priority,
+            "detail": detail,
+        }
+
+    def match_detail_for_response(self, plugin_folder, match):
+        return {
+            "folder": plugin_folder,
+            "source": match.get("source", ""),
+            "detail": match.get("detail", ""),
+        }
+
+    def log_installed_plugin_match(self, plugin_folder, match):
+        Domoticz.Debug(
+            "Detected installed plugin "
+            + match.get("key", "")
+            + " in folder "
+            + plugin_folder
+            + " using "
+            + match.get("source", "unknown source")
+            + ". "
+            + match.get("detail", "")
+        )
+
+    def match_lookup_candidate(self, plugin_folder, lookup_key, lookup, source, priority, detail, reason):
+        if not lookup_key:
+            return None
+
+        matched_keys = lookup.get(lookup_key, [])
         if len(matched_keys) == 1:
-            return matched_keys[0]
+            return self.make_installed_plugin_match(matched_keys[0], source, priority, detail)
         if len(matched_keys) > 1:
-            Domoticz.Debug("Skipped possible plugin match for folder " + plugin_folder + " because the folder name is ambiguous.")
+            Domoticz.Debug(
+                "Could not use "
+                + reason
+                + " for folder "
+                + plugin_folder
+                + " because it matches multiple registry entries: "
+                + ", ".join(matched_keys)
+            )
+        return None
+
+    def match_unique_lookup_candidate(self, plugin_folder, lookup_key, lookup, reason):
+        match = self.match_lookup_candidate(
+            plugin_folder,
+            lookup_key,
+            lookup,
+            reason,
+            0,
+            "",
+            reason,
+        )
+        if match:
+            return match["key"]
         return ""
 
-    def match_installed_plugin_key(self, plugin_folder, plugin_path, exact_name_lookup, archive_name_lookup, remote_lookup):
-        plugin_file = os.path.join(plugin_path, "plugin.py")
-        if not os.path.isfile(plugin_file):
-            Domoticz.Debug("Skipped possible plugin match for folder " + plugin_folder + " because plugin.py was not found.")
-            return ""
+    def match_unique_archive_match_candidate(self, plugin_folder, archive_name_lookup):
+        return self.match_lookup_candidate(
+            plugin_folder,
+            self.normalize_plugin_folder_name(plugin_folder),
+            archive_name_lookup,
+            "repository/archive folder name",
+            40,
+            "Folder name matches a unique repository or GitHub archive folder name.",
+            "folder name",
+        )
 
+    def match_unique_archive_candidate(self, plugin_folder, archive_name_lookup):
+        match = self.match_unique_archive_match_candidate(plugin_folder, archive_name_lookup)
+        if match:
+            return match["key"]
+        return ""
+
+    def match_unique_flexible_folder_match_candidate(self, plugin_folder, flexible_name_lookup):
+        return self.match_lookup_candidate(
+            plugin_folder,
+            self.normalize_plugin_metadata_value(plugin_folder),
+            flexible_name_lookup,
+            "normalized folder name",
+            50,
+            "Folder name matches after punctuation, spacing, case, and Domoticz affix normalization.",
+            "normalized folder name",
+        )
+
+    def match_unique_flexible_folder_candidate(self, plugin_folder, flexible_name_lookup):
+        match = self.match_unique_flexible_folder_match_candidate(plugin_folder, flexible_name_lookup)
+        if match:
+            return match["key"]
+        return ""
+
+    def match_metadata_externallink_candidate(self, plugin_folder, metadata, repo_identity_lookup):
+        externallink_identity = self.normalize_github_repo_identity(metadata.get("externallink", ""))
+        if not externallink_identity:
+            return None
+
+        match = self.match_lookup_candidate(
+            plugin_folder,
+            externallink_identity,
+            repo_identity_lookup,
+            "plugin.py externallink",
+            20,
+            "plugin.py externallink points to a unique registry repository.",
+            "plugin externallink",
+        )
+        if match:
+            return match
+
+        if not repo_identity_lookup.get(externallink_identity, []):
+            Domoticz.Debug("Could not use plugin.py externallink for folder " + plugin_folder + " because it does not match the registry.")
+        return None
+
+    def match_metadata_externallink(self, plugin_folder, metadata, repo_identity_lookup):
+        match = self.match_metadata_externallink_candidate(plugin_folder, metadata, repo_identity_lookup)
+        if match:
+            return match["key"]
+        return ""
+
+    def match_metadata_names_candidate(self, plugin_folder, metadata, metadata_name_lookup):
+        matched_keys = []
+        matched_fields = []
+        for metadata_field in ("key", "name"):
+            metadata_key = self.normalize_plugin_metadata_value(metadata.get(metadata_field, ""))
+            for matched_key in metadata_name_lookup.get(metadata_key, []):
+                if matched_key not in matched_keys:
+                    matched_keys.append(matched_key)
+                    matched_fields.append(metadata_field)
+
+        if len(matched_keys) == 1:
+            return self.make_installed_plugin_match(
+                matched_keys[0],
+                "plugin.py key/name",
+                60,
+                "plugin.py " + "/".join(matched_fields) + " metadata matches a unique registry entry.",
+            )
+        if len(matched_keys) > 1:
+            Domoticz.Debug(
+                "Could not use plugin.py key/name metadata for folder "
+                + plugin_folder
+                + " because it matches multiple registry entries: "
+                + ", ".join(matched_keys)
+            )
+        return None
+
+    def match_metadata_names(self, plugin_folder, metadata, metadata_name_lookup):
+        match = self.match_metadata_names_candidate(plugin_folder, metadata, metadata_name_lookup)
+        if match:
+            return match["key"]
+        return ""
+
+    def inferred_folder_match_is_valid(self, matched_key, plugin_path, metadata):
+        if metadata is None:
+            return True
+        return self.plugin_metadata_matches_registry(matched_key, plugin_path, metadata)
+
+    def add_valid_inferred_folder_candidate(self, candidates, rejected_keys, candidate, plugin_folder, plugin_path, metadata):
+        if not candidate:
+            return
+        matched_key = candidate["key"]
+        if matched_key in rejected_keys:
+            return
+        if self.inferred_folder_match_is_valid(matched_key, plugin_path, metadata):
+            candidates.append(candidate)
+            return
+
+        rejected_keys.add(matched_key)
+        Domoticz.Debug(
+            "Skipped "
+            + candidate.get("source", "folder")
+            + " candidate "
+            + matched_key
+            + " for folder "
+            + plugin_folder
+            + " because plugin.py metadata does not confirm it; continuing with lower priority evidence."
+        )
+
+    def choose_installed_plugin_match(self, candidates):
+        valid_candidates = [candidate for candidate in candidates if candidate]
+        if not valid_candidates:
+            return None
+        valid_candidates.sort(key=lambda candidate: candidate.get("priority", 1000))
+        return valid_candidates[0]
+
+    def match_installed_plugin(
+        self,
+        plugin_folder,
+        plugin_path,
+        exact_name_lookup,
+        archive_name_lookup,
+        flexible_name_lookup,
+        metadata_name_lookup,
+        remote_lookup,
+        repo_identity_lookup,
+    ):
+        candidates = []
+        plugin_file = os.path.join(plugin_path, "plugin.py")
         is_git_repo = os.path.isdir(os.path.join(plugin_path, ".git"))
         remote_urls = self.get_git_remote_urls(plugin_path) if is_git_repo else []
         for remote_url in remote_urls:
-            matched_key = remote_lookup.get(self.normalize_git_remote_url(remote_url), "")
-            if matched_key:
-                if self.plugin_metadata_matches_registry(matched_key, plugin_path):
-                    return matched_key
-                return ""
+            match = self.match_lookup_candidate(
+                plugin_folder,
+                self.normalize_git_remote_url(remote_url),
+                remote_lookup,
+                "git remote",
+                10,
+                "Git remote URL matches a unique registry repository.",
+                "git remote",
+            )
+            if match:
+                candidates.append(match)
 
-        if remote_urls:
-            Domoticz.Debug("Skipped possible plugin match for folder " + plugin_folder + " because its git remote does not match the registry.")
-            return ""
+        metadata = self.parse_domoticz_plugin_metadata(plugin_path) if os.path.isfile(plugin_file) else None
+        if metadata is not None:
+            candidates.append(self.match_metadata_externallink_candidate(plugin_folder, metadata, repo_identity_lookup))
 
         matched_key = exact_name_lookup.get(self.normalize_plugin_folder_name(plugin_folder), "")
-        if matched_key and self.plugin_metadata_matches_registry(matched_key, plugin_path):
-            return matched_key
+        if matched_key:
+            candidates.append(
+                self.make_installed_plugin_match(
+                    matched_key,
+                    "exact folder key",
+                    30,
+                    "Folder name exactly matches a registry plugin key.",
+                )
+            )
 
-        if is_git_repo:
-            return ""
+        rejected_inferred_keys = set()
+        self.add_valid_inferred_folder_candidate(
+            candidates,
+            rejected_inferred_keys,
+            self.match_unique_archive_match_candidate(plugin_folder, archive_name_lookup),
+            plugin_folder,
+            plugin_path,
+            metadata,
+        )
 
-        matched_key = self.match_unique_archive_candidate(plugin_folder, archive_name_lookup)
-        if matched_key and self.plugin_metadata_matches_registry(matched_key, plugin_path):
-            return matched_key
+        self.add_valid_inferred_folder_candidate(
+            candidates,
+            rejected_inferred_keys,
+            self.match_unique_flexible_folder_match_candidate(plugin_folder, flexible_name_lookup),
+            plugin_folder,
+            plugin_path,
+            metadata,
+        )
+
+        if metadata is not None:
+            candidates.append(self.match_metadata_names_candidate(plugin_folder, metadata, metadata_name_lookup))
+        elif not os.path.isfile(plugin_file) and not candidates:
+            Domoticz.Debug("No registry match found for folder " + plugin_folder + " from git, folder, or metadata because plugin.py was not found.")
+
+        match = self.choose_installed_plugin_match(candidates)
+        if match:
+            self.log_installed_plugin_match(plugin_folder, match)
+        else:
+            Domoticz.Debug("No registry match found for folder " + plugin_folder + ".")
+        return match
+
+    def match_installed_plugin_key(
+        self,
+        plugin_folder,
+        plugin_path,
+        exact_name_lookup,
+        archive_name_lookup,
+        flexible_name_lookup,
+        metadata_name_lookup,
+        remote_lookup,
+        repo_identity_lookup,
+    ):
+        match = self.match_installed_plugin(
+            plugin_folder,
+            plugin_path,
+            exact_name_lookup,
+            archive_name_lookup,
+            flexible_name_lookup,
+            metadata_name_lookup,
+            remote_lookup,
+            repo_identity_lookup,
+        )
+        if match:
+            return match["key"]
         return ""
 
     def load_registry_file(self, registry_file, label, missing_is_error=False):
@@ -1296,13 +1596,22 @@ class BasePlugin:
     def getInstalledPlugins(self, plugins_dir):
         installed_plugins = []
         installed_plugin_folders = {}
-        exact_name_lookup, archive_name_lookup, remote_lookup = self.build_installed_plugin_lookup()
+        installed_plugin_match_details = {}
+        (
+            exact_name_lookup,
+            archive_name_lookup,
+            flexible_name_lookup,
+            metadata_name_lookup,
+            remote_lookup,
+            repo_identity_lookup,
+        ) = self.build_installed_plugin_lookup()
 
         try:
             plugin_folders = os.listdir(plugins_dir)
         except Exception as e:
             Domoticz.Error("Could not scan Domoticz plugins folder: " + str(e))
             self.installed_plugin_folders = {}
+            self.installed_plugin_match_details = {}
             return installed_plugins
 
         for plugin_folder in plugin_folders:
@@ -1310,26 +1619,40 @@ class BasePlugin:
             if not os.path.isdir(plugin_path) or plugin_folder.startswith("."):
                 continue
 
-            matched_key = self.match_installed_plugin_key(
+            match = self.match_installed_plugin(
                 plugin_folder,
                 plugin_path,
                 exact_name_lookup,
                 archive_name_lookup,
+                flexible_name_lookup,
+                metadata_name_lookup,
                 remote_lookup,
+                repo_identity_lookup,
             )
+            matched_key = match["key"] if match else ""
             if matched_key:
                 self.add_installed_plugin(installed_plugins, matched_key)
                 installed_plugin_folders[matched_key] = plugin_folder
-                if matched_key != plugin_folder:
-                    Domoticz.Debug("Detected installed plugin " + matched_key + " in folder " + plugin_folder)
+                installed_plugin_match_details[matched_key] = self.match_detail_for_response(plugin_folder, match)
                 if plugin_folder not in self.plugin_data:
                     self.add_installed_plugin(installed_plugins, plugin_folder)
                     installed_plugin_folders[plugin_folder] = plugin_folder
+                    installed_plugin_match_details[plugin_folder] = {
+                        "folder": plugin_folder,
+                        "source": "local folder alias",
+                        "detail": "Physical folder is also listed because it is not a registry plugin key.",
+                    }
             elif plugin_folder not in self.plugin_data:
                 self.add_installed_plugin(installed_plugins, plugin_folder)
                 installed_plugin_folders[plugin_folder] = plugin_folder
+                installed_plugin_match_details[plugin_folder] = {
+                    "folder": plugin_folder,
+                    "source": "local folder",
+                    "detail": "No registry match was found; folder is listed as a local plugin.",
+                }
 
         self.installed_plugin_folders = installed_plugin_folders
+        self.installed_plugin_match_details = installed_plugin_match_details
         return installed_plugins
 
     def get_installed_plugin_folder(self, plugin_key, plugins_dir=None):
@@ -1830,6 +2153,7 @@ class BasePlugin:
                 "installed": installed_plugins,
                 "manager_key": self.get_current_plugin_folder(),
                 "local_plugins": self.local_plugin_keys,
+                "installed_match_details": self.installed_plugin_match_details,
                 "update_status": self.getCachedUpdateStatuses(installed_plugins),
                 "platforms": self.plugin_platforms
             })
@@ -1844,6 +2168,7 @@ class BasePlugin:
                 "installed": installed_plugins,
                 "manager_key": self.get_current_plugin_folder(),
                 "local_plugins": self.local_plugin_keys,
+                "installed_match_details": self.installed_plugin_match_details,
                 "update_status": update_status,
                 "platforms": self.plugin_platforms
             })

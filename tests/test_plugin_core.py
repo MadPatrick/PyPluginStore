@@ -29,6 +29,10 @@ def write_plugin_py(plugin_dir, key, name, externallink=""):
     )
 
 
+def debug_messages(plugin_core_module):
+    return [args[0] for args, _ in plugin_core_module.Domoticz.calls["Debug"] if args]
+
+
 def test_add_self_to_registry_uses_installed_folder(plugin_core_module, tmp_path):
     configure_home(plugin_core_module, tmp_path)
     plugin = plugin_core_module.BasePlugin()
@@ -400,6 +404,8 @@ def test_list_plugins_response_includes_manager_and_update_status(plugin_core_mo
         "OtherPlugin": "available",
     }
     assert response["local_plugins"] == []
+    assert response["installed_match_details"]["00-PyPluginStore"]["source"] == "plugin.py externallink"
+    assert response["installed_match_details"]["OtherPlugin"]["source"] == "exact folder key"
     assert response["platforms"] == {}
 
 
@@ -425,6 +431,8 @@ def test_list_plugins_detects_repository_named_existing_folder(plugin_core_modul
     assert "deCONZ" in response["installed"]
     assert "Domoticz-deCONZ" in response["installed"]
     assert plugin.installed_plugin_folders["deCONZ"] == "Domoticz-deCONZ"
+    assert response["installed_match_details"]["deCONZ"]["source"] == "plugin.py externallink"
+    assert response["installed_match_details"]["Domoticz-deCONZ"]["source"] == "local folder alias"
 
 
 def test_get_installed_plugins_detects_matching_git_remote(plugin_core_module, tmp_path):
@@ -448,9 +456,10 @@ def test_get_installed_plugins_detects_matching_git_remote(plugin_core_module, t
 
     assert "deCONZ" in installed
     assert plugin.installed_plugin_folders["deCONZ"] == "MyZigbeePlugin"
+    assert plugin.installed_plugin_match_details["deCONZ"]["source"] == "git remote"
 
 
-def test_exact_registry_folder_requires_plugin_metadata(plugin_core_module, tmp_path):
+def test_exact_registry_folder_without_metadata_is_installed(plugin_core_module, tmp_path):
     plugins_dir, _ = configure_home(plugin_core_module, tmp_path)
     (plugins_dir / "deCONZ").mkdir()
     plugin = plugin_core_module.BasePlugin()
@@ -460,11 +469,12 @@ def test_exact_registry_folder_requires_plugin_metadata(plugin_core_module, tmp_
 
     installed = plugin.getInstalledPlugins(plugins_dir)
 
-    assert "deCONZ" not in installed
-    assert "deCONZ" not in plugin.installed_plugin_folders
+    assert "deCONZ" in installed
+    assert plugin.installed_plugin_folders["deCONZ"] == "deCONZ"
+    assert plugin.installed_plugin_match_details["deCONZ"]["source"] == "exact folder key"
 
 
-def test_exact_registry_folder_rejects_conflicting_metadata(plugin_core_module, tmp_path):
+def test_exact_registry_folder_with_conflicting_metadata_is_installed(plugin_core_module, tmp_path):
     plugins_dir, _ = configure_home(plugin_core_module, tmp_path)
     write_plugin_py(
         plugins_dir / "deCONZ",
@@ -479,8 +489,307 @@ def test_exact_registry_folder_rejects_conflicting_metadata(plugin_core_module, 
 
     installed = plugin.getInstalledPlugins(plugins_dir)
 
+    assert "deCONZ" in installed
+    assert plugin.installed_plugin_folders["deCONZ"] == "deCONZ"
+
+
+def test_externallink_overrides_exact_registry_folder(plugin_core_module, tmp_path):
+    plugins_dir, _ = configure_home(plugin_core_module, tmp_path)
+    write_plugin_py(
+        plugins_dir / "deCONZ",
+        key="DECONZ",
+        name="deCONZ",
+        externallink="https://github.com/MadPatrick/Domoticz-BMW-plugin",
+    )
+    plugin = plugin_core_module.BasePlugin()
+    plugin.plugin_data = {
+        "deCONZ": ["Smanar", "Domoticz-deCONZ", "description", "master", ""],
+        "Bmw": ["MadPatrick", "Domoticz-BMW-plugin", "description", "PdB", ""],
+    }
+
+    installed = plugin.getInstalledPlugins(plugins_dir)
+
+    assert "Bmw" in installed
     assert "deCONZ" not in installed
-    assert "deCONZ" not in plugin.installed_plugin_folders
+    assert plugin.installed_plugin_folders["Bmw"] == "deCONZ"
+    assert plugin.installed_plugin_match_details["Bmw"]["source"] == "plugin.py externallink"
+
+
+def test_repository_named_folder_without_metadata_is_inferred(plugin_core_module, tmp_path):
+    plugins_dir, _ = configure_home(plugin_core_module, tmp_path)
+    (plugins_dir / "Domoticz-deCONZ").mkdir()
+    plugin = plugin_core_module.BasePlugin()
+    plugin.plugin_data = {
+        "deCONZ": ["Smanar", "Domoticz-deCONZ", "description", "master", ""],
+    }
+
+    installed = plugin.getInstalledPlugins(plugins_dir)
+
+    assert "deCONZ" in installed
+    assert plugin.installed_plugin_folders["deCONZ"] == "Domoticz-deCONZ"
+    assert plugin.installed_plugin_match_details["deCONZ"]["source"] == "repository/archive folder name"
+
+
+def test_repository_named_folder_matches_flexible_punctuation(plugin_core_module, tmp_path):
+    plugins_dir, _ = configure_home(plugin_core_module, tmp_path)
+    (plugins_dir / "Domoticz-HP-iLo").mkdir()
+    plugin = plugin_core_module.BasePlugin()
+    plugin.plugin_data = {
+        "HP_iLo": ["MadPatrick", "Domoticz_HP_ilo", "description", "main", ""],
+    }
+
+    installed = plugin.getInstalledPlugins(plugins_dir)
+
+    assert "HP_iLo" in installed
+    assert plugin.installed_plugin_folders["HP_iLo"] == "Domoticz-HP-iLo"
+    assert plugin.installed_plugin_match_details["HP_iLo"]["source"] == "normalized folder name"
+
+
+def test_local_alias_detects_repository_named_folder(plugin_core_module, tmp_path):
+    plugins_dir, _ = configure_home(plugin_core_module, tmp_path)
+    (plugins_dir / "domoticz-apc-ups-plugin").mkdir()
+    plugin = plugin_core_module.BasePlugin()
+    plugin.plugin_data = {
+        "APC_UPS": ["MadPatrick", "domoticz-apc-ups-plugin", "description", "main", ""],
+    }
+    plugin.local_plugin_keys = ["APC_UPS"]
+
+    installed = plugin.getInstalledPlugins(plugins_dir)
+
+    assert "APC_UPS" in installed
+    assert plugin.installed_plugin_folders["APC_UPS"] == "domoticz-apc-ups-plugin"
+
+
+def test_domoticz_affixed_repo_matches_short_branch_folder(plugin_core_module, tmp_path):
+    plugins_dir, _ = configure_home(plugin_core_module, tmp_path)
+    (plugins_dir / "APC UPS-main").mkdir()
+    plugin = plugin_core_module.BasePlugin()
+    plugin.plugin_data = {
+        "APC_UPS": ["MadPatrick", "Domoticz_apc_ups_plugin", "description", "main", ""],
+    }
+    plugin.local_plugin_keys = ["APC_UPS"]
+
+    installed = plugin.getInstalledPlugins(plugins_dir)
+
+    assert "APC_UPS" in installed
+    assert plugin.installed_plugin_folders["APC_UPS"] == "APC UPS-main"
+    assert plugin.installed_plugin_match_details["APC_UPS"]["source"] == "normalized folder name"
+
+
+def test_git_remote_match_does_not_require_plugin_metadata(plugin_core_module, tmp_path):
+    plugins_dir, _ = configure_home(plugin_core_module, tmp_path)
+    renamed_dir = plugins_dir / "MyZigbeePlugin"
+    (renamed_dir / ".git").mkdir(parents=True)
+    plugin = plugin_core_module.BasePlugin()
+    plugin.plugin_data = {
+        "deCONZ": ["Smanar", "Domoticz-deCONZ", "description", "master", ""],
+    }
+
+    class FakeGitResult:
+        stdout = "origin\tgit@github.com:Smanar/Domoticz-deCONZ.git (fetch)\n"
+        stderr = ""
+        returncode = 0
+
+    plugin.run_git_command = lambda *args, **kwargs: FakeGitResult()
+
+    installed = plugin.getInstalledPlugins(plugins_dir)
+
+    assert "deCONZ" in installed
+    assert plugin.installed_plugin_folders["deCONZ"] == "MyZigbeePlugin"
+
+
+def test_git_remote_match_overrides_conflicting_externallink(plugin_core_module, tmp_path):
+    plugins_dir, _ = configure_home(plugin_core_module, tmp_path)
+    renamed_dir = plugins_dir / "MyZigbeePlugin"
+    (renamed_dir / ".git").mkdir(parents=True)
+    write_plugin_py(
+        renamed_dir,
+        key="BMW",
+        name="BMW",
+        externallink="https://github.com/MadPatrick/Domoticz-BMW-plugin",
+    )
+    plugin = plugin_core_module.BasePlugin()
+    plugin.plugin_data = {
+        "deCONZ": ["Smanar", "Domoticz-deCONZ", "description", "master", ""],
+        "Bmw": ["MadPatrick", "Domoticz-BMW-plugin", "description", "PdB", ""],
+    }
+
+    class FakeGitResult:
+        stdout = "origin\tgit@github.com:Smanar/Domoticz-deCONZ.git (fetch)\n"
+        stderr = ""
+        returncode = 0
+
+    plugin.run_git_command = lambda *args, **kwargs: FakeGitResult()
+
+    installed = plugin.getInstalledPlugins(plugins_dir)
+
+    assert "deCONZ" in installed
+    assert "Bmw" not in installed
+    assert plugin.installed_plugin_folders["deCONZ"] == "MyZigbeePlugin"
+    assert plugin.installed_plugin_match_details["deCONZ"]["source"] == "git remote"
+
+
+def test_unmatched_git_remote_falls_back_to_externallink(plugin_core_module, tmp_path):
+    plugins_dir, _ = configure_home(plugin_core_module, tmp_path)
+    fork_dir = plugins_dir / "MyPrivateFork"
+    (fork_dir / ".git").mkdir(parents=True)
+    write_plugin_py(
+        fork_dir,
+        key="DECONZ",
+        name="deCONZ",
+        externallink="https://github.com/Smanar/Domoticz-deCONZ",
+    )
+    plugin = plugin_core_module.BasePlugin()
+    plugin.plugin_data = {
+        "deCONZ": ["Smanar", "Domoticz-deCONZ", "description", "master", ""],
+    }
+
+    class FakeGitResult:
+        stdout = "origin\tgit@github.com:private/Domoticz-deCONZ-fork.git (fetch)\n"
+        stderr = ""
+        returncode = 0
+
+    plugin.run_git_command = lambda *args, **kwargs: FakeGitResult()
+
+    installed = plugin.getInstalledPlugins(plugins_dir)
+
+    assert "deCONZ" in installed
+    assert plugin.installed_plugin_folders["deCONZ"] == "MyPrivateFork"
+    assert plugin.installed_plugin_match_details["deCONZ"]["source"] == "plugin.py externallink"
+
+
+def test_unmatched_git_remote_allows_exact_folder_match(plugin_core_module, tmp_path):
+    plugins_dir, _ = configure_home(plugin_core_module, tmp_path)
+    plugin_dir = plugins_dir / "deCONZ"
+    (plugin_dir / ".git").mkdir(parents=True)
+    plugin = plugin_core_module.BasePlugin()
+    plugin.plugin_data = {
+        "deCONZ": ["Smanar", "Domoticz-deCONZ", "description", "master", ""],
+    }
+
+    class FakeGitResult:
+        stdout = "origin\tgit@github.com:private/Domoticz-deCONZ-fork.git (fetch)\n"
+        stderr = ""
+        returncode = 0
+
+    plugin.run_git_command = lambda *args, **kwargs: FakeGitResult()
+
+    installed = plugin.getInstalledPlugins(plugins_dir)
+
+    assert "deCONZ" in installed
+    assert plugin.installed_plugin_folders["deCONZ"] == "deCONZ"
+
+
+def test_unmatched_git_remote_allows_repository_folder_match(plugin_core_module, tmp_path):
+    plugins_dir, _ = configure_home(plugin_core_module, tmp_path)
+    plugin_dir = plugins_dir / "Domoticz-deCONZ"
+    (plugin_dir / ".git").mkdir(parents=True)
+    plugin = plugin_core_module.BasePlugin()
+    plugin.plugin_data = {
+        "deCONZ": ["Smanar", "Domoticz-deCONZ", "description", "master", ""],
+    }
+
+    class FakeGitResult:
+        stdout = "origin\tgit@github.com:private/Domoticz-deCONZ-fork.git (fetch)\n"
+        stderr = ""
+        returncode = 0
+
+    plugin.run_git_command = lambda *args, **kwargs: FakeGitResult()
+
+    installed = plugin.getInstalledPlugins(plugins_dir)
+
+    assert "deCONZ" in installed
+    assert plugin.installed_plugin_folders["deCONZ"] == "Domoticz-deCONZ"
+    assert plugin.installed_plugin_match_details["deCONZ"]["source"] == "repository/archive folder name"
+
+
+def test_unknown_externallink_allows_metadata_name_match(plugin_core_module, tmp_path):
+    plugins_dir, _ = configure_home(plugin_core_module, tmp_path)
+    write_plugin_py(
+        plugins_dir / "MyZigbeePlugin",
+        key="DECONZ",
+        name="deCONZ",
+        externallink="https://github.com/private/Domoticz-deCONZ-fork",
+    )
+    plugin = plugin_core_module.BasePlugin()
+    plugin.plugin_data = {
+        "deCONZ": ["Smanar", "Domoticz-deCONZ", "description", "master", ""],
+    }
+
+    installed = plugin.getInstalledPlugins(plugins_dir)
+
+    assert "deCONZ" in installed
+    assert plugin.installed_plugin_folders["deCONZ"] == "MyZigbeePlugin"
+    assert plugin.installed_plugin_match_details["deCONZ"]["source"] == "plugin.py key/name"
+    assert any("externallink" in message and "does not match the registry" in message for message in debug_messages(plugin_core_module))
+
+
+def test_externallink_match_detects_arbitrary_folder(plugin_core_module, tmp_path):
+    plugins_dir, _ = configure_home(plugin_core_module, tmp_path)
+    write_plugin_py(
+        plugins_dir / "MyZigbeePlugin",
+        key="OTHER",
+        name="OtherPlugin",
+        externallink="https://github.com/Smanar/Domoticz-deCONZ",
+    )
+    plugin = plugin_core_module.BasePlugin()
+    plugin.plugin_data = {
+        "deCONZ": ["Smanar", "Domoticz-deCONZ", "description", "master", ""],
+    }
+
+    installed = plugin.getInstalledPlugins(plugins_dir)
+
+    assert "deCONZ" in installed
+    assert plugin.installed_plugin_folders["deCONZ"] == "MyZigbeePlugin"
+
+
+def test_plugin_metadata_name_detects_arbitrary_folder(plugin_core_module, tmp_path):
+    plugins_dir, _ = configure_home(plugin_core_module, tmp_path)
+    write_plugin_py(plugins_dir / "MyZigbeePlugin", key="DECONZ", name="deCONZ")
+    plugin = plugin_core_module.BasePlugin()
+    plugin.plugin_data = {
+        "deCONZ": ["Smanar", "Domoticz-deCONZ", "description", "master", ""],
+    }
+
+    installed = plugin.getInstalledPlugins(plugins_dir)
+
+    assert "deCONZ" in installed
+    assert plugin.installed_plugin_folders["deCONZ"] == "MyZigbeePlugin"
+
+
+def test_invalid_folder_inference_falls_back_to_metadata_name(plugin_core_module, tmp_path):
+    plugins_dir, _ = configure_home(plugin_core_module, tmp_path)
+    write_plugin_py(plugins_dir / "Domoticz-deCONZ", key="BMW", name="BMW")
+    plugin = plugin_core_module.BasePlugin()
+    plugin.plugin_data = {
+        "deCONZ": ["Smanar", "Domoticz-deCONZ", "description", "master", ""],
+        "Bmw": ["MadPatrick", "Domoticz-BMW-plugin", "description", "PdB", ""],
+    }
+
+    installed = plugin.getInstalledPlugins(plugins_dir)
+
+    assert "Bmw" in installed
+    assert "deCONZ" not in installed
+    assert plugin.installed_plugin_folders["Bmw"] == "Domoticz-deCONZ"
+    assert plugin.installed_plugin_match_details["Bmw"]["source"] == "plugin.py key/name"
+    assert any("continuing with lower priority evidence" in message for message in debug_messages(plugin_core_module))
+
+
+def test_flexible_folder_match_rejects_ambiguous_names(plugin_core_module, tmp_path):
+    plugins_dir, _ = configure_home(plugin_core_module, tmp_path)
+    (plugins_dir / "Shared Plugin").mkdir()
+    plugin = plugin_core_module.BasePlugin()
+    plugin.plugin_data = {
+        "FirstPlugin": ["owner-a", "Shared-Plugin", "description", "master", ""],
+        "SecondPlugin": ["owner-b", "Shared_Plugin", "description", "master", ""],
+    }
+
+    installed = plugin.getInstalledPlugins(plugins_dir)
+
+    assert "FirstPlugin" not in installed
+    assert "SecondPlugin" not in installed
+    assert plugin.installed_plugin_match_details["Shared Plugin"]["source"] == "local folder"
+    assert any("normalized folder name" in message and "multiple registry entries" in message for message in debug_messages(plugin_core_module))
 
 
 def test_archive_folder_rejects_ambiguous_repository_name(plugin_core_module, tmp_path):
@@ -496,6 +805,8 @@ def test_archive_folder_rejects_ambiguous_repository_name(plugin_core_module, tm
 
     assert "FirstPlugin" not in installed
     assert "SecondPlugin" not in installed
+    assert plugin.installed_plugin_match_details["SharedRepo-master"]["source"] == "local folder"
+    assert any("folder name" in message and "multiple registry entries" in message for message in debug_messages(plugin_core_module))
 
 
 def test_archive_folder_does_not_accept_author_only_match(plugin_core_module, tmp_path):
@@ -671,6 +982,7 @@ def test_refresh_update_status_command_runs_serial_refresh(plugin_core_module, t
     }
     assert response["data"] == plugin.plugin_data
     assert response["local_plugins"] == ["LocalPlugin"]
+    assert response["installed_match_details"]["OtherPlugin"]["source"] == "exact folder key"
     assert calls == ["fetch_registry", "refresh_status"]
 
 
