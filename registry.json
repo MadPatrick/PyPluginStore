@@ -467,6 +467,12 @@
         "Domoticz plugin for Marstek Venus battery",
         "main"
     ],
+    "Domoticz_Marstek_Modbus": [
+        "hopSilentSimon",
+        "Domoticz_Marstek_Modbus",
+        "Domoticz plugin for Marstek Venus batteries over Modbus TCP",
+        "main"
+    ],
     "Krakinou-FrisquetConnectDomoticz": [
         "Krakinou",
         "FrisquetConnectDomoticz",

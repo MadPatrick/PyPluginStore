@@ -888,11 +888,14 @@ class BasePlugin:
             return False
 
         repo_folder = self.plugin_folder_name_from_clone_url(clone_url)
-        expected_names = {
-            self.normalize_plugin_metadata_value(plugin_key),
-            self.normalize_plugin_metadata_value(data[1]),
-            self.normalize_plugin_metadata_value(repo_folder),
-        }
+        expected_names = set()
+        for expected_name in (plugin_key, data[1], repo_folder):
+            expected_names.add(self.normalize_plugin_metadata_value(expected_name))
+            expected_names.add(
+                self.normalize_plugin_metadata_value(
+                    self.strip_domoticz_plugin_affixes(expected_name)
+                )
+            )
         expected_names.discard("")
 
         metadata_names = [

@@ -576,6 +576,31 @@ def test_domoticz_affixed_repo_matches_short_branch_folder(plugin_core_module, t
     assert plugin.installed_plugin_match_details["APC_UPS"]["source"] == "normalized folder name"
 
 
+def test_domoticz_affixed_archive_accepts_stripped_metadata_key(plugin_core_module, tmp_path):
+    plugins_dir, _ = configure_home(plugin_core_module, tmp_path)
+    write_plugin_py(
+        plugins_dir / "Domoticz_Marstek_Modbus-main",
+        key="Marstek_modbus",
+        name="Marstek Venus Modbus",
+    )
+    plugin = plugin_core_module.BasePlugin()
+    plugin.plugin_data = {
+        "Domoticz_Marstek_Modbus": [
+            "hopSilentSimon",
+            "Domoticz_Marstek_Modbus",
+            "description",
+            "main",
+            "",
+        ],
+    }
+
+    installed = plugin.getInstalledPlugins(plugins_dir)
+
+    assert "Domoticz_Marstek_Modbus" in installed
+    assert plugin.installed_plugin_folders["Domoticz_Marstek_Modbus"] == "Domoticz_Marstek_Modbus-main"
+    assert plugin.installed_plugin_match_details["Domoticz_Marstek_Modbus"]["source"] == "repository/archive folder name"
+
+
 def test_git_remote_match_does_not_require_plugin_metadata(plugin_core_module, tmp_path):
     plugins_dir, _ = configure_home(plugin_core_module, tmp_path)
     renamed_dir = plugins_dir / "MyZigbeePlugin"
