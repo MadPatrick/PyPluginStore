@@ -1,11 +1,22 @@
 import json
 import os
+import sys
 import urllib.request
 import urllib.parse
 from urllib.error import HTTPError
 import time
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+if SCRIPT_DIR not in sys.path:
+    sys.path.insert(0, SCRIPT_DIR)
+
+from detect_plugin_platforms import (
+    detect_platforms_for_repo,
+    get_registry_entry_platforms,
+    normalize_platforms,
+    set_registry_entry_platforms,
+)
+
 REGISTRY_FILE = os.path.join(SCRIPT_DIR, '../../registry.json')
 UPDATE_TIMES_FILE = os.path.join(SCRIPT_DIR, '../../update_times.json')
 
@@ -49,6 +60,13 @@ def remove_registry_entry(registry, update_times, key, reason):
     del registry[key]
     if key in update_times:
         del update_times[key]
+
+def build_registry_entry(owner, repo_name, description, branch, platforms=None):
+    entry = [owner, repo_name, description, branch]
+    normalized_platforms = normalize_platforms(platforms)
+    if normalized_platforms:
+        entry = set_registry_entry_platforms(entry, normalized_platforms)
+    return entry
 
 def get_repo_info(owner, repo):
     url = f'https://api.github.com/repos/{owner}/{repo}'
@@ -150,19 +168,26 @@ def main():
                 updated_desc = info.get('description') or data[2]
                 updated_branch = info.get('default_branch') or data[3]
                 updated_at = info.get('pushed_at') or info.get('updated_at')
+                current_platforms = get_registry_entry_platforms(data)
+                detected_platforms = current_platforms
+                platform_decision = detect_platforms_for_repo(owner, repo_name, updated_branch, info)
+                if platform_decision is not None:
+                    detected_platforms = platform_decision.platforms
 
                 # Check if changed
                 if (updated_desc != data[2] or
                     updated_branch != data[3] or
-                    update_times.get(key) != updated_at):
+                    update_times.get(key) != updated_at or
+                    detected_platforms != current_platforms):
 
                     print(f"[*] Updating {key}")
-                    registry[key] = [
+                    registry[key] = build_registry_entry(
                         owner,
                         repo_name,
                         updated_desc,
-                        updated_branch
-                    ]
+                        updated_branch,
+                        detected_platforms
+                    )
                     if updated_at:
                         update_times[key] = updated_at
                     stats["updated"] += 1
@@ -199,18 +224,21 @@ def main():
             description = repo['description'] or f"{repo_name} plugin for Domoticz"
             default_branch = repo['default_branch']
             pushed_at = repo.get('pushed_at') or repo.get('updated_at')
+            platform_decision = detect_platforms_for_repo(owner, repo_name, default_branch, repo)
+            platforms = platform_decision.platforms if platform_decision is not None else []
 
             key = repo_name
             if key in registry:
                 key = f"{owner}-{repo_name}"
 
             print(f"[+] Adding {key}")
-            registry[key] = [
+            registry[key] = build_registry_entry(
                 owner,
                 repo_name,
                 description,
-                default_branch
-            ]
+                default_branch,
+                platforms
+            )
             if pushed_at:
                 update_times[key] = pushed_at
             stats["added"] += 1

@@ -45,6 +45,16 @@ def validate_registry_entry(key, data):
     if repository.startswith(".") or "/" in repository or "\\" in repository:
         raise ValueError(f"Plugin '{key}' has an invalid repository name '{repository}'.")
 
+    if len(data) > 5:
+        platforms = data[5]
+        if isinstance(platforms, str):
+            platforms = [platforms]
+        if not isinstance(platforms, list) or not platforms:
+            raise ValueError(f"Plugin '{key}' has invalid platform metadata.")
+        for platform_name in platforms:
+            if str(platform_name).strip().lower() not in {"linux", "windows"}:
+                raise ValueError(f"Plugin '{key}' has unsupported platform '{platform_name}'.")
+
 def validate_repository(author, repository, branch):
     repo_url = f"https://github.com/{author}/{repository}"
     env = os.environ.copy()

@@ -222,6 +222,14 @@ The first two values are normally the GitHub owner and repository name. A full G
 
 Registry entries can optionally include platform metadata. Existing list-style entries remain valid; PyPluginStore also accepts object-style entries with a `platforms` field such as `["linux", "windows"]`. Plugins without platform metadata are shown as unknown rather than blocked.
 
+Maintainers can infer and add platform metadata with:
+
+```bash
+GITHUB_TOKEN="$(gh auth token)" python .github/scripts/detect_plugin_platforms.py --missing-only
+```
+
+The detector uses GitHub repository metadata, README/install text, selected source files, platform-specific imports, scripts, paths, and command usage. Generic Python plugins with no Linux-only or Windows-only evidence are classified as likely supporting both platforms.
+
 ---
 
 ## ⚠️ Security Warning

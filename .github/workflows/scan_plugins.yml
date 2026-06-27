@@ -33,12 +33,12 @@ jobs:
         uses: peter-evans/create-pull-request@v6
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          commit-message: "feat: add new Domoticz Python plugins"
-          title: "Add new Domoticz Python plugins from weekly scan"
+          commit-message: "feat: update Domoticz Python plugin registry"
+          title: "Update Domoticz Python plugin registry from weekly scan"
           body: |
-            This automated PR adds new Domoticz Python plugins found on GitHub that were not yet in the registry.
+            This automated PR updates the Domoticz Python plugin registry with newly discovered plugins, refreshed repository metadata, and inferred platform badges.
 
-            The search query finds repositories matching `domoticz plugin language:python`.
+            The platform badge inference checks repository metadata, README and install text, selected source files, platform-specific imports, scripts, and OS-specific paths or commands.
           branch: "auto-add-plugins"
           delete-branch: true
           labels: "automated pr, enhancement"

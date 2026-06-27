@@ -1,0 +1,27 @@
+{
+  "last_run": "2026-06-27",
+  "repository": "adrighem/PyPluginStore",
+  "active_items": {
+    "issues": [30, 46],
+    "pull_requests": []
+  },
+  "recently_closed": {
+    "issues": [41, 44],
+    "pull_requests": [42, 43, 45]
+  },
+  "last_shipped_commit": "213c21a",
+  "last_release": "v2.11.0",
+  "pending_local_fix": {
+    "issue": 46,
+    "summary": "Restore and broaden installed detection compatibility after v2.11.0.",
+    "files": ["plugin_core.py", "plugin.py", "tests/test_plugin_core.py"]
+  },
+  "last_verification": {
+    "pytest": "95 passed",
+    "py_compile": "passed",
+    "diff_check": "passed",
+    "registry_validation": "not run",
+    "post_merge_workflows": "not run",
+    "code_scanning_alerts": "not checked"
+  }
+}
