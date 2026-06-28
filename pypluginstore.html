@@ -540,6 +540,7 @@
         isLoading = true;
 
         try {
+            await clearApiBridgePayload();
             const txId = Date.now().toString();
             const payload = JSON.stringify({ action, tx_id: txId, ...data });
 
@@ -550,6 +551,16 @@
             return await pollResponse(action, txId);
         } finally {
             isLoading = false;
+        }
+    }
+
+    async function clearApiBridgePayload() {
+        if (!payloadIdx) return;
+
+        try {
+            await fetch(`json.htm?type=command&param=udevice&idx=${payloadIdx}&nvalue=0&svalue=`);
+        } catch (e) {
+            console.warn("Could not clear API bridge payload", e);
         }
     }
 
@@ -567,6 +578,7 @@
                         const data = JSON.parse(dataStr);
                         if (data.action === action && data.tx_id === txId) {
                             console.log("Received response:", data);
+                            await clearApiBridgePayload();
                             return data;
                         }
                     } catch (e) {}

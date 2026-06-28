@@ -110,6 +110,14 @@ def test_api_bridge_lookup_includes_hidden_and_unused_devices():
     assert "getdevices&' + query" in script
 
 
+def test_api_bridge_payload_is_cleared_around_commands():
+    script = load_inline_script()
+
+    assert "async function clearApiBridgePayload()" in script
+    assert "await clearApiBridgePayload();" in script
+    assert "Could not clear API bridge payload" in script
+
+
 def test_installed_filter_state_is_persisted_in_local_storage():
     script = load_inline_script()
 

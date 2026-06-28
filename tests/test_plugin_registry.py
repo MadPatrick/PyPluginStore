@@ -290,3 +290,80 @@ def test_list_plugins_response_includes_local_plugin_keys(plugin_core_module, tm
 
     assert responses[0]["local_plugins"] == ["LocalPlugin"]
     assert set(responses[0]["installed"]) == {"00-PyPluginStore", "LocalPlugin"}
+
+
+def test_on_command_ignores_empty_api_payload(plugin_core_module, monkeypatch):
+    plugin = plugin_core_module.BasePlugin()
+    handled_payloads = []
+    plugin_core_module.Devices = {1: FakeTextDevice("")}
+
+    monkeypatch.setattr(plugin, "handleApiCommand", handled_payloads.append)
+
+    plugin.onCommand(2, "On", 0, 0)
+
+    assert handled_payloads == []
+    assert plugin_core_module.Domoticz.calls["Error"] == []
+
+
+def test_on_command_clears_stale_large_api_response_without_error(plugin_core_module, monkeypatch):
+    plugin = plugin_core_module.BasePlugin()
+    handled_payloads = []
+    stale_response = json.dumps({
+        "status": "success",
+        "action": "list_plugins",
+        "tx_id": "123",
+        "data": {"Plugin": "x" * 2500},
+    })
+    plugin_core_module.Devices = {1: FakeTextDevice(stale_response)}
+
+    monkeypatch.setattr(plugin, "handleApiCommand", handled_payloads.append)
+
+    plugin.onCommand(2, "On", 0, 0)
+
+    assert handled_payloads == []
+    assert plugin_core_module.Devices[1].sValue == ""
+    assert plugin_core_module.Domoticz.calls["Error"] == []
+
+
+def test_on_command_clears_truncated_stale_api_response_without_error(plugin_core_module, monkeypatch):
+    plugin = plugin_core_module.BasePlugin()
+    handled_payloads = []
+    stale_response = '{"status":"success","action":"list_plugins","tx_id":"123","data":"' + ("x" * 2500)
+    plugin_core_module.Devices = {1: FakeTextDevice(stale_response)}
+
+    monkeypatch.setattr(plugin, "handleApiCommand", handled_payloads.append)
+
+    plugin.onCommand(2, "On", 0, 0)
+
+    assert handled_payloads == []
+    assert plugin_core_module.Devices[1].sValue == ""
+    assert plugin_core_module.Domoticz.calls["Error"] == []
+
+
+def test_on_command_rejects_large_api_request(plugin_core_module, monkeypatch):
+    plugin = plugin_core_module.BasePlugin()
+    handled_payloads = []
+    large_request = json.dumps({
+        "action": "install",
+        "tx_id": "123",
+        "plugin_key": "x" * 2500,
+    })
+    plugin_core_module.Devices = {1: FakeTextDevice(large_request)}
+
+    monkeypatch.setattr(plugin, "handleApiCommand", handled_payloads.append)
+
+    plugin.onCommand(2, "On", 0, 0)
+
+    assert handled_payloads == []
+    assert plugin_core_module.Devices[1].sValue == ""
+    assert any("API Payload exceeds length limit." in args[0] for args, _ in plugin_core_module.Domoticz.calls["Error"])
+
+
+class FakeTextDevice:
+    def __init__(self, s_value):
+        self.sValue = s_value
+        self.updates = []
+
+    def Update(self, nValue, sValue):
+        self.sValue = sValue
+        self.updates.append((nValue, sValue))

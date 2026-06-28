@@ -856,6 +856,17 @@
             "windows"
         ]
     ],
+    "MarstekCT": [
+        "Haaibaai",
+        "Domoticz-Marstek",
+        "Marstek CT Meter plugin for Domoticz",
+        "main",
+        "",
+        [
+            "linux",
+            "windows"
+        ]
+    ],
     "Krakinou-FrisquetConnectDomoticz": [
         "Krakinou",
         "FrisquetConnectDomoticz",

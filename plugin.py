@@ -53,6 +53,9 @@ from datetime import datetime, timedelta
 import Domoticz
 
 
+API_PAYLOAD_MAX_LENGTH = 2000
+
+
 def parameter_get(parameters, key, default):
     try:
         return parameters.get(key, default)
@@ -2152,10 +2155,19 @@ class BasePlugin:
         Domoticz.Debug(f"onCommand called for Unit {Unit}: Command '{Command}', Level: {Level}")
         if Unit == 2 and Command.lower() == "on":
             if 1 in Devices:
-                payload_str = Devices[1].sValue
+                payload_str = str(Devices[1].sValue or "")
+
+                if not payload_str:
+                    Domoticz.Debug("API payload device is empty; ignoring trigger.")
+                    return
                 
-                # 1. DoS Protection: Limit payload length (Domoticz text limit is usually enough, but let's be safe)
-                if len(payload_str) > 2000:
+                # 1. DoS Protection: commands are small, but the shared bridge can still contain a large prior response.
+                if len(payload_str) > API_PAYLOAD_MAX_LENGTH:
+                    if self.isApiResponsePayloadString(payload_str):
+                        Domoticz.Debug("Ignoring stale API response left in payload device.")
+                        Devices[1].Update(nValue=0, sValue="")
+                        return
+
                     Domoticz.Error("API Payload exceeds length limit.")
                     Devices[1].Update(nValue=0, sValue="")
                     return
@@ -2170,6 +2182,10 @@ class BasePlugin:
                     # 2. Type Validation: Ensure we got a dictionary
                     if not isinstance(payload, dict):
                         raise ValueError("Payload must be a JSON object")
+
+                    if self.isApiResponsePayload(payload):
+                        Domoticz.Debug("Ignoring stale API response left in payload device.")
+                        return
                     
                     # 3. Content Sanitization
                     self.tx_id = str(payload.get("tx_id", ""))[:50] # Limit tx_id length
@@ -2177,6 +2193,19 @@ class BasePlugin:
                 except Exception as e:
                     Domoticz.Error(f"Failed to parse API payload: {e}")
                     self.sendApiResponse({"status": "error", "message": "Invalid JSON payload or structure"})
+
+    def isApiResponsePayload(self, payload):
+        return (
+            isinstance(payload, dict)
+            and payload.get("status") in ("success", "error")
+            and "tx_id" in payload
+        )
+
+    def isApiResponsePayloadString(self, payload_str):
+        try:
+            return self.isApiResponsePayload(json.loads(payload_str))
+        except Exception:
+            return re.match(r'^\s*\{\s*"status"\s*:\s*"(success|error)"', payload_str) is not None
 
     def loadPendingOperations(self):
         pending_file = self.get_host().pending_operations_file()
