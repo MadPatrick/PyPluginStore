@@ -6,6 +6,7 @@
 - Local registry entries are explicit user intent and should win when they collide with public registry repository aliases.
 - Keep plugin folder matching and UI plugin-name cleanup aligned. When changing flexible folder-name matching in the plugin, review/update the UI cleanup logic too, and vice versa, so the visible names users compare match the install-detection names PyPluginStore accepts.
 - Custom UI bridge device discovery must include hidden Domoticz devices because users may hide the text payload device from normal overviews.
+- The custom UI bridge shares one text device for request and response data; always clear stale responses and treat response-looking payloads as stale bridge data, not inbound commands.
 - Domoticz Python plugin APIs vary across supported Domoticz versions; optional APIs such as native notifications must be guarded with `hasattr`/`callable` checks.
 - Startup update checks must write their result to `self.update_status`; the custom UI only renders green update buttons from the cached status map.
 - Runtime/local files should be ignored rather than committed when they contain host-specific state.

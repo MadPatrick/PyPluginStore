@@ -1,6 +1,6 @@
 # ISSUE:57 - Domoticz 2025.1 startup crash and missing update buttons
 
-Status: open; follow-up local fix prepared.
+Status: closed; fixed in `v2.12.0`.
 
 Reporter:
 - `Eddie-BS` reported that PyPluginStore did not show as a menu on Domoticz `2025.1` build `16682`.
@@ -32,4 +32,4 @@ Verification:
 
 Public action:
 - Commented once after the notification compatibility fix.
-- No follow-up public action yet for the update-status cache fix.
+- Closed by `v2.12.0`, which included the update-status cache fix.

@@ -16,4 +16,5 @@
 ## Eddie-BS
 
 - Reported Docker/icon, missing NUT UPS, and startup update-check log issues in `ISSUE:54`, `ISSUE:55`, and `ISSUE:56`.
+- Reported Domoticz 2025.1 compatibility and UI update-status behavior in `ISSUE:57`, plus the custom UI API payload length log in `ISSUE:60`.
 - Provides concise issue reports with screenshots or log excerpts.

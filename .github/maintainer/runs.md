@@ -1,5 +1,34 @@
 # Maintainer Runs
 
+## 2026-06-28 - API payload bridge cleanup
+
+Scope:
+- Reviewed new `ISSUE:60` from `Eddie-BS`.
+- Confirmed current public state:
+  - Open issues: `ISSUE:30`, `ISSUE:60`.
+  - Open pull requests: `PR:59` Release Please for `v2.12.1`.
+  - Latest release: `v2.12.0` published on 2026-06-28.
+  - Open code scanning alerts: 0.
+- Diagnosed `ISSUE:60` as a stale custom-UI bridge response being treated as a new inbound command.
+- Added requested registry entry `MarstekCT` for `Haaibaai/Domoticz-Marstek`, using default branch `main` and pushed timestamp `2025-08-03T17:11:36Z`.
+- Prepared a local fix:
+  - Ignore empty API payload values.
+  - Clear and ignore large stale API responses, including truncated response strings.
+  - Preserve the oversized-request guard for true inbound requests.
+  - Clear the browser bridge before sending a command and after consuming a response.
+  - Regenerated `plugin.py` from `plugin_core.py`.
+
+Verification:
+- `pytest -q`: 123 passed.
+- `python -m py_compile plugin_core.py plugin.py .github/scripts/generate_plugin.py`: passed.
+- `git diff --check`: passed.
+- `python .github/scripts/validate_plugins.py`: passed for 327 plugins.
+
+Notes:
+- Installed open-source-maintainer skill references and triage script are still missing on disk, so this run used direct `gh` and local repository analysis.
+- Product changes committed locally as `66ae709`.
+- Recommended next action after push is to watch workflows, let Release Please update or supersede `PR:59`, and comment on `ISSUE:60` once the fix is available.
+
 ## 2026-06-28 - Update-status cache follow-up
 
 Scope:

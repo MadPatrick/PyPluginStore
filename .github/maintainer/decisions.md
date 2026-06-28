@@ -1,5 +1,33 @@
 # Maintainer Decisions
 
+## 2026-06-28 - Treat stale API bridge responses as responses, not commands
+
+Decision: keep the existing two-device custom UI bridge, but explicitly clear and ignore stale response payloads when the trigger fires.
+
+Rationale:
+- The browser command payloads are intentionally small, so the 2000-character inbound guard is still useful.
+- The plugin responses can be large because `list_plugins` returns the full registry and current UI state.
+- The same Domoticz text device currently carries both directions, so a prior response can still be present when the switch trigger fires for the next command.
+- Changing the device model would add migration risk for existing installations; clearing and classifying stale responses fixes the reported path with less user-facing change.
+
+Implementation notes:
+- Added `API_PAYLOAD_MAX_LENGTH` for the inbound command guard.
+- Empty payloads are ignored.
+- Large response-looking payloads are cleared and ignored without error, including truncated strings that start with a response `status` field.
+- Oversized non-response requests still log `API Payload exceeds length limit.` and are cleared.
+- The UI clears the payload device before command send and after matching response receipt.
+- `plugin.py` was regenerated from `plugin_core.py`.
+
+Verification:
+- `pytest -q`: 123 passed.
+- `python -m py_compile plugin_core.py plugin.py .github/scripts/generate_plugin.py`: passed.
+- `git diff --check`: passed.
+- `python .github/scripts/validate_plugins.py`: passed for 327 plugins.
+
+Public action:
+- Product changes committed locally as `66ae709` after maintainer approval to commit and push.
+- No issue comment or close action has been taken yet.
+
 ## 2026-06-28 - Treat Domoticz native notification API as optional
 
 Decision: guard all direct `Domoticz.SendNotification` calls behind a compatibility wrapper.
