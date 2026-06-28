@@ -1,5 +1,17 @@
 # Changelog
 
+## [2.12.1](https://github.com/adrighem/PyPluginStore/compare/v2.12.0...v2.12.1) (2026-06-28)
+
+
+### Bug Fixes
+
+* clean API bridge payloads ([66ae709](https://github.com/adrighem/PyPluginStore/commit/66ae709eb8cb833baff986be03ae705d49f4778b))
+
+
+### Documentation
+
+* add clear installation and configuration checks ([d451fda](https://github.com/adrighem/PyPluginStore/commit/d451fda374bce6b59a43d8bbeef2945fed89bd0d))
+
 ## [2.12.0](https://github.com/adrighem/PyPluginStore/compare/v2.11.1...v2.12.0) (2026-06-28)
 
 
