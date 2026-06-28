@@ -101,10 +101,13 @@ def test_refresh_status_button_is_wired_to_backend_command():
     assert "sendCommand('refresh_update_status', {})" in script
 
 
-def test_api_bridge_lookup_includes_hidden_devices():
+def test_api_bridge_lookup_includes_hidden_and_unused_devices():
     script = load_inline_script()
 
-    assert "getdevices&filter=all&used=all" in script
+    assert "filter=all&used=all&displayhidden=1" in script
+    assert "used=true&displayhidden=1" in script
+    assert "filter=all&used=all" in script
+    assert "getdevices&' + query" in script
 
 
 def test_installed_filter_state_is_persisted_in_local_storage():

@@ -482,21 +482,7 @@
 
         setStatus("Finding API bridge...");
         try {
-            console.log("Fetching devices from /json.htm...");
-            const req = await fetch('json.htm?type=command&param=getdevices&filter=all&used=all&t=' + Date.now());
-            if (!req.ok) throw new Error("HTTP error " + req.status);
-            const devices = await req.json();
-
-            if (devices.result) {
-                for (const device of devices.result) {
-                    if (device.ID === 'PPM_API_PAYLOAD') {
-                        payloadIdx = device.idx;
-                    }
-                    if (device.ID === 'PPM_API_TRIGGER') {
-                        triggerIdx = device.idx;
-                    }
-                }
-            }
+            await findApiBridgeDevices();
 
             if (!payloadIdx || !triggerIdx) {
                 setStatus("Error: PyPluginStore devices not found (" + (payloadIdx ? 'Y' : 'N') + "/" + (triggerIdx ? 'Y' : 'N') + "). Please ensure the plugin is added in Hardware.");
@@ -508,6 +494,41 @@
         } catch (e) {
             console.error("Init Error:", e);
             setStatus("Failed to connect to Domoticz API: " + e.message);
+        }
+    }
+
+    function scanApiBridgeDevices(devices) {
+        if (!devices) return;
+
+        for (const device of devices) {
+            if (device.ID === 'PPM_API_PAYLOAD') {
+                payloadIdx = device.idx;
+            }
+            if (device.ID === 'PPM_API_TRIGGER') {
+                triggerIdx = device.idx;
+            }
+        }
+    }
+
+    async function fetchApiBridgeDevices(query) {
+        const url = 'json.htm?type=command&param=getdevices&' + query + '&t=' + Date.now();
+        console.log("Fetching bridge devices from " + url);
+        const req = await fetch(url);
+        if (!req.ok) throw new Error("HTTP error " + req.status);
+        const devices = await req.json();
+        scanApiBridgeDevices(devices.result);
+    }
+
+    async function findApiBridgeDevices() {
+        const lookups = [
+            'filter=all&used=all&displayhidden=1',
+            'used=true&displayhidden=1',
+            'filter=all&used=all',
+        ];
+
+        for (const query of lookups) {
+            await fetchApiBridgeDevices(query);
+            if (payloadIdx && triggerIdx) return;
         }
     }
 
