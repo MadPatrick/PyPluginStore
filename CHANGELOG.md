@@ -1,5 +1,24 @@
 # Changelog
 
+## [2.12.0](https://github.com/adrighem/PyPluginStore/compare/v2.11.1...v2.12.0) (2026-06-28)
+
+
+### Features
+
+* infer plugin platform metadata ([24c0d12](https://github.com/adrighem/PyPluginStore/commit/24c0d1226bff620a6c9a57825240df0a9155a2ae))
+* remember installed filter state ([52fb697](https://github.com/adrighem/PyPluginStore/commit/52fb697f4c30409963c1de898c46e6ed873dc3f9))
+* update Domoticz Python plugin registry ([d0950bb](https://github.com/adrighem/PyPluginStore/commit/d0950bbbf278743f8831510541e9af96fe068d02))
+
+
+### Bug Fixes
+
+* cache startup update status ([f3686ad](https://github.com/adrighem/PyPluginStore/commit/f3686ad6ce0197f7e191ce08fecc3eee5512fc9b))
+* detect Marstek Modbus plugin ([88227a2](https://github.com/adrighem/PyPluginStore/commit/88227a236a062a9d9192c9646fdae8f249609da3))
+* find hidden api bridge devices ([fe16a46](https://github.com/adrighem/PyPluginStore/commit/fe16a463704bbb0aec5b695c1671bebf4b8d2413))
+* improve plugin discovery and UI bridge ([21cd308](https://github.com/adrighem/PyPluginStore/commit/21cd3081542a62fe4a122f2e7592e2c679e7692a))
+* improve restart permission diagnostics ([7b815b0](https://github.com/adrighem/PyPluginStore/commit/7b815b0a02bcb7bf3e464b1b7eaa8ddd8d76809b))
+* support domoticz without notification api ([d876414](https://github.com/adrighem/PyPluginStore/commit/d876414a6edd0e05220568ab13b3e277bc085f53))
+
 ## [2.11.1](https://github.com/adrighem/PyPluginStore/compare/v2.11.0...v2.11.1) (2026-06-27)
 
 
