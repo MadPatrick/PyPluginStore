@@ -37,35 +37,50 @@ PyPluginStore includes **Abstract Syntax Tree (AST)** based security scanning to
 
 ---
 
-## 🛠 Prerequisites
-
-1.  **Domoticz with Python plugin support.**
-2.  **Git:** Required to clone and update repositories. On Linux, install it with your package manager, for example `sudo apt install git`. On Windows, install Git for Windows and make sure `git` is available on `PATH`.
-3.  **uv (Recommended):** For fast and safe Python dependency resolution.
-4.  **pip:** Fallback when `uv` is not installed. PyPluginStore prefers the Python interpreter running Domoticz via `python -m pip` before standalone `pip3` or `pip` commands.
-
----
-
 ## 📥 Installation
 
-Navigate to your Domoticz `plugins` folder and clone this repository as `00-PyPluginStore`.
+### Prerequisites
+
+Before installing, check these items:
+
+1.  **Domoticz has Python plugin support.**
+    Confirmation: open the Domoticz about box and make sure Python support is enabled/listed.
+2.  **Git is installed.**
+    Confirmation: run `git --version` on the Domoticz host. On Linux, install it with your package manager, for example `sudo apt install git`. On Windows, install Git for Windows and make sure `git` is available on `PATH`.
+3.  **The Domoticz user can write to the web folders.**
+    PyPluginStore copies its page to `domoticz/www/templates` and its icon to `domoticz/www/images` on startup. In Docker setups, make sure those folders are persistent and writable inside the container.
+4.  **A Python dependency installer is available.**
+    `uv` is recommended. `pip` is the fallback. PyPluginStore prefers the Python interpreter running Domoticz via `python -m pip` before standalone `pip3` or `pip` commands.
+
+### Step-by-step
+
+1.  Open a shell on the Domoticz host and go to the Domoticz `plugins` folder.
 
 Linux:
 ```bash
 cd domoticz/plugins
-git clone https://github.com/adrighem/PyPluginStore.git 00-PyPluginStore
 ```
 
 Windows PowerShell:
 ```powershell
 cd C:\path\to\domoticz\plugins
+```
+
+2.  Clone PyPluginStore as `00-PyPluginStore`.
+
+Linux:
+```bash
 git clone https://github.com/adrighem/PyPluginStore.git 00-PyPluginStore
 ```
 
-### Why `00-PyPluginStore`?
-Domoticz loads Python plugins alphabetically by folder name. Prefixing with `00-` ensures that the manager loads first. This enables `PyPluginStore` to set up the shared dependency environment (`.shared_deps`) so other plugins can load their required libraries immediately on startup.
+Windows PowerShell:
+```powershell
+git clone https://github.com/adrighem/PyPluginStore.git 00-PyPluginStore
+```
 
-After cloning, restart Domoticz.
+Confirmation: the folder `00-PyPluginStore` exists and contains `plugin.py`, `pypluginstore.html`, and `pypluginstore-icon.png`.
+
+3.  Restart Domoticz.
 
 Linux example:
 ```bash
@@ -77,17 +92,43 @@ Windows service example:
 Restart-Service -Name Domoticz
 ```
 
+Confirmation: the Domoticz log should contain lines like:
+
+```text
+PyPluginStore: Initialized version ...
+PyPluginStore: Custom UI autoinstalled/updated: ...
+PyPluginStore: Plugin Manager Ready. Use the 'Custom' menu to manage plugins.
+```
+
+If the log says `Custom UI autoinstall failed`, check write permissions for `domoticz/www/templates` and `domoticz/www/images`.
+
+### Why `00-PyPluginStore`?
+
+Domoticz loads Python plugins alphabetically by folder name. Prefixing with `00-` ensures that the manager loads first. This enables `PyPluginStore` to set up the shared dependency environment (`.shared_deps`) so other plugins can load their required libraries immediately on startup.
+
 ---
 
-## ⚙️ Configuration & Usage
+## ⚙️ Configuration
 
-Once installed and Domoticz is restarted:
+Do these steps in the Domoticz web UI after installation:
 
-1.  Go to **Setup -> Hardware** and add the **PyPluginStore** hardware.
-2.  Make sure the **Custom** menu is enabled for your Domoticz user in **Setup -> Users**.
-3.  Navigate to **Custom -> pypluginstore** in the top menu to open the Plugin Store dashboard.
+1.  Go to **Setup -> Hardware** and add new hardware of type **PyPluginStore**.
+    Confirmation: the hardware is listed as enabled, and PyPluginStore creates its helper devices. If **PyPluginStore** is not available as a hardware type, restart Domoticz and re-check Python plugin support.
+2.  Go to **Setup -> Users**, edit your user, and enable the **Custom** menu for that user.
+    Confirmation: after saving, the top menu contains **Custom** for that user.
+3.  Open **Custom -> pypluginstore**.
+    Confirmation: the Plugin Store dashboard loads and shows the plugin registry.
 
-PyPluginStore copies `pypluginstore.html` into `domoticz/www/templates` and its icon into `domoticz/www/images` on startup. Domoticz only shows the **Custom** menu when custom pages exist there and the menu is enabled for the current user. If you run Domoticz in Docker, make sure the web directories are mounted persistently so the copied page and image are visible to the Domoticz web UI.
+The helper devices can exist even when the **Custom** menu is disabled. The dashboard will only appear after the **Custom** menu is enabled for the current Domoticz user.
+
+If the hardware exists but **Custom -> pypluginstore** is missing:
+
+1.  Confirm the current Domoticz user has the **Custom** menu enabled.
+2.  Confirm the Domoticz log contains `Custom UI autoinstalled/updated`.
+3.  Hard-refresh the browser with `Shift+F5`.
+4.  In Docker, confirm `domoticz/www/templates/pypluginstore.html` and `domoticz/www/images/pypluginstore-icon.png` exist inside the running container.
+
+Domoticz only shows the **Custom** menu when custom pages exist and the menu is enabled for the current user.
 
 ### Settings (Hardware Page)
 
