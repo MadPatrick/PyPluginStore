@@ -1,5 +1,21 @@
 # Maintainer Runs
 
+## 2026-06-28 - Update-status cache follow-up
+
+Scope:
+- Re-reviewed `ISSUE:57` after the reporter noted that detected plugins did not show green `Update` buttons.
+- Identified that `CheckForUpdatePythonPlugin()` computed startup update status for notifications but did not populate the `self.update_status` cache used by the custom UI.
+- Prepared a follow-up fix so startup checks cache `available`, `current`, and `unknown` outcomes.
+- Regenerated `plugin.py` from `plugin_core.py`.
+
+Verification:
+- `pytest -q`: 118 passed.
+- `python -m py_compile plugin_core.py plugin.py`: passed.
+- `git diff --check`: passed.
+
+Notes:
+- No public GitHub actions were taken.
+
 ## 2026-06-28 - Domoticz 2025.1 notification compatibility
 
 Scope:

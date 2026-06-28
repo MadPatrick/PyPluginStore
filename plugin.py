@@ -2570,6 +2570,7 @@ class BasePlugin:
         Domoticz.Debug("CheckForUpdatePythonPlugin called")
 
         if ppKey in self.plugin_data and self.plugin_data[ppKey][2] in self.exception_list:
+            self.update_status[ppKey] = "unknown"
             Domoticz.Log("Plugin:" + self.plugin_data[ppKey][2] + " excluded by Exclusion file (exclusion.txt). Skipping!!!")
             return
 
@@ -2578,14 +2579,17 @@ class BasePlugin:
         try:
             plugin_dir = self.resolve_installed_plugin_dir(ppKey)
         except ValueError as e:
+            self.update_status[ppKey] = "unknown"
             Domoticz.Error(str(e))
             return None
 
         if not os.path.isdir(os.path.join(plugin_dir, ".git")):
+            self.update_status[ppKey] = "unknown"
             Domoticz.Log("Plugin:" + ppKey + " is not installed from gitHub. Ignoring!!.")
             return None
 
         update_status = self.getGitUpdateStatus(plugin_dir, ppKey)
+        self.update_status[ppKey] = update_status
         if update_status == "available":
             Domoticz.Log("Found that we are behind on plugin " + ppKey)
             self.fnSelectedNotify(ppKey)
