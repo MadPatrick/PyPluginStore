@@ -1977,6 +1977,20 @@ class BasePlugin:
         self.apply_update_times(update_times)
         self.add_self_to_registry()
 
+    def sendDomoticzNotification(self, subject, message):
+        send_notification = getattr(Domoticz, "SendNotification", None)
+        if not callable(send_notification):
+            Domoticz.Log("Notification skipped because this Domoticz version does not expose SendNotification: " + subject)
+            return False
+
+        try:
+            send_notification(subject, message)
+            Domoticz.Debug("Notification sent natively.")
+            return True
+        except Exception as e:
+            Domoticz.Error("Failed to send notification: " + str(e))
+            return False
+
     def onStart(self):
         import json
         Domoticz.Debug("onStart called")
@@ -2003,7 +2017,7 @@ class BasePlugin:
         if not current_folder.startswith("00-"):
             warn_msg = f"PyPluginStore is in '{current_folder}'. It is strongly advised to rename the folder to start with '00-' (e.g., '00-PyPluginStore') so it loads first."
             Domoticz.Error(warn_msg)
-            Domoticz.SendNotification("PyPluginStore Setup Warning", warn_msg)
+            self.sendDomoticzNotification("PyPluginStore Setup Warning", warn_msg)
 
         # Inject shared dependencies into sys.path
         shared_deps_dir = host.shared_deps_dir()
@@ -2588,8 +2602,7 @@ class BasePlugin:
         plugin_name = self.plugin_data[plugin_key][2] if plugin_key in self.plugin_data else plugin_key
         MailSubject = platform.node() + ": Domoticz Plugin Updates Available for " + plugin_name
         MailBody = plugin_name + " has updates available!!"
-        Domoticz.SendNotification(MailSubject, MailBody)
-        Domoticz.Debug("Notification sent natively.")
+        self.sendDomoticzNotification(MailSubject, MailBody)
         return None
 
     def parseIntValue(self, s):

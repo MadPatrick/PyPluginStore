@@ -1,5 +1,25 @@
 # Maintainer Runs
 
+## 2026-06-28 - Domoticz 2025.1 notification compatibility
+
+Scope:
+- Reviewed `ISSUE:57`, reported against Domoticz `2025.1` build `16682`.
+- Reproduced the likely failure path from the provided log: `Mode4=AllNotify` calls `CheckForUpdatePythonPlugin()`, which calls `fnSelectedNotify()`, which assumed `Domoticz.SendNotification` exists.
+- Inspected local Domoticz 2025.1 source in `/home/vincent/src/domoticz`; `hardware/plugins/Plugins.cpp` exposes `Notifier`, but not `SendNotification`, to Python plugins.
+- Prepared a local compatibility fix:
+  - Added `sendDomoticzNotification()` as a guarded wrapper.
+  - Setup folder warnings and update notifications now skip native notification delivery with a log entry when the API is absent.
+  - Regenerated `plugin.py` from `plugin_core.py`.
+
+Verification:
+- `pytest -q`: 117 passed.
+- `python -m py_compile plugin_core.py plugin.py .github/scripts/generate_plugin.py`: passed.
+- `git diff --check`: passed.
+
+Notes:
+- No public GitHub actions were taken.
+- Recommended next action is to push this fix and add a concise `ISSUE:57` comment after approval.
+
 ## 2026-06-28
 
 Scope:

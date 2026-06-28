@@ -1,5 +1,29 @@
 # Maintainer Decisions
 
+## 2026-06-28 - Treat Domoticz native notification API as optional
+
+Decision: guard all direct `Domoticz.SendNotification` calls behind a compatibility wrapper.
+
+Rationale:
+- Domoticz `2025.1` build `16682` does not expose `SendNotification` to Python plugins.
+- `Mode4=AllNotify` can find an available update during startup, then crash `onStart()` when notification delivery is attempted.
+- The notification is useful but not required for plugin startup, update status checks, or custom UI operation.
+
+Implementation notes:
+- `sendDomoticzNotification()` checks whether `Domoticz.SendNotification` is callable.
+- If missing, it logs that notification delivery was skipped and returns `False`.
+- If present, it sends the notification and preserves existing behavior.
+- The setup folder warning and update notification path both use the wrapper.
+- `plugin.py` was regenerated from `plugin_core.py`.
+
+Verification:
+- `pytest -q`: 117 passed.
+- `python -m py_compile plugin_core.py plugin.py .github/scripts/generate_plugin.py`: passed.
+- `git diff --check`: passed.
+
+Public action:
+- None yet. Requires approval before commenting on `ISSUE:57` or shipping.
+
 ## 2026-06-28 - Resolve new discovery and bridge regressions locally
 
 Decision: implement a local fix batch for `ISSUE:52`, `ISSUE:53`, `ISSUE:54`, `ISSUE:55`, and `ISSUE:56` before taking public action.

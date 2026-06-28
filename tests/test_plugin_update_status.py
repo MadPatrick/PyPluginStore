@@ -314,6 +314,28 @@ def test_check_for_update_notifies_when_update_available(plugin_core_module, tmp
     assert len(plugin_core_module.Domoticz.calls["SendNotification"]) == 1
 
 
+def test_check_for_update_skips_missing_notification_api(plugin_core_module, tmp_path, monkeypatch):
+    plugins_dir, _ = configure_home(plugin_core_module, tmp_path)
+    plugin_dir = plugins_dir / "OtherPlugin"
+    (plugin_dir / ".git").mkdir(parents=True)
+    plugin = plugin_core_module.BasePlugin()
+    plugin.plugin_data = {
+        "OtherPlugin": ["owner", "repo", "description", "main", ""],
+    }
+
+    monkeypatch.delattr(plugin_core_module.Domoticz, "SendNotification", raising=False)
+    monkeypatch.setattr(plugin, "fetch_git_repo", lambda actual_dir: True)
+    monkeypatch.setattr(plugin, "get_git_remote_ref", lambda actual_dir: "origin/main")
+    monkeypatch.setattr(plugin, "get_git_remote_commit_date", lambda actual_dir, ref: "")
+    monkeypatch.setattr(plugin, "get_git_ahead_behind", lambda actual_dir, ref: (0, 1))
+
+    plugin.CheckForUpdatePythonPlugin("owner", "repo", "OtherPlugin")
+
+    assert plugin_core_module.Domoticz.calls["Error"] == []
+    assert plugin_core_module.Domoticz.calls["SendNotification"] == []
+    assert any("Notification skipped" in args[0] for args, _ in plugin_core_module.Domoticz.calls["Log"])
+
+
 def test_install_command_reports_clone_failure(plugin_core_module, tmp_path, monkeypatch):
     configure_home(plugin_core_module, tmp_path)
     plugin = plugin_core_module.BasePlugin()

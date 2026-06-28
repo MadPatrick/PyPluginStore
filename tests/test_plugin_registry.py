@@ -41,6 +41,34 @@ def test_on_start_installs_custom_ui_and_icon_image(plugin_core_module, tmp_path
     assert not (domoticz_dir / "www" / "templates" / "pypluginstore-icon.png").exists()
 
 
+def test_on_start_setup_warning_skips_missing_notification_api(plugin_core_module, tmp_path, monkeypatch):
+    plugins_dir = tmp_path / "domoticz" / "plugins"
+    manager_dir = plugins_dir / "PyPluginStore"
+    manager_dir.mkdir(parents=True)
+    plugin_core_module.Parameters = {
+        "HomeFolder": str(manager_dir) + "/",
+        "Mode4": "None",
+        "Mode6": "Normal",
+    }
+    plugin_core_module.Devices = {}
+
+    class FakeDevice:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+
+        def Create(self):
+            return None
+
+    monkeypatch.setattr(plugin_core_module.Domoticz, "Device", FakeDevice, raising=False)
+    monkeypatch.delattr(plugin_core_module.Domoticz, "SendNotification", raising=False)
+    monkeypatch.setattr(plugin_core_module.BasePlugin, "fetch_registry", lambda self: None)
+
+    plugin_core_module.BasePlugin().onStart()
+
+    assert any("strongly advised" in args[0] for args, _ in plugin_core_module.Domoticz.calls["Error"])
+    assert any("Notification skipped" in args[0] for args, _ in plugin_core_module.Domoticz.calls["Log"])
+
+
 def test_load_update_times_falls_back_to_bundled_file(plugin_core_module, tmp_path, monkeypatch):
     _, manager_dir = configure_home(plugin_core_module, tmp_path)
     bundled_file = manager_dir / "update_times.json"
