@@ -1,5 +1,33 @@
 # Maintainer Decisions
 
+## 2026-06-28 - Resolve new discovery and bridge regressions locally
+
+Decision: implement a local fix batch for `ISSUE:52`, `ISSUE:53`, `ISSUE:54`, `ISSUE:55`, and `ISSUE:56` before taking public action.
+
+Rationale:
+- The missing-plugin reports are valid public registry gaps for live repositories with usable `plugin.py` files.
+- The hidden API payload report is caused by the UI bridge searching only `used=true` devices; hidden Domoticz devices must still be discoverable for command transport.
+- The Docker icon report is low-risk to improve with a root-relative image fallback while preserving the existing relative image path.
+- The `ISSUE:46` follow-up shows that local registry aliases should prevail when they collide with public repository aliases; local overlays are explicit user intent.
+- Scheduled update checks should not create error log lines for installed plugins whose git state cannot be checked. The UI can still show `unknown`.
+
+Implementation notes:
+- Added public registry entries for `Domoticz-SMA-SunnyBoy` and `NUT_UPS`, plus update timestamps from the current repository heads.
+- `build_installed_plugin_lookup()` now prunes public lookup candidates when local registry candidates share the same lookup key.
+- `choose_installed_plugin_match()` prefers local candidates when candidate evidence conflicts.
+- `CheckForUpdatePythonPlugin()` now uses `getGitUpdateStatus()` and only notifies when status is `available`; `unknown` is debug-only.
+- `pypluginstore.html` now queries `getdevices` with `used=all` and adds a fallback icon URL.
+- `plugin.py` was regenerated from `plugin_core.py`.
+
+Verification:
+- `pytest -q`: 115 passed.
+- `python -m py_compile plugin_core.py plugin.py .github/scripts/generate_plugin.py`: passed.
+- `git diff --check`: passed.
+- `python .github/scripts/validate_plugins.py`: passed for 324 plugins.
+
+Public action:
+- None yet. Requires approval before commenting on issues, closing issues, or merging/releasing.
+
 ## 2026-06-27 - Preserve and broaden installed plugin detection
 
 Decision: use tiered installed-plugin detection that prefers matching git remotes first, then recognized `plugin.py` `externallink`, then exact registry-key folders, unique repository/archive folder names, and unique `plugin.py` key/name metadata.

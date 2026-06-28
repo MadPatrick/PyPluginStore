@@ -391,7 +391,7 @@
 <div id="pypluginstore-container">
     <div class="header">
         <div class="header-title">
-            <img class="app-icon" src="images/pypluginstore-icon.png" alt="" aria-hidden="true">
+            <img class="app-icon" src="images/pypluginstore-icon.png" alt="" aria-hidden="true" onerror="if (!this.dataset.fallbackSrcApplied) { this.dataset.fallbackSrcApplied = 'true'; this.src = '/images/pypluginstore-icon.png'; } else { this.style.display = 'none'; }">
             <h1>PyPluginStore: Plugin Store</h1>
         </div>
         <div class="header-actions">
@@ -483,7 +483,7 @@
         setStatus("Finding API bridge...");
         try {
             console.log("Fetching devices from /json.htm...");
-            const req = await fetch('json.htm?type=command&param=getdevices&filter=all&used=true&t=' + Date.now());
+            const req = await fetch('json.htm?type=command&param=getdevices&filter=all&used=all&t=' + Date.now());
             if (!req.ok) throw new Error("HTTP error " + req.status);
             const devices = await req.json();
 

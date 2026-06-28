@@ -1,5 +1,33 @@
 # Maintainer Runs
 
+## 2026-06-28
+
+Scope:
+- Reviewed current GitHub state for `adrighem/PyPluginStore`.
+- Active public items: `ISSUE:30`, `ISSUE:52`, `ISSUE:53`, `ISSUE:54`, `ISSUE:55`, `ISSUE:56`.
+- Open pull requests: `PR:49` Release Please for `v2.12.0`.
+- Confirmed `ISSUE:46` is closed and `v2.11.1` was released on 2026-06-27.
+- Implemented local fixes for the new issue cluster:
+  - Added registry entries for `rklomp/Domoticz-SMA-SunnyBoy` and `999LV/NUT_UPS`.
+  - Made the custom UI bridge search all Domoticz devices, including hidden devices, so hiding `PyPluginStore - API Payload` does not break command transport.
+  - Added an icon fallback from `images/pypluginstore-icon.png` to `/images/pypluginstore-icon.png`.
+  - Made local registry candidates win when they collide with public registry repository aliases.
+  - Changed scheduled update checks to treat non-checkable git state as `unknown` debug output rather than user-facing error logs.
+- Regenerated `plugin.py` from `plugin_core.py`.
+
+Verification:
+- `pytest -q`: 115 passed.
+- `python -m py_compile plugin_core.py plugin.py .github/scripts/generate_plugin.py`: passed.
+- `git diff --check`: passed.
+- `python .github/scripts/validate_plugins.py`: passed for 324 plugins.
+- Open code scanning alerts: 0.
+
+Notes:
+- Installed open-source-maintainer skill references and triage script are still missing on disk, so this run used direct `gh` and local repository analysis.
+- No public GitHub actions were taken.
+- Recommended next action is to ship the local fixes, then comment on `ISSUE:52`, `ISSUE:53`, `ISSUE:54`, `ISSUE:55`, and `ISSUE:56` after human approval.
+- `PR:49` should wait until this fix batch is included, or be superseded by the next Release Please update after merging.
+
 ## 2026-06-27
 
 Scope:

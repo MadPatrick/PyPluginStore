@@ -101,6 +101,12 @@ def test_refresh_status_button_is_wired_to_backend_command():
     assert "sendCommand('refresh_update_status', {})" in script
 
 
+def test_api_bridge_lookup_includes_hidden_devices():
+    script = load_inline_script()
+
+    assert "getdevices&filter=all&used=all" in script
+
+
 def test_installed_filter_state_is_persisted_in_local_storage():
     script = load_inline_script()
 
@@ -189,6 +195,7 @@ def test_custom_ui_references_existing_icon_asset():
     html = (REPO_ROOT / "pypluginstore.html").read_text()
 
     assert 'src="images/pypluginstore-icon.png"' in html
+    assert "this.src = '/images/pypluginstore-icon.png'" in html
     assert (REPO_ROOT / "pypluginstore-icon.png").is_file()
 
 

@@ -27,6 +27,17 @@
             "windows"
         ]
     ],
+    "NUT_UPS": [
+        "999LV",
+        "NUT_UPS",
+        "UPS Monitor plugin for Domoticz using NUT protocol",
+        "master",
+        "",
+        [
+            "linux",
+            "windows"
+        ]
+    ],
     "ChromecastPlugin": [
         "Tsjippy",
         "ChromecastPlugin",
@@ -569,6 +580,17 @@
         "",
         [
             "linux"
+        ]
+    ],
+    "Domoticz-SMA-SunnyBoy": [
+        "rklomp",
+        "Domoticz-SMA-SunnyBoy",
+        "Domoticz plugin to get SMA Sunny Boy information",
+        "master",
+        "",
+        [
+            "linux",
+            "windows"
         ]
     ],
     "Broadlink-Domoticz-plugin": [

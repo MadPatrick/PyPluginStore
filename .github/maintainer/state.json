@@ -1,27 +1,27 @@
 {
-  "last_run": "2026-06-27",
+  "last_run": "2026-06-28",
   "repository": "adrighem/PyPluginStore",
   "active_items": {
-    "issues": [30, 46],
-    "pull_requests": []
+    "issues": [30, 52, 53, 54, 55, 56],
+    "pull_requests": [49]
   },
   "recently_closed": {
-    "issues": [41, 44],
-    "pull_requests": [42, 43, 45]
+    "issues": [41, 44, 46],
+    "pull_requests": [42, 43, 45, 47, 51]
   },
-  "last_shipped_commit": "213c21a",
-  "last_release": "v2.11.0",
+  "last_shipped_commit": "1548fd2",
+  "last_release": "v2.11.1",
   "pending_local_fix": {
-    "issue": 46,
-    "summary": "Restore and broaden installed detection compatibility after v2.11.0.",
-    "files": ["plugin_core.py", "plugin.py", "tests/test_plugin_core.py"]
+    "issues": [52, 53, 54, 55, 56],
+    "summary": "Add missing registry entries, support hidden API payload device discovery, add icon fallback, prefer local registry aliases, and quiet unknown update checks.",
+    "files": ["plugin_core.py", "plugin.py", "pypluginstore.html", "registry.json", "update_times.json", "tests/test_plugin_installed_detection.py", "tests/test_plugin_update_status.py", "tests/test_ui_smoke.py"]
   },
   "last_verification": {
-    "pytest": "95 passed",
+    "pytest": "115 passed",
     "py_compile": "passed",
     "diff_check": "passed",
-    "registry_validation": "not run",
+    "registry_validation": "passed for 324 plugins",
     "post_merge_workflows": "not run",
-    "code_scanning_alerts": "not checked"
+    "code_scanning_alerts": "0 open"
   }
 }

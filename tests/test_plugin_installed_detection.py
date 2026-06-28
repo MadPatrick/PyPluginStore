@@ -151,6 +151,24 @@ def test_local_alias_detects_repository_named_folder(plugin_core_module, tmp_pat
     assert plugin.installed_plugin_folders["APC_UPS"] == "domoticz-apc-ups-plugin"
 
 
+def test_local_alias_preferred_when_repository_name_collides(plugin_core_module, tmp_path):
+    plugins_dir, _ = configure_home(plugin_core_module, tmp_path)
+    (plugins_dir / "Domoticz-BMW-plugin").mkdir()
+    plugin = plugin_core_module.BasePlugin()
+    plugin.plugin_data = {
+        "Bmw": ["MadPatrick", "Domoticz-BMW-plugin", "description", "PdB", ""],
+        "Domoticz-BMW-plugin": ["FilipDem", "Domoticz-BMW-plugin", "description", "main", ""],
+    }
+    plugin.local_plugin_keys = ["Bmw"]
+
+    installed = plugin.getInstalledPlugins(plugins_dir)
+
+    assert "Bmw" in installed
+    assert "Domoticz-BMW-plugin" not in installed
+    assert plugin.installed_plugin_folders["Bmw"] == "Domoticz-BMW-plugin"
+    assert plugin.installed_plugin_match_details["Bmw"]["source"] == "repository/archive folder name"
+
+
 def test_domoticz_affixed_repo_matches_short_branch_folder(plugin_core_module, tmp_path):
     plugins_dir, _ = configure_home(plugin_core_module, tmp_path)
     (plugins_dir / "APC UPS-main").mkdir()

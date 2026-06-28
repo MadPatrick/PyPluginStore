@@ -1032,6 +1032,16 @@ class BasePlugin:
         if plugin_key not in lookup[lookup_key]:
             lookup[lookup_key].append(plugin_key)
 
+    def prefer_local_lookup_candidates(self, lookup):
+        local_plugin_keys = set(self.local_plugin_keys)
+        if not local_plugin_keys:
+            return
+
+        for lookup_key, matched_keys in list(lookup.items()):
+            local_matches = [plugin_key for plugin_key in matched_keys if plugin_key in local_plugin_keys]
+            if local_matches and len(local_matches) != len(matched_keys):
+                lookup[lookup_key] = local_matches
+
     def add_install_name_candidate(self, name_lookup, candidate, plugin_key):
         self.add_lookup_candidate(name_lookup, self.normalize_plugin_folder_name(candidate), plugin_key)
 
@@ -1088,6 +1098,15 @@ class BasePlugin:
             self.add_lookup_candidate(remote_lookup, remote_key, plugin_key)
             repo_identity = self.normalize_github_repo_identity(clone_url)
             self.add_lookup_candidate(repo_identity_lookup, repo_identity, plugin_key)
+
+        for lookup in (
+            archive_name_lookup,
+            flexible_name_lookup,
+            metadata_name_lookup,
+            remote_lookup,
+            repo_identity_lookup,
+        ):
+            self.prefer_local_lookup_candidates(lookup)
 
         return (
             exact_name_lookup,
@@ -1295,6 +1314,10 @@ class BasePlugin:
         valid_candidates = [candidate for candidate in candidates if candidate]
         if not valid_candidates:
             return None
+        local_plugin_keys = set(self.local_plugin_keys)
+        local_candidates = [candidate for candidate in valid_candidates if candidate.get("key") in local_plugin_keys]
+        if local_candidates:
+            valid_candidates = local_candidates
         valid_candidates.sort(key=lambda candidate: candidate.get("priority", 1000))
         return valid_candidates[0]
 
@@ -2548,29 +2571,14 @@ class BasePlugin:
             Domoticz.Log("Plugin:" + ppKey + " is not installed from gitHub. Ignoring!!.")
             return None
 
-        if not self.fetch_git_repo(plugin_dir):
-            Domoticz.Error("Something went wrong with update check of " + str(ppKey))
-            return None
-
-        remote_ref = self.get_git_remote_ref(plugin_dir) or "@{u}"
-        update_times = dict(self.update_times) if self.update_times else self.load_cached_update_times()
-        if self.refresh_git_update_time(ppKey, plugin_dir, update_times, remote_ref):
-            self.save_update_times_cache(update_times)
-            self.apply_update_times(update_times)
-
-        ahead_behind = self.get_git_ahead_behind(plugin_dir, remote_ref)
-        if ahead_behind is None:
-            Domoticz.Error("Something went wrong with update check of " + str(ppKey))
-            return None
-
-        ahead, behind = ahead_behind
-        if behind > 0:
+        update_status = self.getGitUpdateStatus(plugin_dir, ppKey)
+        if update_status == "available":
             Domoticz.Log("Found that we are behind on plugin " + ppKey)
             self.fnSelectedNotify(ppKey)
-        elif ahead > 0:
-            Domoticz.Debug("Found that we are ahead on plugin " + ppKey + ". No need for update")
-        else:
+        elif update_status == "current":
             Domoticz.Log("Plugin " + ppKey + " already Up-To-Date")
+        else:
+            Domoticz.Debug("Could not determine update status for " + ppKey + ".")
 
         return None
 
