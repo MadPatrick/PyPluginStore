@@ -34,8 +34,7 @@
         "master",
         "",
         [
-            "linux",
-            "windows"
+            "linux"
         ]
     ],
     "ChromecastPlugin": [
@@ -589,8 +588,7 @@
         "master",
         "",
         [
-            "linux",
-            "windows"
+            "linux"
         ]
     ],
     "Broadlink-Domoticz-plugin": [
@@ -3431,6 +3429,26 @@
         [
             "linux",
             "windows"
+        ]
+    ],
+    "Domoticz-Gree-Ac": [
+        "blooesky",
+        "Domoticz-Gree-Ac",
+        "A local LAN plugin for controlling Gree air conditioners directly from Domoticz.",
+        "main",
+        "",
+        [
+            "linux"
+        ]
+    ],
+    "Domoticz-TPLinkRouter": [
+        "blooesky",
+        "Domoticz-TPLinkRouter",
+        "Domoticz plugin for monitoring and controlling TP-Link routers using the tplinkrouterc6u Python library.",
+        "main",
+        "",
+        [
+            "linux"
         ]
     ]
 }
