@@ -1,5 +1,18 @@
 # Changelog
 
+## [2.14.0](https://github.com/adrighem/PyPluginStore/compare/v2.13.1...v2.14.0) (2026-06-29)
+
+
+### Features
+
+* add Luxtronik Windows platform ([1814323](https://github.com/adrighem/PyPluginStore/commit/1814323c08066aafacaed7574a288fb7c5ff930c)), closes [#66](https://github.com/adrighem/PyPluginStore/issues/66)
+
+
+### Bug Fixes
+
+* harden self-update preflight ([28c7f43](https://github.com/adrighem/PyPluginStore/commit/28c7f4343ea4d3a4266f18e72107cf0c28b0cf8d)), closes [#65](https://github.com/adrighem/PyPluginStore/issues/65)
+* recover from Git ownership mismatch ([e0de2a6](https://github.com/adrighem/PyPluginStore/commit/e0de2a6475c26ad8bcb905489beba9b9498d3bce)), closes [#69](https://github.com/adrighem/PyPluginStore/issues/69)
+
 ## [2.13.1](https://github.com/adrighem/PyPluginStore/compare/v2.13.0...v2.13.1) (2026-06-29)
 
 
