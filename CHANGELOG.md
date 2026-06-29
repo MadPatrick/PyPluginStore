@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.13.0](https://github.com/adrighem/PyPluginStore/compare/v2.12.1...v2.13.0) (2026-06-29)
+
+
+### Features
+
+* add Domoticz-Home-Connect-Plugin & implement lightweight version visibility in UI ([8c8c519](https://github.com/adrighem/PyPluginStore/commit/8c8c519b2dbf85270265398481265ea76e379f98))
+
 ## [2.12.1](https://github.com/adrighem/PyPluginStore/compare/v2.12.0...v2.12.1) (2026-06-28)
 
 
