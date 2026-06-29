@@ -391,10 +391,10 @@ class LinuxHostRuntime(HostRuntime):
 
     def restart_command_groups(self):
         return [
-            [["sudo", "-n", "systemctl", "restart", "domoticz.service"]],
             [["systemctl", "restart", "domoticz.service"]],
-            [["sudo", "-n", "service", "domoticz", "restart"]],
+            [["sudo", "-n", "systemctl", "restart", "domoticz.service"]],
             [["service", "domoticz", "restart"]],
+            [["sudo", "-n", "service", "domoticz", "restart"]],
         ]
 
     def detached_popen_kwargs(self):

@@ -144,53 +144,19 @@ The **Restart Domoticz** button asks the host OS to restart Domoticz. This is no
 
 On Linux it tries these non-interactive service commands, in order:
 
-1. `sudo -n systemctl restart domoticz.service`
-2. `systemctl restart domoticz.service`
-3. `sudo -n service domoticz restart`
-4. `service domoticz restart`
+1. `systemctl restart domoticz.service`
+2. `sudo -n systemctl restart domoticz.service`
+3. `service domoticz restart`
+4. `sudo -n service domoticz restart`
 
 On Windows it tries service commands such as PowerShell `Restart-Service -Name Domoticz` and `sc stop/start Domoticz`.
 
-For the button to work, the user running Domoticz must have permission to restart the service. On Linux, use either a tightly scoped sudoers rule or a tightly scoped polkit rule. Do not grant broad passwordless sudo such as `NOPASSWD: ALL`, and do not allow arbitrary `systemctl` commands.
+For the button to work, the user running Domoticz must have permission to restart the service. On Linux, use either a tightly scoped polkit rule or a tightly scoped sudoers rule. Do not grant broad passwordless sudo such as `NOPASSWD: ALL`, and do not allow arbitrary `systemctl` commands.
 
-To configure sudoers, first find the OS user that runs Domoticz and the absolute command path that sudoers must match:
+### Polkit Authorization (Recommended)
+On systemd hosts, polkit can authorize the direct `systemctl restart domoticz.service` attempt without using `sudo`. This matches the first Linux command PyPluginStore tries.
 
-```bash
-systemctl show -p User --value domoticz.service
-ps -o user= -C domoticz
-command -v systemctl
-```
-
-Then create a dedicated sudoers file with `visudo`:
-
-```bash
-sudo visudo -f /etc/sudoers.d/pypluginstore-domoticz-restart
-```
-
-Add one line, replacing `domoticz` with the Domoticz OS user and `/usr/bin/systemctl` with the `command -v systemctl` output:
-
-```sudoers
-domoticz ALL=(root) NOPASSWD: /usr/bin/systemctl restart domoticz.service
-```
-
-This matches the first Linux command PyPluginStore tries: `sudo -n systemctl restart domoticz.service`. The command must stay limited to `restart domoticz.service`; broader rules would let the Domoticz process control unrelated system services.
-
-Validate the sudoers syntax and check the permission without prompting:
-
-```bash
-sudo visudo -c -f /etc/sudoers.d/pypluginstore-domoticz-restart
-sudo chown root:root /etc/sudoers.d/pypluginstore-domoticz-restart
-sudo chmod 0440 /etc/sudoers.d/pypluginstore-domoticz-restart
-sudo -u domoticz sudo -n -l /usr/bin/systemctl restart domoticz.service
-```
-
-If the host does not use systemd, add the same kind of narrow rule for the exact service command path returned by `command -v service`:
-
-```sudoers
-domoticz ALL=(root) NOPASSWD: /usr/sbin/service domoticz restart
-```
-
-As an alternative to sudoers on systemd hosts, polkit can authorize the direct `systemctl restart domoticz.service` attempt. Create `/etc/polkit-1/rules.d/49-pypluginstore-domoticz-restart.rules` as root:
+Create `/etc/polkit-1/rules.d/49-pypluginstore-domoticz-restart.rules` as root:
 
 ```javascript
 polkit.addRule(function(action, subject) {
@@ -210,7 +176,43 @@ sudo chown root:root /etc/polkit-1/rules.d/49-pypluginstore-domoticz-restart.rul
 sudo chmod 0644 /etc/polkit-1/rules.d/49-pypluginstore-domoticz-restart.rules
 ```
 
-If you use only polkit, the restart log may still show the first sudo attempt failing before the direct `systemctl` attempt succeeds. That is expected because PyPluginStore tries sudo first.
+### Sudoers Configuration
+If you prefer to use `sudo` or if the host does not support polkit, first find the OS user that runs Domoticz and the absolute command path that sudoers must match:
+
+```bash
+systemctl show -p User --value domoticz.service
+ps -o user= -C domoticz
+command -v systemctl
+```
+
+Then create a dedicated sudoers file with `visudo`:
+
+```bash
+sudo visudo -f /etc/sudoers.d/pypluginstore-domoticz-restart
+```
+
+Add one line, replacing `domoticz` with the Domoticz OS user and `/usr/bin/systemctl` with the `command -v systemctl` output:
+
+```sudoers
+domoticz ALL=(root) NOPASSWD: /usr/bin/systemctl restart domoticz.service
+```
+
+This matches the second Linux command PyPluginStore tries: `sudo -n systemctl restart domoticz.service`. The command must stay limited to `restart domoticz.service`; broader rules would let the Domoticz process control unrelated system services.
+
+Validate the sudoers syntax and check the permission without prompting:
+
+```bash
+sudo visudo -c -f /etc/sudoers.d/pypluginstore-domoticz-restart
+sudo chown root:root /etc/sudoers.d/pypluginstore-domoticz-restart
+sudo chmod 0440 /etc/sudoers.d/pypluginstore-domoticz-restart
+sudo -u domoticz sudo -n -l /usr/bin/systemctl restart domoticz.service
+```
+
+If the host does not use systemd, add the same kind of narrow rule for the exact service command path returned by `command -v service`:
+
+```sudoers
+domoticz ALL=(root) NOPASSWD: /usr/sbin/service domoticz restart
+```
 
 On Windows, restart permissions may require running Domoticz under an account that can control the Domoticz service. If restart permissions are not configured, PyPluginStore logs the command failures and Domoticz keeps running.
 
