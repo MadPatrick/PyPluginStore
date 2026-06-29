@@ -1,6 +1,6 @@
 # ISSUE:69 - new update not seen ...
 
-Status: open; local fix prepared.
+Status: open; fix uploaded.
 
 Reporter:
 - `Eddie-BS` reported on 2026-06-29 that recent releases were not detected by the installed plugin.
@@ -19,7 +19,8 @@ Assessment:
 - The current self-update pre-flight will also reject this installation, because the same Git safety check will fail during repository verification or fetch.
 
 Recommended next step:
-- Ship explicit handling for Git's `dubious ownership` error.
+- Wait for the reporter to try the manual ownership repair and the uploaded fix.
+- The uploaded fix handles Git's `dubious ownership` error.
 - PyPluginStore logs a clear ownership mismatch error, tries to repair ownership for managed plugin repositories under the Domoticz plugins folder, and retries the Git command once.
 - PyPluginStore does not run or suggest `git config safe.directory`.
 - If ownership repair fails, update detection remains `unknown`, but the log and self-update pre-flight message tell the user to fix plugin folder ownership manually.
@@ -29,4 +30,4 @@ Verification:
 - Focused tests cover successful repair/retry, failed repair messaging without `safe.directory`, and self-update pre-flight ownership failure.
 
 Public action:
-- None taken.
+- Commented on `ISSUE:69` after pushing `e0de2a6`, explaining that the fix was uploaded, the current install needs a one-time ownership repair, and future manual `git pull` commands should be run as the Domoticz service user or followed by restoring ownership.

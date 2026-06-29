@@ -9,19 +9,19 @@
     "issues": [41, 44, 46, 52, 53, 54, 55, 56, 57, 60, 61, 62, 65],
     "pull_requests": [42, 43, 45, 47, 49, 51, 58, 59, 63]
   },
-  "last_shipped_commit": "1814323",
+  "last_shipped_commit": "e0de2a6",
   "last_release": "v2.13.1",
   "pending_public_actions": {
-    "issues": [69],
+    "issues": [],
     "pull_requests": [66, 68],
-    "summary": "Investigate ISSUE:69 before merging the release-please PR. PR:66 metadata is prepared from the fetched PR source; comment/close after approval."
+    "summary": "ISSUE:69 fix was pushed and commented; wait for reporter feedback. PR:66 metadata is shipped; comment/close after approval. PR:68 remains the release-please PR."
   },
   "last_verification": {
-    "pytest": "130 passed",
+    "pytest": "133 passed",
     "py_compile": "passed",
     "diff_check": "passed",
     "registry_validation": "passed for 328 plugins after the PR66 registry update",
-    "post_merge_workflows": "pending for 1814323",
+    "post_merge_workflows": "pending for e0de2a6",
     "code_scanning_alerts": "not checked; GitHub code scanning API returned 404 in this environment"
   }
 }
