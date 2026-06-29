@@ -71,6 +71,8 @@ class HostRuntime:
 
     def __init__(self, parameters):
         self.parameters = parameters
+        self._git_ownership_reported = set()
+        self._git_ownership_repair_attempted = set()
 
     def parameter(self, key, default):
         return parameter_get(self.parameters, key, default)
@@ -135,6 +137,32 @@ class HostRuntime:
         env["GIT_TERMINAL_PROMPT"] = "0"
         return env
 
+    def git_result_output(self, result):
+        if result is None:
+            return ""
+        return "\n".join(
+            part.strip()
+            for part in (getattr(result, "stderr", ""), getattr(result, "stdout", ""))
+            if part and part.strip()
+        )
+
+    def is_git_dubious_ownership(self, result):
+        output = self.git_result_output(result).lower()
+        return "detected dubious ownership in repository" in output
+
+    def git_ownership_repair_message(self, cwd):
+        return (
+            "Git refused the plugin repository because file ownership does not match the Domoticz user. "
+            "Trying to fix ownership for " + str(cwd) + "."
+        )
+
+    def git_ownership_failure_message(self, cwd):
+        location = " for " + str(cwd) if cwd else ""
+        return (
+            "Git refused the plugin repository because file ownership does not match the Domoticz user. "
+            "PyPluginStore could not fix ownership" + location + "; fix the plugin folder ownership manually."
+        )
+
     def format_command(self, command):
         return " ".join(str(part) for part in command)
 
@@ -153,7 +181,7 @@ class HostRuntime:
         except Exception:
             return False
 
-    def run_git(self, command, cwd, timeout=15):
+    def _run_git_once(self, command, cwd, timeout=15):
         try:
             return subprocess.run(
                 command,
@@ -171,6 +199,74 @@ class HostRuntime:
         except Exception as e:
             Domoticz.Error("Git command failed in " + str(cwd) + ": " + str(e))
         return None
+
+    def is_managed_plugin_repository(self, path):
+        repo_dir = os.path.realpath(os.path.abspath(path))
+        plugins_dir = os.path.realpath(self.plugins_dir())
+        try:
+            inside_plugins_dir = os.path.commonpath([repo_dir, plugins_dir]) == plugins_dir
+        except ValueError:
+            inside_plugins_dir = False
+        return repo_dir != plugins_dir and inside_plugins_dir and os.path.isdir(os.path.join(repo_dir, ".git"))
+
+    def chown_path(self, path, uid, gid):
+        stat_result = os.lstat(path)
+        target_gid = stat_result.st_gid if gid == -1 else gid
+        if stat_result.st_uid == uid and stat_result.st_gid == target_gid:
+            return
+        try:
+            os.chown(path, uid, gid, follow_symlinks=False)
+        except TypeError:
+            if not os.path.islink(path):
+                os.chown(path, uid, gid)
+
+    def repair_git_repository_ownership(self, cwd):
+        if not hasattr(os, "chown") or not hasattr(os, "geteuid"):
+            return False
+
+        repo_dir = os.path.realpath(os.path.abspath(cwd))
+        if not self.is_managed_plugin_repository(repo_dir):
+            return False
+
+        uid = os.geteuid()
+        gid = os.getegid() if hasattr(os, "getegid") else -1
+        try:
+            for root, dirs, files in os.walk(repo_dir, topdown=True, followlinks=False):
+                self.chown_path(root, uid, gid)
+                for name in dirs:
+                    self.chown_path(os.path.join(root, name), uid, gid)
+                for name in files:
+                    self.chown_path(os.path.join(root, name), uid, gid)
+            return True
+        except Exception as e:
+            Domoticz.Debug("Could not fix Git repository ownership for " + repo_dir + ": " + str(e))
+            return False
+
+    def handle_git_ownership_failure(self, result, command, cwd, timeout):
+        repo_dir = os.path.realpath(os.path.abspath(cwd))
+        if repo_dir not in self._git_ownership_reported:
+            Domoticz.Error(self.git_ownership_repair_message(repo_dir))
+            self._git_ownership_reported.add(repo_dir)
+
+        if repo_dir in self._git_ownership_repair_attempted:
+            return result
+
+        self._git_ownership_repair_attempted.add(repo_dir)
+        if not self.repair_git_repository_ownership(repo_dir):
+            Domoticz.Error(self.git_ownership_failure_message(repo_dir))
+            return result
+
+        Domoticz.Log("Fixed plugin repository ownership; retrying Git command.")
+        retry_result = self._run_git_once(command, cwd, timeout=timeout)
+        if retry_result is not None and self.is_git_dubious_ownership(retry_result):
+            Domoticz.Error(self.git_ownership_failure_message(repo_dir))
+        return retry_result
+
+    def run_git(self, command, cwd, timeout=15):
+        result = self._run_git_once(command, cwd, timeout=timeout)
+        if result is not None and result.returncode != 0 and self.is_git_dubious_ownership(result):
+            return self.handle_git_ownership_failure(result, command, cwd, timeout)
+        return result
 
     def make_web_readable(self, path):
         return None
@@ -366,9 +462,11 @@ else:
             Domoticz.Error(f"Failed to schedule Domoticz restart: {e}")
             return False, str(e)
 
-    def git_failure_message(self, result, fallback):
+    def git_failure_message(self, result, fallback, cwd=""):
         if result is None:
             return fallback
+        if self.is_git_dubious_ownership(result):
+            return self.git_ownership_failure_message(cwd)
         output = (result.stderr or result.stdout or "").strip()
         return output or fallback
 
@@ -379,7 +477,8 @@ else:
         if result.returncode != 0:
             return None, self.git_failure_message(
                 result,
-                fallback or "Git command failed: " + self.format_command(command)
+                fallback or "Git command failed: " + self.format_command(command),
+                plugin_dir,
             )
         return result, ""
 
@@ -1844,7 +1943,7 @@ class BasePlugin:
             return False
         if result.stdout:
             Domoticz.Debug("Git Fetch Response:" + result.stdout.strip())
-        if result.stderr:
+        if result.stderr and not self.get_host().is_git_dubious_ownership(result):
             Domoticz.Debug("Git Fetch Error:" + result.stderr.strip())
         return result.returncode == 0
 
@@ -2849,14 +2948,18 @@ class BasePlugin:
             return False, "Git reset failed"
         if res_reset.stdout:
             Domoticz.Debug("Git Reset Response:" + res_reset.stdout)
-        if res_reset.stderr:
+        if res_reset.stderr and not host.is_git_dubious_ownership(res_reset):
             Domoticz.Debug("Git Reset Error:" + res_reset.stderr.strip())
-        if res_reset.returncode != 0 and host.is_locked_file_message(res_reset.stderr + res_reset.stdout):
-            message = "Plugin files are in use; update queued for the next startup."
-            if queue_on_lock:
-                self.queuePendingOperation("update", ppKey)
-            Domoticz.Error(message)
-            return False, message
+        if res_reset.returncode != 0:
+            if host.is_git_dubious_ownership(res_reset):
+                return False, host.git_ownership_failure_message(plugin_dir)
+            if host.is_locked_file_message(res_reset.stderr + res_reset.stdout):
+                message = "Plugin files are in use; update queued for the next startup."
+                if queue_on_lock:
+                    self.queuePendingOperation("update", ppKey)
+                Domoticz.Error(message)
+                return False, message
+            return False, (res_reset.stderr or res_reset.stdout or "Git reset failed").strip()
 
         ppUrl = ["git", "pull", "--force"]
         Domoticz.Debug("Calling: " + " ".join(ppUrl) + " on folder " + plugin_dir)
@@ -2876,13 +2979,16 @@ class BasePlugin:
                Domoticz.Log("---Restarting Domoticz MAY BE REQUIRED to activate new plugins---")
             else:
                Domoticz.Error("Something went wrong with update of " + str(ppKey))
-        if error:
+        if error and not host.is_git_dubious_ownership(res):
             Domoticz.Debug("Git Error:" + error.strip())
             if "Not a git repository" in error:
                Domoticz.Log("Plugin:" + ppKey + " is not installed from gitHub. Cannot be updated with PyPluginStore!!.")
 
         if res.returncode != 0:
-            message = (error or out or "Git pull failed").strip()
+            if host.is_git_dubious_ownership(res):
+                message = host.git_ownership_failure_message(plugin_dir)
+            else:
+                message = (error or out or "Git pull failed").strip()
             if host.is_locked_file_message(message):
                 message = "Plugin files are in use; update queued for the next startup."
                 if queue_on_lock:

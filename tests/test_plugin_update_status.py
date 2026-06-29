@@ -11,6 +11,73 @@ class FakeGitResult:
         self.returncode = returncode
 
 
+DUBIOUS_OWNERSHIP_ERROR = (
+    "fatal: detected dubious ownership in repository at '/tmp/Plugin'\n"
+    "To add an exception for this directory, call:\n"
+    "\tgit config --global --add safe.directory /tmp/Plugin\n"
+)
+
+
+def recorded_messages(plugin_core_module, level):
+    return [args[0] for args, _ in plugin_core_module.Domoticz.calls[level] if args]
+
+
+def test_run_git_repairs_dubious_ownership_and_retries(plugin_core_module, tmp_path, monkeypatch):
+    _, manager_dir = configure_home(plugin_core_module, tmp_path)
+    (manager_dir / ".git").mkdir()
+    runtime = plugin_core_module.LinuxHostRuntime(plugin_core_module.Parameters)
+    calls = []
+    repairs = []
+
+    def fake_run(command, cwd=None, **kwargs):
+        calls.append((command, Path(cwd)))
+        if len(calls) == 1:
+            return FakeGitResult(stderr=DUBIOUS_OWNERSHIP_ERROR, returncode=128)
+        return FakeGitResult(stdout="ok\n")
+
+    monkeypatch.setattr(plugin_core_module.subprocess, "run", fake_run)
+    monkeypatch.setattr(
+        runtime,
+        "repair_git_repository_ownership",
+        lambda cwd: repairs.append(Path(cwd)) or True,
+    )
+
+    result = runtime.run_git(["git", "fetch", "--quiet"], manager_dir)
+
+    assert result.returncode == 0
+    assert calls == [
+        (["git", "fetch", "--quiet"], manager_dir),
+        (["git", "fetch", "--quiet"], manager_dir),
+    ]
+    assert repairs == [manager_dir.resolve()]
+    assert all("safe.directory" not in " ".join(command) for command, _ in calls)
+    assert any("ownership does not match the Domoticz user" in message for message in recorded_messages(plugin_core_module, "Error"))
+    assert any("Fixed plugin repository ownership" in message for message in recorded_messages(plugin_core_module, "Log"))
+
+
+def test_run_git_reports_dubious_ownership_when_repair_fails(plugin_core_module, tmp_path, monkeypatch):
+    _, manager_dir = configure_home(plugin_core_module, tmp_path)
+    (manager_dir / ".git").mkdir()
+    runtime = plugin_core_module.LinuxHostRuntime(plugin_core_module.Parameters)
+    calls = []
+
+    def fake_run(command, cwd=None, **kwargs):
+        calls.append(command)
+        return FakeGitResult(stderr=DUBIOUS_OWNERSHIP_ERROR, returncode=128)
+
+    monkeypatch.setattr(plugin_core_module.subprocess, "run", fake_run)
+    monkeypatch.setattr(runtime, "repair_git_repository_ownership", lambda cwd: False)
+
+    result = runtime.run_git(["git", "fetch", "--quiet"], manager_dir)
+
+    assert result.returncode == 128
+    assert calls == [["git", "fetch", "--quiet"]]
+    errors = recorded_messages(plugin_core_module, "Error")
+    assert any("ownership does not match the Domoticz user" in message for message in errors)
+    assert any("could not fix ownership" in message for message in errors)
+    assert not any("safe.directory" in message for message in errors)
+
+
 def test_get_git_update_status_reports_available(plugin_core_module, tmp_path, monkeypatch):
     plugin_dir = tmp_path / "Plugin"
     (plugin_dir / ".git").mkdir(parents=True)
@@ -329,6 +396,28 @@ def test_self_update_preflight_rejects_dirty_tracked_files(plugin_core_module, t
 
     assert success is False
     assert message == "PyPluginStore has local tracked file changes; self-update refused."
+    assert plan == {}
+
+
+def test_self_update_preflight_reports_dubious_ownership(plugin_core_module, tmp_path, monkeypatch):
+    _, manager_dir = configure_home(plugin_core_module, tmp_path)
+    (manager_dir / ".git").mkdir()
+    runtime = plugin_core_module.LinuxHostRuntime(plugin_core_module.Parameters)
+
+    monkeypatch.setattr(runtime, "command_available", lambda command: command == "git")
+    monkeypatch.setattr(
+        runtime,
+        "_run_git_once",
+        lambda command, cwd, timeout=15: FakeGitResult(stderr=DUBIOUS_OWNERSHIP_ERROR, returncode=128),
+    )
+    monkeypatch.setattr(runtime, "repair_git_repository_ownership", lambda cwd: False)
+
+    success, message, plan = runtime.preflight_self_update(manager_dir)
+
+    assert success is False
+    assert "ownership does not match the Domoticz user" in message
+    assert "fix the plugin folder ownership manually" in message
+    assert "safe.directory" not in message
     assert plan == {}
 
 
