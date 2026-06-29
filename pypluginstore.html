@@ -436,6 +436,7 @@
     let installedCache = [];
     let localCache = [];
     let updateStatusCache = {};
+    let versionsCache = {};
     let platformCache = {};
     let managerKey = null;
     let currentSort = 'name';
@@ -599,6 +600,7 @@
                 installedCache = response.installed;
                 localCache = response.local_plugins || [];
                 updateStatusCache = response.update_status || {};
+                versionsCache = response.versions || {};
                 platformCache = response.platforms || {};
                 managerKey = response.manager_key || null;
                 filterAndRender();
@@ -797,6 +799,17 @@
                 meta.appendChild(document.createTextNode('Last updated: ' + timeStr));
             }
 
+            if (isInstalled && versionsCache && versionsCache[key]) {
+                const verInfo = versionsCache[key];
+                if (verInfo.installed || verInfo.available) {
+                    meta.appendChild(document.createElement('br'));
+                    let vText = [];
+                    if (verInfo.installed) vText.push('Installed: v' + verInfo.installed.replace(/^v/, ''));
+                    if (verInfo.available && updateStatus === 'available') vText.push('Available: v' + verInfo.available.replace(/^v/, ''));
+                    meta.appendChild(document.createTextNode(vText.join(' | ')));
+                }
+            }
+
             const actions = document.createElement('div');
             actions.className = 'actions';
 
@@ -887,6 +900,7 @@
                 installedCache = response.installed || installedCache;
                 localCache = response.local_plugins || localCache;
                 updateStatusCache = response.update_status || {};
+                versionsCache = response.versions || versionsCache;
                 platformCache = response.platforms || platformCache;
                 managerKey = response.manager_key || managerKey;
                 filterAndRender();

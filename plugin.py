@@ -1830,6 +1830,48 @@ class BasePlugin:
             update_status[plugin_key] = self.update_status.get(plugin_key, "unknown")
         return update_status
 
+    def get_plugin_versions(self, installed_plugins, update_status, plugins_dir):
+        versions = {}
+        for plugin_key in installed_plugins:
+            if plugin_key not in self.plugin_data:
+                continue
+
+            try:
+                plugin_dir = self.resolve_installed_plugin_dir(plugin_key, plugins_dir)
+            except ValueError:
+                continue
+
+            local_meta = self.parse_domoticz_plugin_metadata(plugin_dir)
+            installed_version = local_meta.get("version") if local_meta else None
+            available_version = None
+
+            if update_status.get(plugin_key) == "available":
+                author = self.plugin_data[plugin_key][0]
+                repository = self.plugin_data[plugin_key][1]
+                branch = self.plugin_data[plugin_key][3]
+                url = f"https://raw.githubusercontent.com/{author}/{repository}/{branch}/plugin.py"
+                try:
+                    req = urllib.request.Request(url)
+                    with urllib.request.urlopen(req, timeout=5) as response:
+                        source_code = response.read().decode('utf-8', errors='ignore')
+                        plugin_tag = re.search(r"<plugin\b([^>]*)>", source_code, re.IGNORECASE | re.DOTALL)
+                        if plugin_tag:
+                            for match in re.finditer(r"([A-Za-z_][\w:.-]*)\s*=\s*(\"([^\"]*)\"|'([^']*)')", plugin_tag.group(1)):
+                                if match.group(1).lower() == 'version':
+                                    val = match.group(3) if match.group(3) is not None else match.group(4)
+                                    available_version = html.unescape(val or "")
+                                    break
+                except Exception as e:
+                    Domoticz.Debug(f"Could not fetch remote version for {repository}: {e}")
+
+            if installed_version or available_version:
+                versions[plugin_key] = {}
+                if installed_version:
+                    versions[plugin_key]["installed"] = installed_version
+                if available_version:
+                    versions[plugin_key]["available"] = available_version
+        return versions
+
     def refresh_single_plugin_update_status(self, plugin_key, plugin_dir, fetch_first=True):
         if plugin_key not in self.plugin_data:
             self.update_status[plugin_key] = "unknown"
@@ -2326,6 +2368,8 @@ class BasePlugin:
         
         if action == "list_plugins":
             installed_plugins = self.getInstalledPlugins(plugins_dir)
+            cached_update_status = self.getCachedUpdateStatuses(installed_plugins)
+            versions = self.get_plugin_versions(installed_plugins, cached_update_status, plugins_dir)
                     
             self.sendApiResponse({
                 "status": "success",
@@ -2335,13 +2379,15 @@ class BasePlugin:
                 "manager_key": self.get_current_plugin_folder(),
                 "local_plugins": self.local_plugin_keys,
                 "installed_match_details": self.installed_plugin_match_details,
-                "update_status": self.getCachedUpdateStatuses(installed_plugins),
+                "update_status": cached_update_status,
+                "versions": versions,
                 "platforms": self.plugin_platforms
             })
         elif action == "refresh_update_status":
             self.fetch_registry()
             installed_plugins = self.getInstalledPlugins(plugins_dir)
             update_status = self.refreshInstalledUpdateStatuses(installed_plugins, plugins_dir)
+            versions = self.get_plugin_versions(installed_plugins, update_status, plugins_dir)
             self.sendApiResponse({
                 "status": "success",
                 "action": action,
@@ -2351,6 +2397,7 @@ class BasePlugin:
                 "local_plugins": self.local_plugin_keys,
                 "installed_match_details": self.installed_plugin_match_details,
                 "update_status": update_status,
+                "versions": versions,
                 "platforms": self.plugin_platforms
             })
         elif action == "install":

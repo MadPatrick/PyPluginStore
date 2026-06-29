@@ -1,5 +1,23 @@
 # Maintainer Decisions
 
+## 2026-06-29 - Registry additions and version numbers
+
+Decision: add `Domoticz-Home-Connect-Plugin` to registry and defer `version numbers visible ?`.
+
+Rationale:
+- `ISSUE:62`: `mario-peters/Domoticz-Home-Connect-Plugin` is a valid plugin requested by a user.
+- `ISSUE:61`: The user requested displaying installed vs available version numbers. However, PyPluginStore uses `git` to check for updates (commits behind/ahead) rather than parsing version strings from the source code, so it doesn't know the "available version" until it downloads it. To read the available version without downloading for over 300 plugins would require excessive GitHub API calls.
+
+Implementation notes:
+- Appended `Domoticz-Home-Connect-Plugin` by `mario-peters` to `registry.json`.
+- Drafted a response to close or defer `ISSUE:61` explaining the technical limitations.
+
+Verification:
+- Manually checked `registry.json` format.
+
+Public action:
+- None yet. Requires approval before commenting on issues and committing.
+
 ## 2026-06-28 - Treat stale API bridge responses as responses, not commands
 
 Decision: keep the existing two-device custom UI bridge, but explicitly clear and ignore stale response payloads when the trigger fires.

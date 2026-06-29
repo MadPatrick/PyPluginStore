@@ -3461,5 +3461,16 @@
         [
             "linux"
         ]
+    ],
+    "Domoticz-Home-Connect-Plugin": [
+        "mario-peters",
+        "Domoticz-Home-Connect-Plugin",
+        "Domoticz Home-Connect Plugin",
+        "master",
+        "",
+        [
+            "linux",
+            "windows"
+        ]
     ]
 }
