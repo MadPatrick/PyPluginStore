@@ -1,5 +1,38 @@
 # Maintainer Decisions
 
+## 2026-06-29 - Avoid self-update bridge timeout and accept Luxtronik Windows metadata
+
+Decision: make PyPluginStore self-update asynchronous from the API command handler, and accept the `PR:66` registry metadata from the contributor source.
+
+Rationale:
+- `ISSUE:65`: updating PyPluginStore from inside its own command handler can mutate/reload the live plugin before the custom UI bridge receives a response, producing a browser timeout even when the update command starts.
+- Normal plugin updates do not have that self-mutation problem and should keep the synchronous behavior because users benefit from immediate success/error feedback.
+- A detached self-update helper lets the UI receive a response first, but it must not use `git reset --hard HEAD` or `git pull --force` against the live manager checkout.
+- The UI must not immediately reload the plugin list after manager self-update, because that can race the Domoticz plugin reload and look like another timeout.
+- Pre-flight cannot make live in-place updates fully atomic, but it can reject known unsafe states before any file mutation starts.
+- `PR:66`: adding Windows platform metadata for `luxtronik-domoticz-plugin-v2` is low-risk and supported by the plugin's standard-library TCP implementation. The fetched PR diff is registry-only and matches the local change.
+
+Implementation notes:
+- Added a `self_update.log` helper path.
+- Added pre-flight checks for git availability, repository root, clean tracked files, upstream presence, fast-forward-only state, required candidate files, and Python syntax in the candidate `plugin.py` and `plugin_core.py`.
+- Added a detached self-update helper that repeats the clean tracked-file check and applies the update with `git merge --ff-only`.
+- `UpdatePythonPlugin()` now schedules that helper and returns a success message for `00-PyPluginStore`.
+- Update API success responses include a `message` when the backend returns one.
+- The custom UI displays that message and skips immediate `loadPlugins()` only for manager self-update.
+- Added focused regression coverage for self-update scheduling, pre-flight failures, candidate validation, already-current state, and the UI reload guard.
+- Fetched `PR:66` as `origin/pr/66` and updated `registry.json` so `luxtronik-domoticz-plugin-v2` supports `linux` and `windows`; committed as `1814323` with the PR author preserved.
+- `plugin.py` was regenerated from `plugin_core.py`.
+
+Verification:
+- `pytest -q`: 130 passed.
+- `python -m py_compile plugin_core.py plugin.py .github/scripts/generate_plugin.py`: passed.
+- `git diff --check`: passed.
+- `python .github/scripts/validate_plugins.py`: passed for 328 plugins before the code-only pre-flight follow-up.
+
+Public action:
+- Pushed `ISSUE:65` fixes as `47e2d73` and `28c7f43`; master workflows passed.
+- No public comment or PR close action has been taken for `PR:66`.
+
 ## 2026-06-29 - Registry additions and version numbers
 
 Decision: add `Domoticz-Home-Connect-Plugin` to registry and defer `version numbers visible ?`.

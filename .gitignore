@@ -12,3 +12,6 @@ exceptions.txt
 secpoluser.txt
 *.orig
 out_compile.txt
+final_push_output.txt
+issue_create_output.txt
+nohup.out

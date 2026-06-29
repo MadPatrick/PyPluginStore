@@ -1,5 +1,39 @@
 # Maintainer Runs
 
+## 2026-06-29 - Self-update timeout and Luxtronik Windows metadata
+
+Scope:
+- Reviewed current GitHub state for `adrighem/PyPluginStore`.
+- Active public items:
+  - Open issues: `ISSUE:30`, `ISSUE:64`, `ISSUE:69`.
+  - Open pull requests: `PR:66`, `PR:68`.
+  - Latest release: `v2.13.1`, published on 2026-06-29.
+- Investigated `ISSUE:65`, where self-update timed out in the custom UI after logging the start of the update.
+- Fetched `PR:66` as `origin/pr/66`; its registry-only diff matches the local metadata change.
+- Kept `ISSUE:64` as an RFC/backlog item because release/archive update support is broader than this maintenance pass.
+- Noted new `ISSUE:69`, where update discovery still may not show the latest release to the reporter.
+
+Prepared local changes:
+- Self-update now runs pre-flight checks before scheduling any file mutation.
+- Pre-flight rejects dirty tracked files, missing upstreams, diverged/local-commit branches, missing required candidate files, and invalid Python syntax in the candidate runtime files.
+- Self-update now schedules a detached helper that repeats the clean tracked-file check and applies the update with `git merge --ff-only` after the UI bridge has received a response.
+- Self-update helper output goes to `self_update.log`.
+- The custom UI displays backend success messages and skips immediate list reload only for PyPluginStore self-update.
+- `luxtronik-domoticz-plugin-v2` now advertises both `linux` and `windows` platform support via local commit `1814323`, preserving the PR author.
+- Regenerated `plugin.py` from `plugin_core.py`.
+
+Verification:
+- `pytest -q`: 130 passed.
+- `python -m py_compile plugin_core.py plugin.py .github/scripts/generate_plugin.py`: passed.
+- `git diff --check`: passed.
+- `python .github/scripts/validate_plugins.py`: passed for 328 plugins after the PR66 registry update.
+
+Notes:
+- Installed open-source-maintainer skill references and triage script are still missing on disk, so this run used direct `gh` and local repository analysis.
+- Pushed `ISSUE:65` fixes as `47e2d73` and `28c7f43`; master workflows passed.
+- No public comments, issue closes, or PR closes were taken in this cleanup pass.
+- Recommended next action is to investigate `ISSUE:69` before merging release-please `PR:68`.
+
 ## 2026-06-28 - API payload bridge cleanup
 
 Scope:
