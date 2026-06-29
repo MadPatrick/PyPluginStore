@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.13.1](https://github.com/adrighem/PyPluginStore/compare/v2.13.0...v2.13.1) (2026-06-29)
+
+
+### Bug Fixes
+
+* avoid self-update API timeout ([47e2d73](https://github.com/adrighem/PyPluginStore/commit/47e2d7380c2b53841fa587ca53e53d2056cbd3f5)), closes [#65](https://github.com/adrighem/PyPluginStore/issues/65)
+
 ## [2.13.0](https://github.com/adrighem/PyPluginStore/compare/v2.12.1...v2.13.0) (2026-06-29)
 
 
