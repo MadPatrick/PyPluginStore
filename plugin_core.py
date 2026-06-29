@@ -331,7 +331,149 @@ else:
             Domoticz.Error(f"Failed to schedule Domoticz restart: {e}")
             return False, str(e)
 
-    def build_self_update_helper(self, plugin_dir, log_file, startup_delay=1):
+    def git_failure_message(self, result, fallback):
+        if result is None:
+            return fallback
+        output = (result.stderr or result.stdout or "").strip()
+        return output or fallback
+
+    def require_git_success(self, plugin_dir, command, timeout=15, fallback=None):
+        result = self.run_git(command, plugin_dir, timeout=timeout)
+        if result is None:
+            return None, fallback or "Git command failed: " + self.format_command(command)
+        if result.returncode != 0:
+            return None, self.git_failure_message(
+                result,
+                fallback or "Git command failed: " + self.format_command(command)
+            )
+        return result, ""
+
+    def validate_self_update_candidate(self, plugin_dir, target_ref):
+        required_paths = ("plugin.py", "plugin_core.py", "pypluginstore.html", "registry.json")
+        for candidate_path in required_paths:
+            _, message = self.require_git_success(
+                plugin_dir,
+                ["git", "cat-file", "-e", f"{target_ref}:{candidate_path}"],
+                fallback="Self update target is missing " + candidate_path + ".",
+            )
+            if message:
+                return False, message
+
+        for python_path in ("plugin.py", "plugin_core.py"):
+            result, message = self.require_git_success(
+                plugin_dir,
+                ["git", "show", f"{target_ref}:{python_path}"],
+                fallback="Could not read " + python_path + " from self update target.",
+            )
+            if message:
+                return False, message
+            try:
+                compile(result.stdout, python_path, "exec")
+            except SyntaxError as e:
+                return False, "Self update target has invalid Python syntax in " + python_path + ": " + str(e)
+
+        return True, ""
+
+    def preflight_self_update(self, plugin_dir):
+        if not self.command_available("git"):
+            return False, "Git is not available, so PyPluginStore cannot self-update.", {}
+        if not os.path.isdir(os.path.join(plugin_dir, ".git")):
+            return False, "PyPluginStore is not installed as a git repository.", {}
+
+        result, message = self.require_git_success(
+            plugin_dir,
+            ["git", "rev-parse", "--is-inside-work-tree"],
+            fallback="Could not verify the PyPluginStore git repository.",
+        )
+        if message:
+            return False, message, {}
+        if result.stdout.strip().lower() != "true":
+            return False, "PyPluginStore folder is not a git work tree.", {}
+
+        result, message = self.require_git_success(
+            plugin_dir,
+            ["git", "rev-parse", "--show-toplevel"],
+            fallback="Could not verify the PyPluginStore git work tree root.",
+        )
+        if message:
+            return False, message, {}
+        repo_root = os.path.normcase(os.path.abspath(result.stdout.strip()))
+        expected_root = os.path.normcase(os.path.abspath(plugin_dir))
+        if repo_root != expected_root:
+            return False, "PyPluginStore self-update must run from the repository root.", {}
+
+        result, message = self.require_git_success(
+            plugin_dir,
+            ["git", "status", "--porcelain", "--untracked-files=no"],
+            fallback="Could not check PyPluginStore working tree status.",
+        )
+        if message:
+            return False, message, {}
+        if result.stdout.strip():
+            return False, "PyPluginStore has local tracked file changes; self-update refused.", {}
+
+        result, message = self.require_git_success(
+            plugin_dir,
+            ["git", "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"],
+            fallback="PyPluginStore branch has no upstream; self-update refused.",
+        )
+        if message:
+            return False, message, {}
+        upstream_ref = result.stdout.strip()
+        if not upstream_ref:
+            return False, "PyPluginStore branch has no upstream; self-update refused.", {}
+
+        _, message = self.require_git_success(
+            plugin_dir,
+            ["git", "fetch", "--prune"],
+            timeout=60,
+            fallback="Could not fetch PyPluginStore updates from the upstream remote.",
+        )
+        if message:
+            return False, message, {}
+
+        _, message = self.require_git_success(
+            plugin_dir,
+            ["git", "rev-parse", "--verify", upstream_ref],
+            fallback="Could not verify the PyPluginStore upstream revision.",
+        )
+        if message:
+            return False, message, {}
+
+        _, message = self.require_git_success(
+            plugin_dir,
+            ["git", "merge-base", "--is-ancestor", "HEAD", upstream_ref],
+            fallback="PyPluginStore local branch has diverged from upstream; self-update refused.",
+        )
+        if message:
+            return False, message, {}
+
+        result, message = self.require_git_success(
+            plugin_dir,
+            ["git", "rev-list", "--left-right", "--count", "HEAD..." + upstream_ref],
+            fallback="Could not compare PyPluginStore with upstream.",
+        )
+        if message:
+            return False, message, {}
+        try:
+            ahead, behind = [int(value) for value in result.stdout.split()[:2]]
+        except Exception:
+            return False, "Could not parse PyPluginStore upstream comparison.", {}
+        if ahead:
+            return False, "PyPluginStore has local commits; self-update refused.", {}
+        if behind == 0:
+            return True, "PyPluginStore is already up-to-date.", {"already_current": True, "upstream_ref": upstream_ref}
+
+        valid_candidate, message = self.validate_self_update_candidate(plugin_dir, upstream_ref)
+        if not valid_candidate:
+            return False, message, {}
+
+        return True, "Self update pre-flight checks passed.", {
+            "already_current": False,
+            "upstream_ref": upstream_ref,
+        }
+
+    def build_self_update_helper(self, plugin_dir, log_file, upstream_ref, startup_delay=1):
         helper = """
 import datetime
 import os
@@ -341,11 +483,8 @@ import traceback
 
 plugin_dir = __PLUGIN_DIR__
 log_file = __LOG_FILE__
+upstream_ref = __UPSTREAM_REF__
 startup_delay = __STARTUP_DELAY__
-commands = [
-    (["git", "reset", "--hard", "HEAD"], 30),
-    (["git", "pull", "--force"], 120),
-]
 
 def write_log(message):
     timestamp = datetime.datetime.now().isoformat(timespec="seconds")
@@ -366,7 +505,7 @@ if not os.path.isdir(os.path.join(plugin_dir, ".git")):
 env = os.environ.copy()
 env["GIT_TERMINAL_PROMPT"] = "0"
 
-for command, timeout in commands:
+def run_command(command, timeout):
     write_log("running: {}".format(subprocess.list2cmdline(command)))
     try:
         result = subprocess.run(
@@ -387,22 +526,39 @@ for command, timeout in commands:
         if result.returncode != 0:
             write_log("self update failed")
             raise SystemExit(result.returncode)
+        return result
     except Exception as e:
         write_log("exception: {}".format(e))
         write_log(traceback.format_exc().strip())
         raise
 
+status = run_command(["git", "status", "--porcelain", "--untracked-files=no"], 15)
+if status.stdout.strip():
+    write_log("tracked files changed after pre-flight; self update refused")
+    raise SystemExit(1)
+
+run_command(["git", "fetch", "--prune"], 60)
+run_command(["git", "merge", "--ff-only", upstream_ref], 120)
 write_log("self update completed")
 """
         return (
             helper
             .replace("__PLUGIN_DIR__", repr(plugin_dir))
             .replace("__LOG_FILE__", repr(log_file))
+            .replace("__UPSTREAM_REF__", repr(upstream_ref))
             .replace("__STARTUP_DELAY__", repr(startup_delay))
         )
 
     def schedule_self_update(self, plugin_dir):
-        helper = self.build_self_update_helper(plugin_dir, self.self_update_log_file())
+        preflight_success, preflight_message, preflight_plan = self.preflight_self_update(plugin_dir)
+        if not preflight_success or preflight_plan.get("already_current"):
+            return preflight_success, preflight_message
+
+        helper = self.build_self_update_helper(
+            plugin_dir,
+            self.self_update_log_file(),
+            preflight_plan["upstream_ref"],
+        )
         popen_kwargs = {
             "stdin": subprocess.DEVNULL,
             "stdout": subprocess.DEVNULL,
@@ -412,7 +568,7 @@ write_log("self update completed")
 
         try:
             subprocess.Popen([sys.executable, "-c", helper], **popen_kwargs)
-            return True, "Self update started. Reload the Plugin Store after Domoticz finishes reloading the plugin."
+            return True, "Self update started after pre-flight checks. Reload the Plugin Store after Domoticz finishes reloading the plugin."
         except Exception as e:
             Domoticz.Error(f"Failed to schedule PyPluginStore self update: {e}")
             return False, str(e)

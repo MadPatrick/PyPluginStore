@@ -3,6 +3,14 @@ from pathlib import Path
 
 from plugin_core_helpers import configure_home, write_plugin_py
 
+
+class FakeGitResult:
+    def __init__(self, stdout="", stderr="", returncode=0):
+        self.stdout = stdout
+        self.stderr = stderr
+        self.returncode = returncode
+
+
 def test_get_git_update_status_reports_available(plugin_core_module, tmp_path, monkeypatch):
     plugin_dir = tmp_path / "Plugin"
     (plugin_dir / ".git").mkdir(parents=True)
@@ -148,11 +156,6 @@ def test_update_command_refreshes_cached_status_for_next_list(plugin_core_module
     responses = []
     status_calls = []
 
-    class FakeGitResult:
-        stdout = "Already up to date."
-        stderr = ""
-        returncode = 0
-
     def fake_git_status(actual_plugin_dir, plugin_key=None, fetch_first=True):
         status_calls.append((Path(actual_plugin_dir), plugin_key, fetch_first))
         return "current"
@@ -188,11 +191,6 @@ def test_update_command_uses_detected_repository_folder(plugin_core_module, tmp_
     responses = []
     git_calls = []
     status_calls = []
-
-    class FakeGitResult:
-        stdout = "Already up to date."
-        stderr = ""
-        returncode = 0
 
     def fake_run(command, cwd=None, **kwargs):
         git_calls.append((command, Path(cwd)))
@@ -251,6 +249,15 @@ def test_self_update_command_schedules_detached_helper(plugin_core_module, tmp_p
 
         return FakeProcess()
 
+    monkeypatch.setattr(
+        plugin_core_module.HostRuntime,
+        "preflight_self_update",
+        lambda self, plugin_dir: (
+            True,
+            "Self update pre-flight checks passed.",
+            {"already_current": False, "upstream_ref": "origin/master"},
+        ),
+    )
     monkeypatch.setattr(plugin_core_module.subprocess, "run", fail_sync_git)
     monkeypatch.setattr(plugin_core_module.subprocess, "Popen", fake_popen)
     monkeypatch.setattr(plugin, "sendApiResponse", responses.append)
@@ -260,15 +267,181 @@ def test_self_update_command_schedules_detached_helper(plugin_core_module, tmp_p
     assert responses[0]["status"] == "success"
     assert responses[0]["action"] == "update"
     assert responses[0]["plugin_key"] == "00-PyPluginStore"
-    assert responses[0]["message"].startswith("Self update started.")
+    assert responses[0]["message"].startswith("Self update started after pre-flight checks.")
     assert plugin.update_status["00-PyPluginStore"] == "unknown"
     assert len(popen_calls) == 1
 
     command = popen_calls[0][0][0]
     helper = command[2]
     assert command[:2] == [plugin_core_module.sys.executable, "-c"]
-    assert '["git", "reset", "--hard", "HEAD"]' in helper
-    assert '["git", "pull", "--force"]' in helper
+    assert '["git", "status", "--porcelain", "--untracked-files=no"]' in helper
+    assert '["git", "merge", "--ff-only", upstream_ref]' in helper
+    assert '["git", "reset", "--hard", "HEAD"]' not in helper
+    assert '["git", "pull", "--force"]' not in helper
+
+
+def test_self_update_command_reports_preflight_failure(plugin_core_module, tmp_path, monkeypatch):
+    configure_home(plugin_core_module, tmp_path)
+    plugin = plugin_core_module.BasePlugin()
+    plugin.plugin_data = {
+        "00-PyPluginStore": ["adrighem", "PyPluginStore", "description", "master", ""],
+    }
+    responses = []
+
+    monkeypatch.setattr(
+        plugin_core_module.HostRuntime,
+        "preflight_self_update",
+        lambda self, plugin_dir: (False, "PyPluginStore has local tracked file changes; self-update refused.", {}),
+    )
+    monkeypatch.setattr(
+        plugin_core_module.subprocess,
+        "Popen",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("unexpected helper launch")),
+    )
+    monkeypatch.setattr(plugin, "sendApiResponse", responses.append)
+
+    plugin.handleApiCommand({"action": "update", "plugin_key": "00-PyPluginStore"})
+
+    assert responses[0] == {
+        "status": "error",
+        "message": "PyPluginStore has local tracked file changes; self-update refused.",
+    }
+
+
+def test_self_update_preflight_rejects_dirty_tracked_files(plugin_core_module, tmp_path, monkeypatch):
+    _, manager_dir = configure_home(plugin_core_module, tmp_path)
+    (manager_dir / ".git").mkdir()
+    runtime = plugin_core_module.LinuxHostRuntime(plugin_core_module.Parameters)
+
+    def fake_run_git(command, cwd, timeout=15):
+        if command == ["git", "rev-parse", "--is-inside-work-tree"]:
+            return FakeGitResult("true\n")
+        if command == ["git", "rev-parse", "--show-toplevel"]:
+            return FakeGitResult(str(manager_dir) + "\n")
+        if command == ["git", "status", "--porcelain", "--untracked-files=no"]:
+            return FakeGitResult(" M plugin.py\n")
+        raise AssertionError("unexpected command: " + repr(command))
+
+    monkeypatch.setattr(runtime, "command_available", lambda command: command == "git")
+    monkeypatch.setattr(runtime, "run_git", fake_run_git)
+
+    success, message, plan = runtime.preflight_self_update(manager_dir)
+
+    assert success is False
+    assert message == "PyPluginStore has local tracked file changes; self-update refused."
+    assert plan == {}
+
+
+def test_self_update_preflight_rejects_invalid_target_python(plugin_core_module, tmp_path, monkeypatch):
+    _, manager_dir = configure_home(plugin_core_module, tmp_path)
+    (manager_dir / ".git").mkdir()
+    runtime = plugin_core_module.LinuxHostRuntime(plugin_core_module.Parameters)
+
+    def fake_run_git(command, cwd, timeout=15):
+        if command == ["git", "rev-parse", "--is-inside-work-tree"]:
+            return FakeGitResult("true\n")
+        if command == ["git", "rev-parse", "--show-toplevel"]:
+            return FakeGitResult(str(manager_dir) + "\n")
+        if command == ["git", "status", "--porcelain", "--untracked-files=no"]:
+            return FakeGitResult("")
+        if command == ["git", "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"]:
+            return FakeGitResult("origin/master\n")
+        if command == ["git", "fetch", "--prune"]:
+            return FakeGitResult("")
+        if command == ["git", "rev-parse", "--verify", "origin/master"]:
+            return FakeGitResult("abc123\n")
+        if command == ["git", "merge-base", "--is-ancestor", "HEAD", "origin/master"]:
+            return FakeGitResult("")
+        if command == ["git", "rev-list", "--left-right", "--count", "HEAD...origin/master"]:
+            return FakeGitResult("0\t1\n")
+        if command[:3] == ["git", "cat-file", "-e"]:
+            return FakeGitResult("")
+        if command == ["git", "show", "origin/master:plugin.py"]:
+            return FakeGitResult("def broken(:\n")
+        raise AssertionError("unexpected command: " + repr(command))
+
+    monkeypatch.setattr(runtime, "command_available", lambda command: command == "git")
+    monkeypatch.setattr(runtime, "run_git", fake_run_git)
+
+    success, message, plan = runtime.preflight_self_update(manager_dir)
+
+    assert success is False
+    assert "invalid Python syntax in plugin.py" in message
+    assert plan == {}
+
+
+def test_self_update_preflight_allows_fast_forward_candidate(plugin_core_module, tmp_path, monkeypatch):
+    _, manager_dir = configure_home(plugin_core_module, tmp_path)
+    (manager_dir / ".git").mkdir()
+    runtime = plugin_core_module.LinuxHostRuntime(plugin_core_module.Parameters)
+
+    def fake_run_git(command, cwd, timeout=15):
+        if command == ["git", "rev-parse", "--is-inside-work-tree"]:
+            return FakeGitResult("true\n")
+        if command == ["git", "rev-parse", "--show-toplevel"]:
+            return FakeGitResult(str(manager_dir) + "\n")
+        if command == ["git", "status", "--porcelain", "--untracked-files=no"]:
+            return FakeGitResult("")
+        if command == ["git", "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"]:
+            return FakeGitResult("origin/master\n")
+        if command == ["git", "fetch", "--prune"]:
+            return FakeGitResult("")
+        if command == ["git", "rev-parse", "--verify", "origin/master"]:
+            return FakeGitResult("abc123\n")
+        if command == ["git", "merge-base", "--is-ancestor", "HEAD", "origin/master"]:
+            return FakeGitResult("")
+        if command == ["git", "rev-list", "--left-right", "--count", "HEAD...origin/master"]:
+            return FakeGitResult("0\t1\n")
+        if command[:3] == ["git", "cat-file", "-e"]:
+            return FakeGitResult("")
+        if command == ["git", "show", "origin/master:plugin.py"]:
+            return FakeGitResult("print('plugin')\n")
+        if command == ["git", "show", "origin/master:plugin_core.py"]:
+            return FakeGitResult("print('core')\n")
+        raise AssertionError("unexpected command: " + repr(command))
+
+    monkeypatch.setattr(runtime, "command_available", lambda command: command == "git")
+    monkeypatch.setattr(runtime, "run_git", fake_run_git)
+
+    success, message, plan = runtime.preflight_self_update(manager_dir)
+
+    assert success is True
+    assert message == "Self update pre-flight checks passed."
+    assert plan == {"already_current": False, "upstream_ref": "origin/master"}
+
+
+def test_self_update_preflight_reports_already_current(plugin_core_module, tmp_path, monkeypatch):
+    _, manager_dir = configure_home(plugin_core_module, tmp_path)
+    (manager_dir / ".git").mkdir()
+    runtime = plugin_core_module.LinuxHostRuntime(plugin_core_module.Parameters)
+
+    def fake_run_git(command, cwd, timeout=15):
+        if command == ["git", "rev-parse", "--is-inside-work-tree"]:
+            return FakeGitResult("true\n")
+        if command == ["git", "rev-parse", "--show-toplevel"]:
+            return FakeGitResult(str(manager_dir) + "\n")
+        if command == ["git", "status", "--porcelain", "--untracked-files=no"]:
+            return FakeGitResult("")
+        if command == ["git", "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"]:
+            return FakeGitResult("origin/master\n")
+        if command == ["git", "fetch", "--prune"]:
+            return FakeGitResult("")
+        if command == ["git", "rev-parse", "--verify", "origin/master"]:
+            return FakeGitResult("abc123\n")
+        if command == ["git", "merge-base", "--is-ancestor", "HEAD", "origin/master"]:
+            return FakeGitResult("")
+        if command == ["git", "rev-list", "--left-right", "--count", "HEAD...origin/master"]:
+            return FakeGitResult("0\t0\n")
+        raise AssertionError("unexpected command: " + repr(command))
+
+    monkeypatch.setattr(runtime, "command_available", lambda command: command == "git")
+    monkeypatch.setattr(runtime, "run_git", fake_run_git)
+
+    success, message, plan = runtime.preflight_self_update(manager_dir)
+
+    assert success is True
+    assert message == "PyPluginStore is already up-to-date."
+    assert plan == {"already_current": True, "upstream_ref": "origin/master"}
 
 
 def test_refresh_update_status_command_runs_serial_refresh(plugin_core_module, tmp_path, monkeypatch):

@@ -1,5 +1,14 @@
 __pycache__/
 update_times.cache.json
 registry_local.json
+pending_operations.json
+self_update.log
+restart_domoticz.log
+restart_domoticz.ps1
+restart_domoticz.cmd
+restart_domoticz_probe.ps1
+.shared_deps/
+exceptions.txt
+secpoluser.txt
 *.orig
 out_compile.txt
