@@ -231,6 +231,46 @@ def test_update_command_uses_detected_repository_folder(plugin_core_module, tmp_
     assert status_calls == [("deCONZ", plugin_dir, False)]
 
 
+def test_self_update_command_schedules_detached_helper(plugin_core_module, tmp_path, monkeypatch):
+    configure_home(plugin_core_module, tmp_path)
+    plugin = plugin_core_module.BasePlugin()
+    plugin.plugin_data = {
+        "00-PyPluginStore": ["adrighem", "PyPluginStore", "description", "master", ""],
+    }
+    responses = []
+    popen_calls = []
+
+    def fail_sync_git(*args, **kwargs):
+        raise AssertionError("self update should not run git synchronously")
+
+    def fake_popen(*args, **kwargs):
+        popen_calls.append((args, kwargs))
+
+        class FakeProcess:
+            pass
+
+        return FakeProcess()
+
+    monkeypatch.setattr(plugin_core_module.subprocess, "run", fail_sync_git)
+    monkeypatch.setattr(plugin_core_module.subprocess, "Popen", fake_popen)
+    monkeypatch.setattr(plugin, "sendApiResponse", responses.append)
+
+    plugin.handleApiCommand({"action": "update", "plugin_key": "00-PyPluginStore"})
+
+    assert responses[0]["status"] == "success"
+    assert responses[0]["action"] == "update"
+    assert responses[0]["plugin_key"] == "00-PyPluginStore"
+    assert responses[0]["message"].startswith("Self update started.")
+    assert plugin.update_status["00-PyPluginStore"] == "unknown"
+    assert len(popen_calls) == 1
+
+    command = popen_calls[0][0][0]
+    helper = command[2]
+    assert command[:2] == [plugin_core_module.sys.executable, "-c"]
+    assert '["git", "reset", "--hard", "HEAD"]' in helper
+    assert '["git", "pull", "--force"]' in helper
+
+
 def test_refresh_update_status_command_runs_serial_refresh(plugin_core_module, tmp_path, monkeypatch):
     plugins_dir, _ = configure_home(plugin_core_module, tmp_path)
     write_plugin_py(plugins_dir / "OtherPlugin", key="OTHER", name="OtherPlugin")

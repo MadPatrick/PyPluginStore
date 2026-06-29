@@ -82,6 +82,9 @@ class HostRuntime:
     def restart_log_file(self):
         return os.path.join(self.plugin_home_folder(), "restart_domoticz.log")
 
+    def self_update_log_file(self):
+        return os.path.join(self.plugin_home_folder(), "self_update.log")
+
     def append_restart_log(self, message):
         timestamp = datetime.now().isoformat(timespec="seconds")
         try:
@@ -326,6 +329,92 @@ else:
             return True, "Domoticz restart requested"
         except Exception as e:
             Domoticz.Error(f"Failed to schedule Domoticz restart: {e}")
+            return False, str(e)
+
+    def build_self_update_helper(self, plugin_dir, log_file, startup_delay=1):
+        helper = """
+import datetime
+import os
+import subprocess
+import time
+import traceback
+
+plugin_dir = __PLUGIN_DIR__
+log_file = __LOG_FILE__
+startup_delay = __STARTUP_DELAY__
+commands = [
+    (["git", "reset", "--hard", "HEAD"], 30),
+    (["git", "pull", "--force"], 120),
+]
+
+def write_log(message):
+    timestamp = datetime.datetime.now().isoformat(timespec="seconds")
+    try:
+        with open(log_file, "a", encoding="utf-8") as update_log:
+            update_log.write("[{}] {}\\n".format(timestamp, message))
+    except Exception:
+        pass
+
+write_log("self update helper started")
+if startup_delay:
+    time.sleep(startup_delay)
+
+if not os.path.isdir(os.path.join(plugin_dir, ".git")):
+    write_log("not a git repository: {}".format(plugin_dir))
+    raise SystemExit(1)
+
+env = os.environ.copy()
+env["GIT_TERMINAL_PROMPT"] = "0"
+
+for command, timeout in commands:
+    write_log("running: {}".format(subprocess.list2cmdline(command)))
+    try:
+        result = subprocess.run(
+            command,
+            cwd=plugin_dir,
+            env=env,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            timeout=timeout
+        )
+        write_log("return code: {}".format(result.returncode))
+        if result.stdout:
+            write_log("stdout: {}".format(result.stdout.strip()))
+        if result.stderr:
+            write_log("stderr: {}".format(result.stderr.strip()))
+        if result.returncode != 0:
+            write_log("self update failed")
+            raise SystemExit(result.returncode)
+    except Exception as e:
+        write_log("exception: {}".format(e))
+        write_log(traceback.format_exc().strip())
+        raise
+
+write_log("self update completed")
+"""
+        return (
+            helper
+            .replace("__PLUGIN_DIR__", repr(plugin_dir))
+            .replace("__LOG_FILE__", repr(log_file))
+            .replace("__STARTUP_DELAY__", repr(startup_delay))
+        )
+
+    def schedule_self_update(self, plugin_dir):
+        helper = self.build_self_update_helper(plugin_dir, self.self_update_log_file())
+        popen_kwargs = {
+            "stdin": subprocess.DEVNULL,
+            "stdout": subprocess.DEVNULL,
+            "stderr": subprocess.DEVNULL,
+        }
+        popen_kwargs.update(self.detached_popen_kwargs())
+
+        try:
+            subprocess.Popen([sys.executable, "-c", helper], **popen_kwargs)
+            return True, "Self update started. Reload the Plugin Store after Domoticz finishes reloading the plugin."
+        except Exception as e:
+            Domoticz.Error(f"Failed to schedule PyPluginStore self update: {e}")
             return False, str(e)
 
     def dependency_install_command(self, requirements_file, target_dir):
@@ -2385,7 +2474,10 @@ class BasePlugin:
                 plugin_repository = self.plugin_data[plugin_key][1]
                 update_success, update_message = self.UpdatePythonPlugin(plugin_author, plugin_repository, plugin_key)
                 if update_success:
-                    self.sendApiResponse({"status": "success", "action": action, "plugin_key": plugin_key})
+                    response = {"status": "success", "action": action, "plugin_key": plugin_key}
+                    if update_message:
+                        response["message"] = update_message
+                    self.sendApiResponse(response)
                 else:
                     self.sendApiResponse({"status": "error", "message": update_message or "Plugin update failed"})
             else:
@@ -2553,6 +2645,10 @@ class BasePlugin:
 
         if is_self_update:
             Domoticz.Log("Self update requested for PyPluginStore.")
+            update_success, update_message = host.schedule_self_update(plugin_dir)
+            if update_success:
+                self.update_status[ppKey] = "unknown"
+            return update_success, update_message
 
         Domoticz.Log("Resetting and Updating Plugin:" + ppKey)
 

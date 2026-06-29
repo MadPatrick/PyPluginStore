@@ -877,8 +877,12 @@
         try {
             const response = await sendCommand(action, { plugin_key: pluginKey });
             if (response && response.status === 'success') {
-                alert(`Successfully completed ${action} for ${pluginKey}. Domoticz restart may be required.`);
-                await loadPlugins();
+                const successMessage = response.message || `Successfully completed ${action} for ${pluginKey}. Domoticz restart may be required.`;
+                alert(successMessage);
+                setStatus(successMessage);
+                if (!(action === 'update' && pluginKey === managerKey)) {
+                    await loadPlugins();
+                }
             } else {
                 alert(`Error during ${action}: ` + (response ? response.message : "Unknown error"));
                 setStatus("Operation failed.");

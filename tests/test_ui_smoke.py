@@ -118,6 +118,13 @@ def test_api_bridge_payload_is_cleared_around_commands():
     assert "Could not clear API bridge payload" in script
 
 
+def test_self_update_does_not_reload_plugin_list_immediately():
+    script = load_inline_script()
+
+    assert "const successMessage = response.message" in script
+    assert "action === 'update' && pluginKey === managerKey" in script
+
+
 def test_installed_filter_state_is_persisted_in_local_storage():
     script = load_inline_script()
 
