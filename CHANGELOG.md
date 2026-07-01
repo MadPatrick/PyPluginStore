@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.14.1](https://github.com/adrighem/PyPluginStore/compare/v2.14.0...v2.14.1) (2026-07-01)
+
+
+### Bug Fixes
+
+* bypass Git dubious ownership with safe.directory option ([3292bbb](https://github.com/adrighem/PyPluginStore/commit/3292bbb564d2c040886a76358819154f054d9fe0)), closes [#70](https://github.com/adrighem/PyPluginStore/issues/70)
+
 ## [2.14.0](https://github.com/adrighem/PyPluginStore/compare/v2.13.1...v2.14.0) (2026-06-29)
 
 
