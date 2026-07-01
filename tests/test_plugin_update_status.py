@@ -22,7 +22,7 @@ def recorded_messages(plugin_core_module, level):
     return [args[0] for args, _ in plugin_core_module.Domoticz.calls[level] if args]
 
 
-def test_run_git_repairs_dubious_ownership_and_retries(plugin_core_module, tmp_path, monkeypatch):
+def test_run_git_bypasses_dubious_ownership_with_safe_directory(plugin_core_module, tmp_path, monkeypatch):
     _, manager_dir = configure_home(plugin_core_module, tmp_path)
     (manager_dir / ".git").mkdir()
     runtime = plugin_core_module.LinuxHostRuntime(plugin_core_module.Parameters)
@@ -33,7 +33,7 @@ def test_run_git_repairs_dubious_ownership_and_retries(plugin_core_module, tmp_p
         calls.append((command, Path(cwd)))
         if len(calls) == 1:
             return FakeGitResult(stderr=DUBIOUS_OWNERSHIP_ERROR, returncode=128)
-        return FakeGitResult(stdout="ok\n")
+        return FakeGitResult(stdout="ok\n", returncode=0)
 
     monkeypatch.setattr(plugin_core_module.subprocess, "run", fake_run)
     monkeypatch.setattr(
@@ -45,37 +45,45 @@ def test_run_git_repairs_dubious_ownership_and_retries(plugin_core_module, tmp_p
     result = runtime.run_git(["git", "fetch", "--quiet"], manager_dir)
 
     assert result.returncode == 0
-    assert calls == [
-        (["git", "fetch", "--quiet"], manager_dir),
-        (["git", "fetch", "--quiet"], manager_dir),
-    ]
-    assert repairs == [manager_dir.resolve()]
-    assert all("safe.directory" not in " ".join(command) for command, _ in calls)
-    assert any("ownership does not match the Domoticz user" in message for message in recorded_messages(plugin_core_module, "Error"))
-    assert any("Fixed plugin repository ownership" in message for message in recorded_messages(plugin_core_module, "Log"))
+    assert len(calls) == 2
+    assert calls[0] == (["git", "fetch", "--quiet"], manager_dir)
+    assert calls[1][0] == ["git", "-c", "safe.directory=" + str(manager_dir.resolve()), "fetch", "--quiet"]
+    assert len(repairs) == 0  # No chown repair should have been called!
+    assert any("retrying with safe.directory bypass" in message for message in recorded_messages(plugin_core_module, "Log"))
+    assert not any("ownership does not match the Domoticz user" in message for message in recorded_messages(plugin_core_module, "Error"))
 
 
-def test_run_git_reports_dubious_ownership_when_repair_fails(plugin_core_module, tmp_path, monkeypatch):
+def test_run_git_falls_back_to_repair_when_bypass_fails(plugin_core_module, tmp_path, monkeypatch):
     _, manager_dir = configure_home(plugin_core_module, tmp_path)
     (manager_dir / ".git").mkdir()
     runtime = plugin_core_module.LinuxHostRuntime(plugin_core_module.Parameters)
     calls = []
+    repairs = []
 
     def fake_run(command, cwd=None, **kwargs):
-        calls.append(command)
-        return FakeGitResult(stderr=DUBIOUS_OWNERSHIP_ERROR, returncode=128)
+        calls.append((command, Path(cwd)))
+        if len(calls) <= 2:
+            return FakeGitResult(stderr=DUBIOUS_OWNERSHIP_ERROR, returncode=128)
+        return FakeGitResult(stdout="ok\n", returncode=0)
 
     monkeypatch.setattr(plugin_core_module.subprocess, "run", fake_run)
-    monkeypatch.setattr(runtime, "repair_git_repository_ownership", lambda cwd: False)
+    monkeypatch.setattr(
+        runtime,
+        "repair_git_repository_ownership",
+        lambda cwd: repairs.append(Path(cwd)) or True,
+    )
 
     result = runtime.run_git(["git", "fetch", "--quiet"], manager_dir)
 
-    assert result.returncode == 128
-    assert calls == [["git", "fetch", "--quiet"]]
-    errors = recorded_messages(plugin_core_module, "Error")
-    assert any("ownership does not match the Domoticz user" in message for message in errors)
-    assert any("could not fix ownership" in message for message in errors)
-    assert not any("safe.directory" in message for message in errors)
+    assert result.returncode == 0
+    assert len(calls) == 3
+    assert calls[0] == (["git", "fetch", "--quiet"], manager_dir)
+    assert calls[1][0] == ["git", "-c", "safe.directory=" + str(manager_dir.resolve()), "fetch", "--quiet"]
+    assert calls[2] == (["git", "fetch", "--quiet"], manager_dir)
+    assert repairs == [manager_dir.resolve()]  # chown repair called on fallback!
+    assert any("retrying with safe.directory bypass" in message for message in recorded_messages(plugin_core_module, "Log"))
+    assert any("ownership does not match the Domoticz user" in message for message in recorded_messages(plugin_core_module, "Error"))
+    assert any("Fixed plugin repository ownership" in message for message in recorded_messages(plugin_core_module, "Log"))
 
 
 def test_get_git_update_status_reports_available(plugin_core_module, tmp_path, monkeypatch):

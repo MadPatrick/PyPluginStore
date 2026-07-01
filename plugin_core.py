@@ -209,14 +209,27 @@ class HostRuntime:
 
     def handle_git_ownership_failure(self, result, command, cwd, timeout):
         repo_dir = os.path.realpath(os.path.abspath(cwd))
-        if repo_dir not in self._git_ownership_reported:
-            Domoticz.Error(self.git_ownership_repair_message(repo_dir))
-            self._git_ownership_reported.add(repo_dir)
-
         if repo_dir in self._git_ownership_repair_attempted:
             return result
 
         self._git_ownership_repair_attempted.add(repo_dir)
+
+        # Build modified command with safe.directory
+        safe_command = list(command)
+        if len(safe_command) > 0 and safe_command[0] == "git":
+            safe_command.insert(1, "-c")
+            safe_command.insert(2, "safe.directory=" + repo_dir)
+
+        Domoticz.Log("Git refused the plugin repository due to file ownership; retrying with safe.directory bypass.")
+        retry_result = self._run_git_once(safe_command, cwd, timeout=timeout)
+        if retry_result is not None and not self.is_git_dubious_ownership(retry_result):
+            return retry_result
+
+        # Fallback to original chown repair if safe.directory fails
+        if repo_dir not in self._git_ownership_reported:
+            Domoticz.Error(self.git_ownership_repair_message(repo_dir))
+            self._git_ownership_reported.add(repo_dir)
+
         if not self.repair_git_repository_ownership(repo_dir):
             Domoticz.Error(self.git_ownership_failure_message(repo_dir))
             return result

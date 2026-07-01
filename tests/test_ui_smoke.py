@@ -1,7 +1,9 @@
 from html.parser import HTMLParser
 import json
+import os
 import shutil
 import subprocess
+import tempfile
 
 import pytest
 
@@ -34,13 +36,34 @@ def test_pypluginstore_javascript_has_valid_syntax():
         pytest.skip("node is not installed")
 
     script = load_inline_script()
+    mocks = """
+    const noop = () => {};
+    const document = {
+        readyState: 'complete',
+        getElementById: () => ({ addEventListener: noop, onclick: null }),
+        addEventListener: noop
+    };
+    const window = {
+        document,
+        addEventListener: noop
+    };
+    const alert = noop;
+    const location = {};
+    const fetch = noop;
+    const setTimeout = noop;
+    """
 
-    result = subprocess.run(
-        [node, "--check", "-"],
-        input=script,
-        capture_output=True,
-        text=True,
-    )
+    with tempfile.NamedTemporaryFile(suffix=".js", mode="w", delete=False) as f:
+        f.write(mocks + script)
+        temp_path = f.name
+    try:
+        result = subprocess.run(
+            [node, "--check", temp_path],
+            capture_output=True,
+            text=True,
+        )
+    finally:
+        os.remove(temp_path)
     assert result.returncode == 0, result.stderr
 
 
@@ -73,12 +96,17 @@ for (const [input, expected] of Object.entries(cases)) {{
 }}
 """
 
-    result = subprocess.run(
-        [node, "-"],
-        input=node_script,
-        capture_output=True,
-        text=True,
-    )
+    with tempfile.NamedTemporaryFile(suffix=".js", mode="w", delete=False) as f:
+        f.write(node_script)
+        temp_path = f.name
+    try:
+        result = subprocess.run(
+            [node, temp_path],
+            capture_output=True,
+            text=True,
+        )
+    finally:
+        os.remove(temp_path)
     assert result.returncode == 0, result.stderr
 
 
@@ -190,12 +218,17 @@ if (readStoredInstalledFilter() !== false) {{
 writeStoredInstalledFilter(true);
 """
 
-    result = subprocess.run(
-        [node, "-"],
-        input=node_script,
-        capture_output=True,
-        text=True,
-    )
+    with tempfile.NamedTemporaryFile(suffix=".js", mode="w", delete=False) as f:
+        f.write(node_script)
+        temp_path = f.name
+    try:
+        result = subprocess.run(
+            [node, temp_path],
+            capture_output=True,
+            text=True,
+        )
+    finally:
+        os.remove(temp_path)
     assert result.returncode == 0, result.stderr
 
 
