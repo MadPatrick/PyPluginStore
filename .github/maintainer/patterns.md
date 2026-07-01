@@ -1,6 +1,7 @@
 # Maintainer Patterns
 
 - Generated runtime file: edit `plugin_core.py`, then run `python .github/scripts/generate_plugin.py`.
+- Git ownership repairs should prefer non-destructive, memory-only configuration overrides (`safe.directory` via `-c`) over disk-level permissions changes (`chown`), especially in Docker volume-mount environments, to avoid permission fights and file management friction on the host.
 - Registry source order: remote public registry, bundled fallback, local ignored overlay.
 - Installed detection is tiered: matching git remote, recognized `plugin.py` externallink, exact registry key, unique repo/archive folder name with flexible and Domoticz-affix-stripped normalization, then unique `plugin.py` key/name metadata.
 - Local registry entries are explicit user intent and should win when they collide with public registry repository aliases.

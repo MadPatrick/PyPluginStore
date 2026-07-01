@@ -17,4 +17,10 @@
 
 - Reported Docker/icon, missing NUT UPS, and startup update-check log issues in `ISSUE:54`, `ISSUE:55`, and `ISSUE:56`.
 - Reported Domoticz 2025.1 compatibility and UI update-status behavior in `ISSUE:57`, plus the custom UI API payload length log in `ISSUE:60`.
+- Reported Docker volume permissions conflict on restart in `ISSUE:70`.
 - Provides concise issue reports with screenshots or log excerpts.
+
+## Rouzax
+
+- Author of `PR:66` (Windows platform metadata for Luxtronik) and `PR:71` (lean dist branch and key alignment to `luxtronikex`).
+- Highly structured and clear contributions regarding Luxtronik plugin maintenance.

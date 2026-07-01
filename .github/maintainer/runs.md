@@ -1,5 +1,32 @@
 # Maintainer Runs
 
+## 2026-07-01 - Docker Git ownership bypass and Luxtronik registry integration
+
+Scope:
+- Reviewed current GitHub state for `adrighem/PyPluginStore`.
+- Active public items:
+  - Open issues: `ISSUE:30`, `ISSUE:64`, `ISSUE:70`.
+  - Open pull requests: `PR:71`.
+  - Latest release: `v2.14.0`, published on 2026-06-29.
+- Investigated `ISSUE:70`, where Docker-based Domoticz restarts log-spammed because of Git ownership checks triggering `chown` recursively on the host, causing host file permissions friction.
+- Evaluated `PR:71` by `Rouzax` pointing the Luxtronik plugin at its `dist` branch and changing its key/installation directory to `luxtronikex` to match its runtime key, while preserving its Windows support.
+
+Prepared local changes:
+- `handle_git_ownership_failure` in `plugin_core.py` now implements an automatic first-time Git retry with `-c safe.directory=<path>`. This allows Git commands inside the container to execute successfully without changing any host-level file ownership or permissions, resolving `ISSUE:70` cleanly and permanently and eliminating log spam.
+- Fallback to the original `repair_git_repository_ownership` (chown) is preserved if the `safe.directory` retry still reports dubious ownership.
+- Wrote robust mock-environment unit tests in `tests/test_plugin_update_status.py` verifying both successful `safe.directory` bypass (with zero `chown` calls) and chown fallback.
+- Updated `registry.json` and `update_times.json` for Luxtronik to key `luxtronikex` and branch `dist`, keeping both Linux and Windows support.
+- Updated `tests/test_ui_smoke.py` to write script content to temporary files rather than passing them via stdin, to ensure compatibility with Node/Bun shims on local machines.
+- Regenerated `plugin.py` from `plugin_core.py`.
+
+Verification:
+- `pytest`: 133 passed.
+- `python3 .github/scripts/validate_plugins.py`: passed for all 328 plugins.
+
+Notes:
+- Product changes committed locally on master.
+- Drafted responses to close both `ISSUE:70` and `PR:71` upon approval.
+
 ## 2026-06-29 - Self-update timeout and Luxtronik Windows metadata
 
 Scope:

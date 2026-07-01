@@ -1,5 +1,29 @@
 # Maintainer Decisions
 
+## 2026-07-01 - Docker Git ownership bypass and Luxtronik registry integration
+
+Decision: Use `safe.directory` config overrides as the primary retry mechanism for Git dubious ownership errors, and integrate the Luxtronik plugin registry changes from `PR:71` (changing key to `luxtronikex` and branch to `dist`) while preserving Windows support.
+
+Rationale:
+- `ISSUE:70` / `ISSUE:69`: In Docker-based Domoticz installations, files are often mounted from the host and owned by the host user (UID 1000). On startup/restart, Git running inside the container (sometimes as root or a different UID) reports a "dubious ownership" error. PyPluginStore previously attempted to "repair" this by calling `chown` to the container user's UID on the entire plugin folder. This caused a cyclic file ownership fight on restart, reverting user host file permissions to root, causing permission denied errors on the host, and flooding Domoticz logs with Error messages on every single container restart.
+- Using `-c safe.directory=<path>` on the first Git retry allows commands to execute perfectly inside the container without modifying any files or permissions on disk, leaving both Docker and host environments stable and eliminating log spam.
+- `PR:71`: Switching the Luxtronik plugin to its lean `dist` branch keeps downloads lightweight (no tests/docs), and renaming its registry key/key-folder to `luxtronikex` aligns it with the plugin's own metadata and key name, ensuring proper recognition. Preserving `"windows"` platform support from `PR:66` is crucial.
+
+Implementation notes:
+- Modified `handle_git_ownership_failure` in `plugin_core.py` to first retry the command with `-c safe.directory=<repo_dir>` and log a normal informational Log message. If that fails, it falls back to the original `repair_git_repository_ownership` (chown) behavior.
+- Updated `tests/test_plugin_update_status.py` with tests for both successful `safe.directory` bypass and fallback.
+- Regenerated `plugin.py` from `plugin_core.py`.
+- Renamed the Luxtronik plugin key to `luxtronikex` and pointed it to the `dist` branch in `registry.json` and `update_times.json`, keeping Windows support.
+- Updated `tests/test_ui_smoke.py` to use temporary files for javascript/node validations to prevent failures on environments using Bun node-shims.
+
+Verification:
+- `pytest`: 133 passed.
+- `python3 .github/scripts/validate_plugins.py`: passed.
+
+Public action:
+- Prepared a draft comment to close `ISSUE:70`.
+- Prepared a draft comment to close `PR:71` (which is fully integrated into master now).
+
 ## 2026-06-29 - Avoid self-update bridge timeout and accept Luxtronik Windows metadata
 
 Decision: make PyPluginStore self-update asynchronous from the API command handler, and accept the `PR:66` registry metadata from the contributor source.
