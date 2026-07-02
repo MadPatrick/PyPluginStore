@@ -115,12 +115,21 @@ def test_repo_url_builder_supports_codeberg_and_gitlab_hosts():
     if not node:
         pytest.skip("node is not installed")
 
-    function_source = extract_js_function(load_inline_script(), "buildRepoUrl")
+    script = load_inline_script()
+    function_source = "\n".join([
+        extract_js_function(script, "stripRepoUrl"),
+        extract_js_function(script, "encodeRepoPath"),
+        extract_js_function(script, "parseRepoReference"),
+        extract_js_function(script, "buildRepoUrl"),
+    ])
     cases = [
         ["owner", "repo", "https://github.com/owner/repo"],
+        ["github.com/Hoog", "Domoticz-Stromer-plugin", "https://github.com/Hoog/Domoticz-Stromer-plugin"],
         ["codeberg.org/Hoog", "Domoticz-Stromer-plugin", "https://codeberg.org/Hoog/Domoticz-Stromer-plugin"],
         ["gitlab.com/r.boeters", "DomoticzSabNZBDPlugin", "https://gitlab.com/r.boeters/DomoticzSabNZBDPlugin"],
+        ["example.org/Team", "DomoticzPlugin", "https://example.org/Team/DomoticzPlugin"],
         ["git@gitlab.com:r.boeters/DomoticzSabNZBDPlugin.git", "", "https://gitlab.com/r.boeters/DomoticzSabNZBDPlugin"],
+        ["git@example.org:Team/DomoticzPlugin.git", "", "https://example.org/Team/DomoticzPlugin"],
         ["https://codeberg.org/Hoog/Domoticz-Stromer-plugin/src/branch/main", "", "https://codeberg.org/Hoog/Domoticz-Stromer-plugin"],
         ["https://gitlab.com/r.boeters/DomoticzSabNZBDPlugin/-/tree/master", "", "https://gitlab.com/r.boeters/DomoticzSabNZBDPlugin"],
     ]
@@ -147,6 +156,58 @@ for (const [author, repo, expected] of cases) {{
     finally:
         os.remove(temp_path)
     assert result.returncode == 0, result.stderr
+
+
+def test_author_display_includes_repository_host_for_all_hosted_entries():
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("node is not installed")
+
+    script = load_inline_script()
+    function_source = "\n".join([
+        extract_js_function(script, "stripRepoUrl"),
+        extract_js_function(script, "encodeRepoPath"),
+        extract_js_function(script, "parseRepoReference"),
+        extract_js_function(script, "formatAuthorDisplay"),
+    ])
+    cases = [
+        ["Hoog", "Domoticz-Stromer-plugin", "github.com/Hoog"],
+        ["github.com/Hoog", "Domoticz-Stromer-plugin", "github.com/Hoog"],
+        ["codeberg.org/Hoog", "Domoticz-Stromer-plugin", "codeberg.org/Hoog"],
+        ["gitlab.com/r.boeters", "DomoticzSabNZBDPlugin", "gitlab.com/r.boeters"],
+        ["https://codeberg.org/Hoog/Domoticz-Stromer-plugin/src/branch/main", "", "codeberg.org/Hoog"],
+        ["git@gitlab.com:r.boeters/DomoticzSabNZBDPlugin.git", "", "gitlab.com/r.boeters"],
+    ]
+    node_script = f"""
+{function_source}
+const cases = {json.dumps(cases)};
+for (const [author, repo, expected] of cases) {{
+    const actual = formatAuthorDisplay(author, repo);
+    if (actual !== expected) {{
+        throw new Error(`${{author}}/${{repo}}: expected "${{expected}}", got "${{actual}}"`);
+    }}
+}}
+"""
+
+    with tempfile.NamedTemporaryFile(suffix=".js", mode="w", delete=False) as f:
+        f.write(node_script)
+        temp_path = f.name
+    try:
+        result = subprocess.run(
+            [node, temp_path],
+            capture_output=True,
+            text=True,
+        )
+    finally:
+        os.remove(temp_path)
+    assert result.returncode == 0, result.stderr
+
+
+def test_plugin_cards_use_formatted_author_display():
+    script = load_inline_script()
+
+    assert "'Author: ' + formatAuthorDisplay(author, repo)" in script
+    assert "'Author: ' + author" not in script
 
 
 def test_update_buttons_keep_shared_and_state_specific_classes():

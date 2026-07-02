@@ -696,51 +696,84 @@
         return displayName || pluginName;
     }
 
-    function buildRepoUrl(author, repo) {
-        const cleanAuthor = String(author || '').trim();
-        const cleanRepo = String(repo || '').trim();
-        const supportedHosts = ['github.com', 'gitlab.com', 'codeberg.org'];
-
-        function stripRepoUrl(url) {
-            let stripped = String(url || '').trim().replace(/\/$/, '');
-            const markers = [
-                '/-/tree/',
-                '/-/blob/',
-                '/tree/',
-                '/blob/',
-                '/src/branch/',
-                '/raw/branch/'
-            ];
-            for (const marker of markers) {
-                if (stripped.indexOf(marker) !== -1) {
-                    stripped = stripped.split(marker, 1)[0];
-                    break;
-                }
+    function stripRepoUrl(url) {
+        let stripped = String(url || '').trim().replace(/\/$/, '');
+        const markers = [
+            '/-/tree/',
+            '/-/blob/',
+            '/tree/',
+            '/blob/',
+            '/src/branch/',
+            '/raw/branch/'
+        ];
+        for (const marker of markers) {
+            if (stripped.indexOf(marker) !== -1) {
+                stripped = stripped.split(marker, 1)[0];
+                break;
             }
-            return stripped.replace(/\.git$/, '');
         }
+        return stripped.replace(/\.git$/, '');
+    }
 
-        function encodePath(value) {
-            return String(value || '').split('/').map(encodeURIComponent).join('/');
-        }
+    function encodeRepoPath(pathParts) {
+        return pathParts.map(part => encodeURIComponent(part)).join('/');
+    }
 
-        const sshMatch = cleanAuthor.match(/^git@([^:]+):(.+)$/);
-        if (sshMatch && supportedHosts.indexOf(sshMatch[1].toLowerCase()) !== -1) {
-            return stripRepoUrl('https://' + sshMatch[1].toLowerCase() + '/' + sshMatch[2]);
-        }
+    function parseRepoReference(author, repo) {
+        const cleanAuthor = String(author || '').trim();
+        const cleanRepo = String(repo || '').trim().replace(/\.git$/, '');
+        const fallbackHost = 'github.com';
 
         if (cleanAuthor.startsWith('http://') || cleanAuthor.startsWith('https://')) {
-            return stripRepoUrl(cleanAuthor);
-        }
-
-        for (const host of supportedHosts) {
-            if (cleanAuthor.toLowerCase() === host || cleanAuthor.toLowerCase().startsWith(host + '/')) {
-                const path = cleanRepo ? cleanAuthor.replace(/\/$/, '') + '/' + cleanRepo : cleanAuthor;
-                return stripRepoUrl('https://' + encodePath(path));
+            try {
+                const strippedUrl = stripRepoUrl(cleanAuthor);
+                const parsed = new URL(strippedUrl);
+                const pathParts = parsed.pathname
+                    .replace(/^\/+|\/+$/g, '')
+                    .split('/')
+                    .filter(Boolean)
+                    .map(part => decodeURIComponent(part.replace(/\.git$/, '')));
+                return { host: parsed.hostname.toLowerCase(), pathParts };
+            } catch (error) {
+                return { host: fallbackHost, pathParts: [cleanAuthor, cleanRepo].filter(Boolean) };
             }
         }
 
-        return 'https://github.com/' + encodeURIComponent(cleanAuthor) + '/' + encodeURIComponent(cleanRepo);
+        const sshMatch = cleanAuthor.match(/^(?:[^@:/]+@)?([^:/]+):(.+)$/);
+        if (sshMatch) {
+            const host = sshMatch[1].toLowerCase();
+            const pathParts = sshMatch[2].replace(/\.git$/, '').split('/').filter(Boolean);
+            return { host, pathParts };
+        }
+
+        const authorParts = cleanAuthor.split('/').filter(Boolean);
+        const firstAuthorPart = (authorParts[0] || '').toLowerCase();
+        if (firstAuthorPart.indexOf('.') !== -1 && authorParts.length > 1) {
+            const pathParts = authorParts.slice(1);
+            if (cleanRepo) pathParts.push(cleanRepo);
+            return { host: firstAuthorPart, pathParts };
+        }
+
+        return { host: fallbackHost, pathParts: [cleanAuthor, cleanRepo].filter(Boolean) };
+    }
+
+    function buildRepoUrl(author, repo) {
+        const repoReference = parseRepoReference(author, repo);
+        if (!repoReference.host || repoReference.pathParts.length === 0) {
+            return '';
+        }
+        return stripRepoUrl('https://' + repoReference.host + '/' + encodeRepoPath(repoReference.pathParts));
+    }
+
+    function formatAuthorDisplay(author, repo) {
+        const repoReference = parseRepoReference(author, repo);
+        if (!repoReference.host || repoReference.pathParts.length === 0) {
+            return String(author || '').trim();
+        }
+        const ownerPath = repoReference.pathParts.length > 1
+            ? repoReference.pathParts.slice(0, -1)
+            : repoReference.pathParts;
+        return repoReference.host + '/' + ownerPath.join('/');
     }
 
     function renderPlugins(pluginData, installedList) {
@@ -844,7 +877,7 @@
 
             const meta = document.createElement('div');
             meta.className = 'card-meta';
-            meta.appendChild(document.createTextNode('Author: ' + author));
+            meta.appendChild(document.createTextNode('Author: ' + formatAuthorDisplay(author, repo)));
             meta.appendChild(document.createElement('br'));
             meta.appendChild(document.createTextNode('Repo: ' + repo + (branch ? ' (' + branch + ')' : '')));
 
