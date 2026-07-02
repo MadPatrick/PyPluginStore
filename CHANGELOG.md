@@ -1,5 +1,20 @@
 # Changelog
 
+## [2.15.0](https://github.com/adrighem/PyPluginStore/compare/v2.14.2...v2.15.0) (2026-07-02)
+
+
+### Features
+
+* support Codeberg and GitLab plugin repositories ([8a55c7c](https://github.com/adrighem/PyPluginStore/commit/8a55c7c5a7461291152e7321522f512c7aff3dff)), closes [#76](https://github.com/adrighem/PyPluginStore/issues/76)
+* update Domoticz Python plugin registry ([9342d41](https://github.com/adrighem/PyPluginStore/commit/9342d41d91aa055a489ec92bd69e41a3c9ddb649))
+
+
+### Bug Fixes
+
+* make plugin store repository links host-aware ([25d6ad1](https://github.com/adrighem/PyPluginStore/commit/25d6ad1e93874bc63bb8baba6204fc0783c04ee2)), closes [#76](https://github.com/adrighem/PyPluginStore/issues/76)
+* preserve registry branches during scans ([8dc31d3](https://github.com/adrighem/PyPluginStore/commit/8dc31d3a5714dc89db1e0620b0ca331ead1c35c8))
+* stabilize platform detection metadata ([e13d5b9](https://github.com/adrighem/PyPluginStore/commit/e13d5b94ac00a79ecd08454f19e390b19df81c94))
+
 ## [2.14.2](https://github.com/adrighem/PyPluginStore/compare/v2.14.1...v2.14.2) (2026-07-02)
 
 
