@@ -10,7 +10,7 @@ Scope:
 
 Prepared local changes:
 - `getInstalledPlugins` in `plugin_core.py` now populates and returns an `is_git` property inside `installed_match_details`.
-- `UpdatePythonPlugin` in `plugin_core.py` now fetches the registered branch name from `self.plugin_data` and runs `git checkout <branch>` and `git pull --force origin <branch>`.
+- `UpdatePythonPlugin` in `plugin_core.py` now implements the robust fetch-and-reset flow (`git fetch origin`, `git diff --quiet`, `git checkout -B <branch> origin/<branch>`, `git reset --hard origin/<branch>`).
 - `pypluginstore.html` now parses `is_git` and renders a `Non-Git` badge for unmanaged plugins, as well as disabling the Update button with a clear tooltip.
 - Regenerated `plugin.py`.
 

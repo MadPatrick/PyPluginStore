@@ -6,14 +6,14 @@ Decision: Provide clear non-Git visual indicators in the custom web UI and imple
 
 Rationale:
 - `ISSUE:74`: When a plugin was manually copied/extracted without a `.git` folder (unmanaged plugin), PyPluginStore detected it as installed but could not update it (returning an unknown update status). The web UI rendered it similarly to other up-to-date plugins, offering no clear indication that it was unmanaged. Adding an explicit `"is_git": false` metadata field from the backend and rendering a "Non-Git" badge with a disabled "Update" button clarifies this state.
-- `ISSUE:73`: Automatic update checks or manual pulls can fail/fizzle or falsely report "already up-to-date" if a plugin's local branch has no tracked upstream set or is in a detached HEAD state. Making `UpdatePythonPlugin` fetch-and-checkout the registered branch and pull explicitly via `git pull --force origin <branch>` guarantees robust update behavior regardless of tracking or detached HEAD states.
+- `ISSUE:73`: Automatic update checks or manual pulls can fail/fizzle or falsely report "already up-to-date" if a plugin's local branch has no tracked upstream set or is in a detached HEAD state. Transitioning from pull-based updates to a highly deterministic fetch-and-reset flow (`git fetch origin`, `git checkout -B <branch> origin/<branch>`, and `git reset --hard origin/<branch>`) ensures clean updates and absolute state parity with origin, completely bypassing any tracking mismatches or local divergence.
 
 Implementation notes:
 - Modified `getInstalledPlugins` in `plugin_core.py` to identify if each installed plugin folder contains a `.git` folder and return `"is_git"` within `"installed_match_details"`.
-- Modified `UpdatePythonPlugin` in `plugin_core.py` to retrieve the registered branch, run `git checkout <branch>`, and pull with `git pull --force origin <branch>`.
+- Refactored `UpdatePythonPlugin` in `plugin_core.py` to implement a highly robust fetch-and-reset flow: first `git fetch origin`, then compare local `HEAD` and remote branch commit hashes via `git diff --quiet`, switch/create the target tracking branch with `git checkout -B <branch> origin/<branch>`, and hard-reset the workspace to match origin with `git reset --hard origin/<branch>`, ensuring clean updates even in detached HEAD or force-pushed developer states.
 - Modified `pypluginstore.html` to define `installedMatchDetailsCache`, extract `isGit`, append a "Non-Git" badge when appropriate, and disable the "Update" button with an informative tooltip for non-Git installations.
 - Updated `tests/test_plugin_registry.py` to verify that `is_git` is correctly computed and returned.
-- Updated `tests/test_plugin_update_status.py` to assert on the updated git command sequence (reset, checkout, pull origin master).
+- Updated `tests/test_plugin_update_status.py` to assert on the robust fetch-and-reset git command sequence.
 - Regenerated `plugin.py` from `plugin_core.py`.
 
 Verification:

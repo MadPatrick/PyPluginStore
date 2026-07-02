@@ -2964,7 +2964,47 @@ class BasePlugin:
         if ppKey in self.plugin_data and len(self.plugin_data[ppKey]) >= 4:
             branch = self.plugin_data[ppKey][3] or "master"
 
-        ppGitReset = ["git", "reset", "--hard", "HEAD"]
+        ppGitFetch = ["git", "fetch", "origin"]
+        Domoticz.Debug("Calling: " + " ".join(ppGitFetch) + " on folder " + plugin_dir)
+        res_fetch = host.run_git(ppGitFetch, plugin_dir, timeout=60)
+        if res_fetch is None:
+            return False, "Git fetch failed"
+        if res_fetch.stdout:
+            Domoticz.Debug("Git Fetch Response:" + res_fetch.stdout)
+        if res_fetch.stderr and not host.is_git_dubious_ownership(res_fetch):
+            Domoticz.Debug("Git Fetch Error:" + res_fetch.stderr.strip())
+        if res_fetch.returncode != 0:
+            if host.is_git_dubious_ownership(res_fetch):
+                return False, host.git_ownership_failure_message(plugin_dir)
+            return False, (res_fetch.stderr or res_fetch.stdout or "Git fetch failed").strip()
+
+        ppGitDiff = ["git", "diff", "--quiet", "HEAD...origin/" + branch]
+        Domoticz.Debug("Calling: " + " ".join(ppGitDiff) + " on folder " + plugin_dir)
+        res_diff = host.run_git(ppGitDiff, plugin_dir, timeout=15)
+        is_already_current = (res_diff is not None and res_diff.returncode == 0)
+
+        ppGitCheckout = ["git", "checkout", "-B", branch, "origin/" + branch]
+        Domoticz.Debug("Calling: " + " ".join(ppGitCheckout) + " on folder " + plugin_dir)
+        res_checkout = host.run_git(ppGitCheckout, plugin_dir, timeout=30)
+        if res_checkout is None:
+            return False, "Git checkout failed"
+        if res_checkout.stdout:
+            Domoticz.Debug("Git Checkout Response:" + res_checkout.stdout)
+        if res_checkout.stderr and not host.is_git_dubious_ownership(res_checkout):
+            Domoticz.Debug("Git Checkout Error:" + res_checkout.stderr.strip())
+        if res_checkout.returncode != 0:
+            if host.is_git_dubious_ownership(res_checkout):
+                return False, host.git_ownership_failure_message(plugin_dir)
+            if host.is_locked_file_message(res_checkout.stderr + res_checkout.stdout):
+                message = "Plugin files are in use; update queued for the next startup."
+                if queue_on_lock:
+                    self.queuePendingOperation("update", ppKey)
+                Domoticz.Error(message)
+                return False, message
+            return False, (res_checkout.stderr or res_checkout.stdout or "Git checkout failed").strip()
+
+        ppGitReset = ["git", "reset", "--hard", "origin/" + branch]
+        Domoticz.Debug("Calling: " + " ".join(ppGitReset) + " on folder " + plugin_dir)
         res_reset = host.run_git(ppGitReset, plugin_dir, timeout=30)
         if res_reset is None:
             return False, "Git reset failed"
@@ -2983,61 +3023,11 @@ class BasePlugin:
                 return False, message
             return False, (res_reset.stderr or res_reset.stdout or "Git reset failed").strip()
 
-        ppGitCheckout = ["git", "checkout", branch]
-        Domoticz.Debug("Calling: " + " ".join(ppGitCheckout) + " on folder " + plugin_dir)
-        res_checkout = host.run_git(ppGitCheckout, plugin_dir, timeout=30)
-        if res_checkout is None:
-            return False, "Git checkout failed"
-        if res_checkout.stdout:
-            Domoticz.Debug("Git Checkout Response:" + res_checkout.stdout)
-        if res_checkout.stderr and not host.is_git_dubious_ownership(res_checkout):
-            Domoticz.Debug("Git Checkout Error:" + res_checkout.stderr.strip())
-        if res_checkout.returncode != 0:
-            if host.is_git_dubious_ownership(res_checkout):
-                return False, host.git_ownership_failure_message(plugin_dir)
-            ppGitCheckoutForce = ["git", "checkout", "-B", branch, "origin/" + branch]
-            Domoticz.Debug("Calling force checkout: " + " ".join(ppGitCheckoutForce) + " on folder " + plugin_dir)
-            res_checkout_force = host.run_git(ppGitCheckoutForce, plugin_dir, timeout=30)
-            if res_checkout_force is None:
-                return False, "Git checkout failed"
-            if res_checkout_force.returncode != 0:
-                if host.is_git_dubious_ownership(res_checkout_force):
-                    return False, host.git_ownership_failure_message(plugin_dir)
-                return False, (res_checkout_force.stderr or res_checkout_force.stdout or "Git checkout failed").strip()
-
-        ppUrl = ["git", "pull", "--force", "origin", branch]
-        Domoticz.Debug("Calling: " + " ".join(ppUrl) + " on folder " + plugin_dir)
-
-        res = host.run_git(ppUrl, plugin_dir, timeout=120)
-        if res is None:
-            return False, "Git pull failed"
-
-        out = res.stdout
-        error = res.stderr
-        if out:
-            Domoticz.Debug("Git Response:" + out)
-            if "Already up to date" in out or "Already up-to-date" in out:
-               Domoticz.Log("Plugin " + ppKey + " already Up-To-Date")
-            elif "Updating" in out and "error" not in out.lower():
-               Domoticz.Log("Succesfully pulled gitHub update for plugin " + ppKey)
-               Domoticz.Log("---Restarting Domoticz MAY BE REQUIRED to activate new plugins---")
-            else:
-               Domoticz.Error("Something went wrong with update of " + str(ppKey))
-        if error and not host.is_git_dubious_ownership(res):
-            Domoticz.Debug("Git Error:" + error.strip())
-            if "Not a git repository" in error:
-               Domoticz.Log("Plugin:" + ppKey + " is not installed from gitHub. Cannot be updated with PyPluginStore!!.")
-
-        if res.returncode != 0:
-            if host.is_git_dubious_ownership(res):
-                message = host.git_ownership_failure_message(plugin_dir)
-            else:
-                message = (error or out or "Git pull failed").strip()
-            if host.is_locked_file_message(message):
-                message = "Plugin files are in use; update queued for the next startup."
-                if queue_on_lock:
-                    self.queuePendingOperation("update", ppKey)
-            return False, message
+        if is_already_current:
+            Domoticz.Log("Plugin " + ppKey + " already Up-To-Date")
+        else:
+            Domoticz.Log("Succesfully pulled gitHub update for plugin " + ppKey)
+            Domoticz.Log("---Restarting Domoticz MAY BE REQUIRED to activate new plugins---")
 
         self.refresh_single_plugin_update_time(ppKey, plugin_dir, fetch_first=False)
         self.refresh_single_plugin_update_status(ppKey, plugin_dir, fetch_first=False)
