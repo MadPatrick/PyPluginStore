@@ -11,14 +11,23 @@ if SCRIPT_DIR not in sys.path:
     sys.path.insert(0, SCRIPT_DIR)
 
 from detect_plugin_platforms import (
+    choose_platforms_for_registry,
     detect_platforms_for_repo,
+    decision_confidence,
+    decision_platforms,
+    ensure_platform_metadata_for_registry,
     get_registry_entry_platforms,
+    load_platform_metadata,
     normalize_platforms,
+    platform_metadata_identity,
+    save_platform_metadata,
     set_registry_entry_platforms,
+    update_platform_metadata_entry,
 )
 
 REGISTRY_FILE = os.path.join(SCRIPT_DIR, '../../registry.json')
 UPDATE_TIMES_FILE = os.path.join(SCRIPT_DIR, '../../update_times.json')
+PLATFORM_METADATA_FILE = os.path.join(SCRIPT_DIR, '../../.github/platform_detection.json')
 DEFAULT_GIT_HOST = "github.com"
 SUPPORTED_GIT_HOSTS = ("github.com", "gitlab.com", "codeberg.org")
 
@@ -82,11 +91,12 @@ def get_repo_skip_reason(repo):
 
     return None
 
-def remove_registry_entry(registry, update_times, key, reason):
+def remove_registry_entry(registry, update_times, platform_metadata, key, reason):
     print(f"[-] Removing {key} ({reason})")
     del registry[key]
     if key in update_times:
         del update_times[key]
+    platform_metadata.get("entries", {}).pop(key, None)
 
 def build_registry_entry(owner, repo_name, description, branch, platforms=None):
     entry = [owner, repo_name, description, branch]
@@ -324,7 +334,14 @@ def main():
         with open(UPDATE_TIMES_FILE, 'r') as f:
             update_times = json.load(f)
 
-    stats = {"updated": 0, "removed": 0, "added": 0}
+    platform_metadata_exists = os.path.exists(PLATFORM_METADATA_FILE)
+    platform_metadata = ensure_platform_metadata_for_registry(
+        load_platform_metadata(PLATFORM_METADATA_FILE),
+        registry,
+        manual_changes_are_reviewed=platform_metadata_exists,
+    )
+
+    stats = {"updated": 0, "removed": 0, "added": 0, "metadata_updated": 0}
 
     # 1. Sync Existing Plugins
     print("Syncing existing plugins...")
@@ -336,7 +353,7 @@ def main():
 
         block_reason = get_repo_block_reason(owner, repo_name)
         if block_reason:
-            remove_registry_entry(registry, update_times, key, block_reason)
+            remove_registry_entry(registry, update_times, platform_metadata, key, block_reason)
             stats["removed"] += 1
             continue
 
@@ -345,12 +362,12 @@ def main():
         info = get_repo_info(owner, repo_name)
 
         if info == "DELETED":
-            remove_registry_entry(registry, update_times, key, "Repo deleted")
+            remove_registry_entry(registry, update_times, platform_metadata, key, "Repo deleted")
             stats["removed"] += 1
         elif info:
             skip_reason = get_repo_skip_reason(info)
             if skip_reason:
-                remove_registry_entry(registry, update_times, key, skip_reason)
+                remove_registry_entry(registry, update_times, platform_metadata, key, skip_reason)
                 stats["removed"] += 1
             else:
                 # Update metadata
@@ -358,28 +375,62 @@ def main():
                 updated_branch = info.get('default_branch') or data[3]
                 updated_at = info.get('pushed_at') or info.get('updated_at')
                 current_platforms = get_registry_entry_platforms(data)
-                detected_platforms = current_platforms
                 platform_decision = detect_platforms_for_repo(owner, repo_name, updated_branch, info)
-                if platform_decision is not None:
-                    detected_platforms = platform_decision.platforms
+                detected_platforms = decision_platforms(platform_decision)
+                metadata_entry = platform_metadata["entries"].get(key, {})
+                if metadata_entry.get("identity") != platform_metadata_identity(owner, repo_name, updated_branch):
+                    metadata_entry = {}
+                next_platforms, platform_policy = choose_platforms_for_registry(
+                    current_platforms,
+                    platform_decision,
+                    metadata_entry=metadata_entry,
+                    is_new=False,
+                )
 
                 # Check if changed
                 if (updated_desc != data[2] or
                     updated_branch != data[3] or
                     update_times.get(key) != updated_at or
-                    detected_platforms != current_platforms):
+                    next_platforms != current_platforms):
 
                     print(f"[*] Updating {key}")
+                    if detected_platforms and next_platforms == current_platforms:
+                        print(
+                            f"    keeping platforms {current_platforms or ['unknown']}; "
+                            f"detected {detected_platforms} "
+                            f"({decision_confidence(platform_decision)}, {platform_policy})"
+                        )
+                    elif next_platforms != current_platforms:
+                        print(
+                            f"    platforms {current_platforms or ['unknown']} -> {next_platforms} "
+                            f"({decision_confidence(platform_decision)}, {platform_policy})"
+                        )
                     registry[key] = build_registry_entry(
                         owner,
                         repo_name,
                         updated_desc,
                         updated_branch,
-                        detected_platforms
+                        next_platforms
                     )
                     if updated_at:
                         update_times[key] = updated_at
                     stats["updated"] += 1
+
+                if platform_decision is not None and platform_policy != "unchanged":
+                    before = json.dumps(platform_metadata["entries"].get(key, {}), sort_keys=True)
+                    platform_metadata = update_platform_metadata_entry(
+                        platform_metadata,
+                        key,
+                        owner,
+                        repo_name,
+                        updated_branch,
+                        next_platforms,
+                        decision=platform_decision,
+                        policy_action=platform_policy,
+                    )
+                    after = json.dumps(platform_metadata["entries"].get(key, {}), sort_keys=True)
+                    if after != before:
+                        stats["metadata_updated"] += 1
 
         # Throttle to respect rate limits
         if not os.environ.get('GITHUB_TOKEN'):
@@ -419,13 +470,26 @@ def main():
             default_branch = repo['default_branch']
             pushed_at = repo.get('pushed_at') or repo.get('updated_at')
             platform_decision = detect_platforms_for_repo(registry_owner, repo_name, default_branch, repo)
-            platforms = platform_decision.platforms if platform_decision is not None else []
+            platforms, platform_policy = choose_platforms_for_registry(
+                [],
+                platform_decision,
+                metadata_entry=None,
+                is_new=True,
+            )
 
             key = repo_name
             if key in registry:
                 key = f"{owner}-{repo_name}"
 
             print(f"[+] Adding {key}")
+            detected_platforms = decision_platforms(platform_decision)
+            if detected_platforms and not platforms:
+                print(
+                    f"    leaving platforms unknown; detected {detected_platforms} "
+                    f"({decision_confidence(platform_decision)}, {platform_policy})"
+                )
+            elif platforms:
+                print(f"    platforms {platforms} ({decision_confidence(platform_decision)}, {platform_policy})")
             registry[key] = build_registry_entry(
                 registry_owner,
                 repo_name,
@@ -435,17 +499,37 @@ def main():
             )
             if pushed_at:
                 update_times[key] = pushed_at
+            before = json.dumps(platform_metadata["entries"].get(key, {}), sort_keys=True)
+            platform_metadata = update_platform_metadata_entry(
+                platform_metadata,
+                key,
+                registry_owner,
+                repo_name,
+                default_branch,
+                platforms,
+                decision=platform_decision,
+                policy_action=platform_policy,
+            )
+            after = json.dumps(platform_metadata["entries"].get(key, {}), sort_keys=True)
+            if after != before:
+                stats["metadata_updated"] += 1
             stats["added"] += 1
 
     # 3. Save Results
-    if stats["updated"] > 0 or stats["removed"] > 0 or stats["added"] > 0:
+    if stats["updated"] > 0 or stats["removed"] > 0 or stats["added"] > 0 or stats["metadata_updated"] > 0:
+        platform_metadata = ensure_platform_metadata_for_registry(platform_metadata, registry)
         with open(REGISTRY_FILE, 'w') as f:
             json.dump(registry, f, indent=4)
             f.write('\n')
         with open(UPDATE_TIMES_FILE, 'w') as f:
             json.dump(update_times, f, indent=4)
             f.write('\n')
-        print(f"Registry updated: {stats['added']} added, {stats['updated']} updated, {stats['removed']} removed.")
+        save_platform_metadata(platform_metadata, PLATFORM_METADATA_FILE)
+        print(
+            "Registry updated: "
+            f"{stats['added']} added, {stats['updated']} updated, "
+            f"{stats['removed']} removed, {stats['metadata_updated']} metadata updated."
+        )
     else:
         print("No changes needed.")
 

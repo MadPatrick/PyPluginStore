@@ -6,8 +6,16 @@ import subprocess
 # Adjust path relative to the current script location
 SCRIPT_DIR = os.path.dirname(__file__)
 REGISTRY_FILE_PATH = os.path.join(SCRIPT_DIR, '../../registry.json')
+PLATFORM_METADATA_FILE_PATH = os.path.join(SCRIPT_DIR, '../../.github/platform_detection.json')
 DEFAULT_GIT_HOST = "github.com"
 SUPPORTED_GIT_HOSTS = ("github.com", "gitlab.com", "codeberg.org")
+VALID_PLATFORM_METADATA_SOURCES = {"unknown", "legacy_detected", "detected", "reviewed"}
+VALID_PLATFORM_METADATA_CONFIDENCE = {"unknown", "low", "medium", "high"}
+
+try:
+    from detect_plugin_platforms import get_registry_entry_platforms
+except ImportError:
+    get_registry_entry_platforms = None
 
 def load_registry():
     print(f"Checking if registry file exists at: {REGISTRY_FILE_PATH}")
@@ -17,6 +25,8 @@ def load_registry():
 
     with open(REGISTRY_FILE_PATH, 'r') as f:
         registry_data = json.load(f)
+
+    validate_platform_metadata(registry_data)
         
     plugin_data = {}
     for key, data in registry_data.items():
@@ -31,6 +41,59 @@ def load_registry():
             "branch": data[3]
         }
     return plugin_data
+
+
+def normalize_platforms(platforms):
+    if get_registry_entry_platforms is not None:
+        return get_registry_entry_platforms(["", "", "", "", "", platforms])
+
+    if isinstance(platforms, str):
+        platforms = [platforms]
+    if not isinstance(platforms, list):
+        return []
+
+    normalized = []
+    for platform in platforms:
+        platform_name = str(platform or "").strip().lower()
+        if platform_name in {"linux", "windows"} and platform_name not in normalized:
+            normalized.append(platform_name)
+    return [platform for platform in ("linux", "windows") if platform in normalized]
+
+
+def validate_platform_metadata(registry_data):
+    if not os.path.isfile(PLATFORM_METADATA_FILE_PATH):
+        return
+
+    with open(PLATFORM_METADATA_FILE_PATH, 'r') as f:
+        metadata = json.load(f)
+
+    if not isinstance(metadata, dict):
+        raise ValueError("Platform metadata must be a JSON object.")
+    if metadata.get("version") != 1:
+        raise ValueError("Platform metadata has an unsupported version.")
+
+    entries = metadata.get("entries")
+    if not isinstance(entries, dict):
+        raise ValueError("Platform metadata must contain an entries object.")
+
+    registry_keys = {key for key in registry_data if key != "Idle"}
+    for key, entry in entries.items():
+        if key not in registry_keys:
+            raise ValueError(f"Platform metadata contains stale entry '{key}'.")
+        if not isinstance(entry, dict):
+            raise ValueError(f"Platform metadata entry '{key}' must be an object.")
+
+        registry_platforms = normalize_platforms(registry_data[key][5] if len(registry_data[key]) > 5 else [])
+        metadata_platforms = normalize_platforms(entry.get("registry_platforms", []))
+        if metadata_platforms != registry_platforms:
+            raise ValueError(f"Platform metadata entry '{key}' does not match registry platforms.")
+
+        if entry.get("source") not in VALID_PLATFORM_METADATA_SOURCES:
+            raise ValueError(f"Platform metadata entry '{key}' has invalid source.")
+        if entry.get("confidence") not in VALID_PLATFORM_METADATA_CONFIDENCE:
+            raise ValueError(f"Platform metadata entry '{key}' has invalid confidence.")
+        if not isinstance(entry.get("reviewed", False), bool):
+            raise ValueError(f"Platform metadata entry '{key}' has invalid reviewed flag.")
 
 def validate_registry_entry(key, data):
     if not isinstance(data, list) or len(data) < 4:

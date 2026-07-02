@@ -9,6 +9,24 @@ from conftest import REPO_ROOT, load_module_from_path
 VALID_ENTRY = ["owner", "repo", "description", "main"]
 
 
+def patch_scanner_paths(scan_plugins_module, monkeypatch, registry_file, update_times_file, metadata_file):
+    monkeypatch.setattr(scan_plugins_module, "REGISTRY_FILE", str(registry_file))
+    monkeypatch.setattr(scan_plugins_module, "UPDATE_TIMES_FILE", str(update_times_file))
+    monkeypatch.setattr(scan_plugins_module, "PLATFORM_METADATA_FILE", str(metadata_file))
+
+
+def platform_decision(platforms, confidence="medium", evidence_class="test"):
+    return SimpleNamespace(
+        platforms=platforms,
+        confidence=confidence,
+        evidence_class=evidence_class,
+        linux_score=0,
+        windows_score=0,
+        both_score=0,
+        reasons=[],
+    )
+
+
 @pytest.fixture
 def validate_plugins_module():
     return load_module_from_path(
@@ -42,6 +60,59 @@ def test_validate_registry_entry_accepts_platform_metadata(validate_plugins_modu
         "PlatformPlugin",
         ["owner", "repo", "description", "main", "", ["linux", "windows"]],
     )
+
+
+def test_validate_platform_metadata_accepts_matching_sidecar(validate_plugins_module, tmp_path, monkeypatch):
+    metadata_file = tmp_path / "platform_detection.json"
+    metadata_file.write_text(json.dumps({
+        "version": 1,
+        "entries": {
+            "PlatformPlugin": {
+                "identity": "github.com/owner/repo@main",
+                "owner": "owner",
+                "repository": "repo",
+                "branch": "main",
+                "registry_platforms": ["linux", "windows"],
+                "source": "legacy_detected",
+                "confidence": "unknown",
+                "evidence_class": "legacy",
+                "reviewed": False,
+            },
+        },
+    }))
+    monkeypatch.setattr(validate_plugins_module, "PLATFORM_METADATA_FILE_PATH", str(metadata_file))
+
+    validate_plugins_module.validate_platform_metadata({
+        "Idle": ["Idle", "Idle", "Idle", "master"],
+        "PlatformPlugin": ["owner", "repo", "description", "main", "", ["linux", "windows"]],
+    })
+
+
+def test_validate_platform_metadata_rejects_stale_or_mismatched_sidecar(validate_plugins_module, tmp_path, monkeypatch):
+    metadata_file = tmp_path / "platform_detection.json"
+    metadata_file.write_text(json.dumps({
+        "version": 1,
+        "entries": {
+            "PlatformPlugin": {
+                "registry_platforms": ["windows"],
+                "source": "legacy_detected",
+                "confidence": "unknown",
+                "reviewed": False,
+            },
+            "MissingPlugin": {
+                "registry_platforms": [],
+                "source": "unknown",
+                "confidence": "unknown",
+                "reviewed": False,
+            },
+        },
+    }))
+    monkeypatch.setattr(validate_plugins_module, "PLATFORM_METADATA_FILE_PATH", str(metadata_file))
+
+    with pytest.raises(ValueError):
+        validate_plugins_module.validate_platform_metadata({
+            "PlatformPlugin": ["owner", "repo", "description", "main", "", ["linux", "windows"]],
+        })
 
 
 @pytest.mark.parametrize(
@@ -263,6 +334,7 @@ def test_platform_detector_defaults_generic_python_plugins_to_both(platform_dete
 
     assert decision.platforms == ["linux", "windows"]
     assert decision.confidence == "low"
+    assert decision.evidence_class == "generic_python"
 
 
 def test_platform_detector_respects_explicit_both_support(platform_detector_module):
@@ -274,6 +346,106 @@ def test_platform_detector_respects_explicit_both_support(platform_detector_modu
 
     assert decision.platforms == ["linux", "windows"]
     assert decision.confidence == "high"
+    assert decision.evidence_class == "explicit_both"
+
+
+def test_platform_policy_requires_high_confidence_for_existing_changes(platform_detector_module):
+    current, action = platform_detector_module.choose_platforms_for_registry(
+        ["linux", "windows"],
+        platform_decision(["linux"], confidence="medium", evidence_class="linux_evidence"),
+    )
+
+    assert current == ["linux", "windows"]
+    assert action == "kept_existing_requires_high_confidence"
+
+    current, action = platform_detector_module.choose_platforms_for_registry(
+        ["linux", "windows"],
+        platform_decision(["linux"], confidence="high", evidence_class="explicit_linux_only"),
+    )
+
+    assert current == ["linux"]
+    assert action == "accepted_high_confidence_change"
+
+
+def test_platform_policy_keeps_reviewed_entries(platform_detector_module):
+    current, action = platform_detector_module.choose_platforms_for_registry(
+        ["linux", "windows"],
+        platform_decision(["linux"], confidence="high", evidence_class="explicit_linux_only"),
+        metadata_entry={"reviewed": True},
+    )
+
+    assert current == ["linux", "windows"]
+    assert action == "kept_reviewed"
+
+
+def test_platform_policy_leaves_low_confidence_new_entries_unknown(platform_detector_module):
+    current, action = platform_detector_module.choose_platforms_for_registry(
+        [],
+        platform_decision(["linux", "windows"], confidence="low", evidence_class="generic_python"),
+        is_new=True,
+    )
+
+    assert current == []
+    assert action == "kept_low_confidence_new"
+
+
+def test_platform_metadata_marks_missing_entries_reviewed_when_sidecar_exists(platform_detector_module):
+    registry = {
+        "Idle": ["Idle", "Idle", "Idle", "master"],
+        "ManualPlugin": ["owner", "repo", "description", "main", "", ["linux"]],
+    }
+
+    metadata = platform_detector_module.ensure_platform_metadata_for_registry(
+        {"version": 1, "entries": {}},
+        registry,
+        manual_changes_are_reviewed=True,
+    )
+
+    entry = metadata["entries"]["ManualPlugin"]
+    assert entry["registry_platforms"] == ["linux"]
+    assert entry["source"] == "reviewed"
+    assert entry["evidence_class"] == "manual_registry_edit"
+    assert entry["reviewed"] is True
+
+
+def test_platform_metadata_marks_platform_edits_reviewed_when_sidecar_exists(platform_detector_module):
+    registry = {
+        "Idle": ["Idle", "Idle", "Idle", "master"],
+        "ManualPlugin": ["owner", "repo", "description", "main", "", ["linux"]],
+    }
+    metadata = {
+        "version": 1,
+        "entries": {
+            "ManualPlugin": {
+                "identity": "github.com/owner/repo@main",
+                "owner": "owner",
+                "repository": "repo",
+                "branch": "main",
+                "registry_platforms": ["linux", "windows"],
+                "source": "detected",
+                "confidence": "low",
+                "evidence_class": "generic_python",
+                "reviewed": False,
+                "last_detection": {"platforms": ["linux", "windows"]},
+                "policy_action": "unchanged",
+            },
+        },
+    }
+
+    metadata = platform_detector_module.ensure_platform_metadata_for_registry(
+        metadata,
+        registry,
+        manual_changes_are_reviewed=True,
+    )
+
+    entry = metadata["entries"]["ManualPlugin"]
+    assert entry["registry_platforms"] == ["linux"]
+    assert entry["source"] == "reviewed"
+    assert entry["confidence"] == "unknown"
+    assert entry["evidence_class"] == "manual_registry_edit"
+    assert entry["reviewed"] is True
+    assert "last_detection" not in entry
+    assert "policy_action" not in entry
 
 
 def test_platform_detector_fetches_codeberg_tree_and_raw_urls(platform_detector_module, monkeypatch):
@@ -363,6 +535,7 @@ def test_platform_detector_writes_platforms_in_sixth_registry_slot(platform_dete
 def test_scanner_updates_existing_registry_platforms(scan_plugins_module, tmp_path, monkeypatch):
     registry_file = tmp_path / "registry.json"
     update_times_file = tmp_path / "update_times.json"
+    metadata_file = tmp_path / "platform_detection.json"
     registry_file.write_text(json.dumps({
         "Idle": ["Idle", "Idle", "Idle", "master"],
         "Plugin": ["owner", "repo", "description", "main"],
@@ -383,14 +556,15 @@ def test_scanner_updates_existing_registry_platforms(scan_plugins_module, tmp_pa
         "pushed_at": "2026-06-14T15:10:03Z",
     }
 
-    monkeypatch.setattr(scan_plugins_module, "REGISTRY_FILE", str(registry_file))
-    monkeypatch.setattr(scan_plugins_module, "UPDATE_TIMES_FILE", str(update_times_file))
+    patch_scanner_paths(scan_plugins_module, monkeypatch, registry_file, update_times_file, metadata_file)
     monkeypatch.setattr(scan_plugins_module, "get_repo_info", lambda owner, repo: repo_info)
     monkeypatch.setattr(scan_plugins_module, "search_github", lambda: [])
+    monkeypatch.setattr(scan_plugins_module, "search_gitlab", lambda: [])
+    monkeypatch.setattr(scan_plugins_module, "search_codeberg", lambda: [])
     monkeypatch.setattr(
         scan_plugins_module,
         "detect_platforms_for_repo",
-        lambda owner, repo, branch, repo_info=None: SimpleNamespace(platforms=["linux"]),
+        lambda owner, repo, branch, repo_info=None: platform_decision(["linux"], confidence="medium"),
     )
     monkeypatch.setenv("GITHUB_TOKEN", "test-token")
 
@@ -399,11 +573,15 @@ def test_scanner_updates_existing_registry_platforms(scan_plugins_module, tmp_pa
     registry = json.loads(registry_file.read_text())
 
     assert registry["Plugin"] == ["owner", "repo", "description", "main", "", ["linux"]]
+    metadata = json.loads(metadata_file.read_text())
+    assert metadata["entries"]["Plugin"]["registry_platforms"] == ["linux"]
+    assert metadata["entries"]["Plugin"]["source"] == "detected"
 
 
 def test_scanner_adds_platforms_for_new_plugins(scan_plugins_module, tmp_path, monkeypatch):
     registry_file = tmp_path / "registry.json"
     update_times_file = tmp_path / "update_times.json"
+    metadata_file = tmp_path / "platform_detection.json"
     registry_file.write_text(json.dumps({
         "Idle": ["Idle", "Idle", "Idle", "master"],
     }))
@@ -421,13 +599,14 @@ def test_scanner_adds_platforms_for_new_plugins(scan_plugins_module, tmp_path, m
         "pushed_at": "2026-06-14T15:10:03Z",
     }
 
-    monkeypatch.setattr(scan_plugins_module, "REGISTRY_FILE", str(registry_file))
-    monkeypatch.setattr(scan_plugins_module, "UPDATE_TIMES_FILE", str(update_times_file))
+    patch_scanner_paths(scan_plugins_module, monkeypatch, registry_file, update_times_file, metadata_file)
     monkeypatch.setattr(scan_plugins_module, "search_github", lambda: [repo_info])
+    monkeypatch.setattr(scan_plugins_module, "search_gitlab", lambda: [])
+    monkeypatch.setattr(scan_plugins_module, "search_codeberg", lambda: [])
     monkeypatch.setattr(
         scan_plugins_module,
         "detect_platforms_for_repo",
-        lambda owner, repo, branch, repo_info=None: SimpleNamespace(platforms=["windows"]),
+        lambda owner, repo, branch, repo_info=None: platform_decision(["windows"], confidence="medium"),
     )
     monkeypatch.setenv("GITHUB_TOKEN", "test-token")
 
@@ -438,9 +617,164 @@ def test_scanner_adds_platforms_for_new_plugins(scan_plugins_module, tmp_path, m
     assert registry["repo"] == ["owner", "repo", "description", "main", "", ["windows"]]
 
 
+def test_scanner_keeps_low_confidence_new_plugin_platforms_unknown(scan_plugins_module, tmp_path, monkeypatch):
+    registry_file = tmp_path / "registry.json"
+    update_times_file = tmp_path / "update_times.json"
+    metadata_file = tmp_path / "platform_detection.json"
+    registry_file.write_text(json.dumps({
+        "Idle": ["Idle", "Idle", "Idle", "master"],
+    }))
+    update_times_file.write_text(json.dumps({}))
+
+    repo_info = {
+        "archived": False,
+        "disabled": False,
+        "size": 100,
+        "full_name": "owner/repo",
+        "owner": {"login": "owner"},
+        "name": "repo",
+        "description": "description",
+        "default_branch": "main",
+        "pushed_at": "2026-06-14T15:10:03Z",
+    }
+
+    patch_scanner_paths(scan_plugins_module, monkeypatch, registry_file, update_times_file, metadata_file)
+    monkeypatch.setattr(scan_plugins_module, "search_github", lambda: [repo_info])
+    monkeypatch.setattr(scan_plugins_module, "search_gitlab", lambda: [])
+    monkeypatch.setattr(scan_plugins_module, "search_codeberg", lambda: [])
+    monkeypatch.setattr(
+        scan_plugins_module,
+        "detect_platforms_for_repo",
+        lambda owner, repo, branch, repo_info=None: platform_decision(
+            ["linux", "windows"],
+            confidence="low",
+            evidence_class="generic_python",
+        ),
+    )
+    monkeypatch.setenv("GITHUB_TOKEN", "test-token")
+
+    scan_plugins_module.main()
+
+    registry = json.loads(registry_file.read_text())
+    metadata = json.loads(metadata_file.read_text())
+
+    assert registry["repo"] == ["owner", "repo", "description", "main"]
+    assert metadata["entries"]["repo"]["registry_platforms"] == []
+    assert metadata["entries"]["repo"]["last_detection"]["platforms"] == ["linux", "windows"]
+    assert metadata["entries"]["repo"]["policy_action"] == "kept_low_confidence_new"
+
+
+def test_scanner_blocks_medium_confidence_existing_platform_downgrade(scan_plugins_module, tmp_path, monkeypatch):
+    registry_file = tmp_path / "registry.json"
+    update_times_file = tmp_path / "update_times.json"
+    metadata_file = tmp_path / "platform_detection.json"
+    registry_file.write_text(json.dumps({
+        "Idle": ["Idle", "Idle", "Idle", "master"],
+        "Plugin": ["owner", "repo", "description", "main", "", ["linux", "windows"]],
+    }))
+    update_times_file.write_text(json.dumps({
+        "Plugin": "2026-06-14T15:10:03Z",
+    }))
+
+    repo_info = {
+        "archived": False,
+        "disabled": False,
+        "size": 100,
+        "full_name": "owner/repo",
+        "owner": {"login": "owner"},
+        "name": "repo",
+        "description": "description",
+        "default_branch": "main",
+        "pushed_at": "2026-06-14T15:10:03Z",
+    }
+
+    patch_scanner_paths(scan_plugins_module, monkeypatch, registry_file, update_times_file, metadata_file)
+    monkeypatch.setattr(scan_plugins_module, "get_repo_info", lambda owner, repo: repo_info)
+    monkeypatch.setattr(scan_plugins_module, "search_github", lambda: [])
+    monkeypatch.setattr(scan_plugins_module, "search_gitlab", lambda: [])
+    monkeypatch.setattr(scan_plugins_module, "search_codeberg", lambda: [])
+    monkeypatch.setattr(
+        scan_plugins_module,
+        "detect_platforms_for_repo",
+        lambda owner, repo, branch, repo_info=None: platform_decision(
+            ["linux"],
+            confidence="medium",
+            evidence_class="linux_evidence",
+        ),
+    )
+    monkeypatch.setenv("GITHUB_TOKEN", "test-token")
+
+    scan_plugins_module.main()
+
+    registry = json.loads(registry_file.read_text())
+    metadata = json.loads(metadata_file.read_text())
+
+    assert registry["Plugin"] == ["owner", "repo", "description", "main", "", ["linux", "windows"]]
+    assert metadata["entries"]["Plugin"]["registry_platforms"] == ["linux", "windows"]
+    assert metadata["entries"]["Plugin"]["last_detection"]["platforms"] == ["linux"]
+    assert metadata["entries"]["Plugin"]["policy_action"] == "kept_existing_requires_high_confidence"
+
+
+def test_scanner_treats_existing_registry_entries_missing_from_sidecar_as_reviewed(scan_plugins_module, tmp_path, monkeypatch):
+    registry_file = tmp_path / "registry.json"
+    update_times_file = tmp_path / "update_times.json"
+    metadata_file = tmp_path / "platform_detection.json"
+    registry_file.write_text(json.dumps({
+        "Idle": ["Idle", "Idle", "Idle", "master"],
+        "ManualPlugin": ["owner", "repo", "description", "main"],
+    }))
+    update_times_file.write_text(json.dumps({
+        "ManualPlugin": "2026-06-14T15:10:03Z",
+    }))
+    metadata_file.write_text(json.dumps({
+        "version": 1,
+        "entries": {},
+    }))
+
+    repo_info = {
+        "archived": False,
+        "disabled": False,
+        "size": 100,
+        "full_name": "owner/repo",
+        "owner": {"login": "owner"},
+        "name": "repo",
+        "description": "description",
+        "default_branch": "main",
+        "pushed_at": "2026-06-14T15:10:03Z",
+    }
+
+    patch_scanner_paths(scan_plugins_module, monkeypatch, registry_file, update_times_file, metadata_file)
+    monkeypatch.setattr(scan_plugins_module, "get_repo_info", lambda owner, repo: repo_info)
+    monkeypatch.setattr(scan_plugins_module, "search_github", lambda: [])
+    monkeypatch.setattr(scan_plugins_module, "search_gitlab", lambda: [])
+    monkeypatch.setattr(scan_plugins_module, "search_codeberg", lambda: [])
+    monkeypatch.setattr(
+        scan_plugins_module,
+        "detect_platforms_for_repo",
+        lambda owner, repo, branch, repo_info=None: platform_decision(
+            ["linux"],
+            confidence="medium",
+            evidence_class="linux_evidence",
+        ),
+    )
+    monkeypatch.setenv("GITHUB_TOKEN", "test-token")
+
+    scan_plugins_module.main()
+
+    registry = json.loads(registry_file.read_text())
+    metadata = json.loads(metadata_file.read_text())
+
+    assert registry["ManualPlugin"] == ["owner", "repo", "description", "main"]
+    assert metadata["entries"]["ManualPlugin"]["source"] == "reviewed"
+    assert metadata["entries"]["ManualPlugin"]["reviewed"] is True
+    assert metadata["entries"]["ManualPlugin"]["policy_action"] == "kept_reviewed"
+    assert metadata["entries"]["ManualPlugin"]["last_detection"]["platforms"] == ["linux"]
+
+
 def test_scanner_adds_codeberg_and_gitlab_plugins(scan_plugins_module, tmp_path, monkeypatch):
     registry_file = tmp_path / "registry.json"
     update_times_file = tmp_path / "update_times.json"
+    metadata_file = tmp_path / "platform_detection.json"
     registry_file.write_text(json.dumps({
         "Idle": ["Idle", "Idle", "Idle", "master"],
     }))
@@ -471,15 +805,14 @@ def test_scanner_adds_codeberg_and_gitlab_plugins(scan_plugins_module, tmp_path,
         "pushed_at": "2019-08-16T18:29:37.958Z",
     }
 
-    monkeypatch.setattr(scan_plugins_module, "REGISTRY_FILE", str(registry_file))
-    monkeypatch.setattr(scan_plugins_module, "UPDATE_TIMES_FILE", str(update_times_file))
+    patch_scanner_paths(scan_plugins_module, monkeypatch, registry_file, update_times_file, metadata_file)
     monkeypatch.setattr(scan_plugins_module, "search_github", lambda: [])
     monkeypatch.setattr(scan_plugins_module, "search_codeberg", lambda: [codeberg_repo])
     monkeypatch.setattr(scan_plugins_module, "search_gitlab", lambda: [gitlab_repo])
     monkeypatch.setattr(
         scan_plugins_module,
         "detect_platforms_for_repo",
-        lambda owner, repo, branch, repo_info=None: SimpleNamespace(platforms=["linux", "windows"]),
+        lambda owner, repo, branch, repo_info=None: platform_decision(["linux", "windows"], confidence="medium"),
     )
     monkeypatch.setenv("GITHUB_TOKEN", "test-token")
 
@@ -511,6 +844,7 @@ def test_scanner_adds_codeberg_and_gitlab_plugins(scan_plugins_module, tmp_path,
 def test_scanner_removes_empty_existing_repo_and_does_not_readd(scan_plugins_module, tmp_path, monkeypatch):
     registry_file = tmp_path / "registry.json"
     update_times_file = tmp_path / "update_times.json"
+    metadata_file = tmp_path / "platform_detection.json"
     registry_file.write_text(json.dumps({
         "Idle": ["Idle", "Idle", "Idle", "master"],
         "Domoticz_integration": [
@@ -536,10 +870,11 @@ def test_scanner_removes_empty_existing_repo_and_does_not_readd(scan_plugins_mod
         "pushed_at": "2018-03-02T13:38:59Z",
     }
 
-    monkeypatch.setattr(scan_plugins_module, "REGISTRY_FILE", str(registry_file))
-    monkeypatch.setattr(scan_plugins_module, "UPDATE_TIMES_FILE", str(update_times_file))
+    patch_scanner_paths(scan_plugins_module, monkeypatch, registry_file, update_times_file, metadata_file)
     monkeypatch.setattr(scan_plugins_module, "get_repo_info", lambda owner, repo: empty_repo)
     monkeypatch.setattr(scan_plugins_module, "search_github", lambda: [empty_repo])
+    monkeypatch.setattr(scan_plugins_module, "search_gitlab", lambda: [])
+    monkeypatch.setattr(scan_plugins_module, "search_codeberg", lambda: [])
     monkeypatch.setenv("GITHUB_TOKEN", "test-token")
 
     scan_plugins_module.main()
@@ -554,6 +889,7 @@ def test_scanner_removes_empty_existing_repo_and_does_not_readd(scan_plugins_mod
 def test_scanner_removes_blocklisted_existing_repo_and_does_not_readd(scan_plugins_module, tmp_path, monkeypatch):
     registry_file = tmp_path / "registry.json"
     update_times_file = tmp_path / "update_times.json"
+    metadata_file = tmp_path / "platform_detection.json"
     registry_file.write_text(json.dumps({
         "Idle": ["Idle", "Idle", "Idle", "master"],
         "domoticz": [
@@ -582,10 +918,11 @@ def test_scanner_removes_blocklisted_existing_repo_and_does_not_readd(scan_plugi
     def fail_get_repo_info(owner, repo):
         raise AssertionError("blocklisted repositories should not be fetched")
 
-    monkeypatch.setattr(scan_plugins_module, "REGISTRY_FILE", str(registry_file))
-    monkeypatch.setattr(scan_plugins_module, "UPDATE_TIMES_FILE", str(update_times_file))
+    patch_scanner_paths(scan_plugins_module, monkeypatch, registry_file, update_times_file, metadata_file)
     monkeypatch.setattr(scan_plugins_module, "get_repo_info", fail_get_repo_info)
     monkeypatch.setattr(scan_plugins_module, "search_github", lambda: [domoticz_repo])
+    monkeypatch.setattr(scan_plugins_module, "search_gitlab", lambda: [])
+    monkeypatch.setattr(scan_plugins_module, "search_codeberg", lambda: [])
     monkeypatch.setenv("GITHUB_TOKEN", "test-token")
 
     scan_plugins_module.main()

@@ -14,6 +14,7 @@ import warnings
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 REPO_ROOT = os.path.abspath(os.path.join(SCRIPT_DIR, "../.."))
 REGISTRY_FILE = os.path.join(REPO_ROOT, "registry.json")
+PLATFORM_METADATA_FILE = os.path.join(REPO_ROOT, ".github", "platform_detection.json")
 
 PLATFORM_ORDER = ["linux", "windows"]
 DEFAULT_PLATFORMS = ["linux", "windows"]
@@ -23,6 +24,13 @@ MAX_TEXT_FILE_BYTES = 160_000
 API_USER_AGENT = "Domoticz-Plugin-Platform-Scanner"
 DEFAULT_GIT_HOST = "github.com"
 SUPPORTED_GIT_HOSTS = ("github.com", "gitlab.com", "codeberg.org")
+PLATFORM_METADATA_VERSION = 1
+CONFIDENCE_ORDER = {
+    "unknown": 0,
+    "low": 1,
+    "medium": 2,
+    "high": 3,
+}
 
 LINUX_ONLY_PATTERNS = [
     (r"\blinux\s+only\b", 10, "states Linux only"),
@@ -150,18 +158,29 @@ IMPORTANT_FILENAMES = {
 
 
 class PlatformDecision:
-    def __init__(self, platforms, linux_score=0, windows_score=0, both_score=0, confidence="low", reasons=None):
+    def __init__(
+        self,
+        platforms,
+        linux_score=0,
+        windows_score=0,
+        both_score=0,
+        confidence="low",
+        reasons=None,
+        evidence_class="unknown",
+    ):
         self.platforms = list(platforms)
         self.linux_score = linux_score
         self.windows_score = windows_score
         self.both_score = both_score
         self.confidence = confidence
         self.reasons = list(reasons or [])
+        self.evidence_class = evidence_class
 
     def to_dict(self):
         return {
             "platforms": self.platforms,
             "confidence": self.confidence,
+            "evidence_class": self.evidence_class,
             "scores": {
                 "linux": self.linux_score,
                 "windows": self.windows_score,
@@ -329,6 +348,40 @@ def normalize_platforms(platforms):
     return [platform for platform in PLATFORM_ORDER if platform in normalized]
 
 
+def confidence_rank(confidence):
+    return CONFIDENCE_ORDER.get(str(confidence or "unknown").lower(), 0)
+
+
+def decision_platforms(decision):
+    return normalize_platforms(getattr(decision, "platforms", []))
+
+
+def decision_confidence(decision):
+    return str(getattr(decision, "confidence", "unknown") or "unknown").lower()
+
+
+def decision_evidence_class(decision):
+    return str(getattr(decision, "evidence_class", "unknown") or "unknown")
+
+
+def decision_to_dict(decision):
+    if decision is None:
+        return None
+    if hasattr(decision, "to_dict"):
+        return decision.to_dict()
+    return {
+        "platforms": decision_platforms(decision),
+        "confidence": decision_confidence(decision),
+        "evidence_class": decision_evidence_class(decision),
+        "scores": {
+            "linux": getattr(decision, "linux_score", 0),
+            "windows": getattr(decision, "windows_score", 0),
+            "both": getattr(decision, "both_score", 0),
+        },
+        "reasons": list(getattr(decision, "reasons", []) or []),
+    }
+
+
 def get_registry_entry_platforms(data):
     if isinstance(data, dict):
         return normalize_platforms(data.get("platforms", data.get("platform")))
@@ -366,6 +419,202 @@ def registry_entry_identity(data):
     if isinstance(data, list) and len(data) >= 4:
         return data[0], data[1], data[3]
     return "", "", ""
+
+
+def platform_metadata_identity(owner, repo, branch):
+    host, owner_path = split_registry_owner(owner)
+    repo_path = "/".join(part for part in (owner_path + "/" + repo).split("/") if part)
+    return f"{host}/{repo_path}@{branch}".lower()
+
+
+def new_platform_metadata():
+    return {
+        "version": PLATFORM_METADATA_VERSION,
+        "entries": {},
+    }
+
+
+def normalize_platform_metadata(metadata):
+    if not isinstance(metadata, dict):
+        return new_platform_metadata()
+
+    entries = metadata.get("entries")
+    if not isinstance(entries, dict):
+        entries = {}
+
+    return {
+        "version": metadata.get("version", PLATFORM_METADATA_VERSION),
+        "entries": entries,
+    }
+
+
+def load_platform_metadata(metadata_file=PLATFORM_METADATA_FILE):
+    if not os.path.exists(metadata_file):
+        return new_platform_metadata()
+
+    with open(metadata_file, "r", encoding="utf-8") as f:
+        return normalize_platform_metadata(json.load(f))
+
+
+def save_platform_metadata(metadata, metadata_file=PLATFORM_METADATA_FILE):
+    os.makedirs(os.path.dirname(metadata_file), exist_ok=True)
+    with open(metadata_file, "w", encoding="utf-8") as f:
+        json.dump(normalize_platform_metadata(metadata), f, indent=4)
+        f.write("\n")
+
+
+def baseline_platform_metadata_entry(key, data, reviewed=False):
+    owner, repo, branch = registry_entry_identity(data)
+    platforms = get_registry_entry_platforms(data)
+    source = "reviewed" if reviewed else ("legacy_detected" if platforms else "unknown")
+    evidence_class = "manual_registry_edit" if reviewed else "legacy"
+    return {
+        "identity": platform_metadata_identity(owner, repo, branch),
+        "owner": owner,
+        "repository": repo,
+        "branch": branch,
+        "registry_platforms": platforms,
+        "source": source,
+        "confidence": "unknown",
+        "evidence_class": evidence_class,
+        "reviewed": reviewed,
+    }
+
+
+def mark_manual_registry_edit(entry):
+    entry["source"] = "reviewed"
+    entry["confidence"] = "unknown"
+    entry["evidence_class"] = "manual_registry_edit"
+    entry["reviewed"] = True
+    entry.pop("last_detection", None)
+    entry.pop("policy_action", None)
+
+
+def ensure_platform_metadata_for_registry(metadata, registry, manual_changes_are_reviewed=False):
+    metadata = normalize_platform_metadata(metadata)
+    entries = metadata["entries"]
+    registry_keys = set()
+
+    for key, data in registry.items():
+        if key == "Idle":
+            continue
+        owner, repo, branch = registry_entry_identity(data)
+        if not owner or not repo or not branch:
+            continue
+
+        registry_keys.add(key)
+        platforms = get_registry_entry_platforms(data)
+        identity = platform_metadata_identity(owner, repo, branch)
+        entry = entries.get(key)
+
+        if not isinstance(entry, dict):
+            entries[key] = baseline_platform_metadata_entry(key, data, reviewed=manual_changes_are_reviewed)
+            continue
+
+        identity_changed = entry.get("identity") not in {None, identity}
+        if identity_changed:
+            entries[key] = baseline_platform_metadata_entry(key, data, reviewed=manual_changes_are_reviewed)
+            entries[key]["previous_identity"] = entry.get("identity")
+            continue
+
+        platforms_changed = normalize_platforms(entry.get("registry_platforms", [])) != platforms
+        entry["identity"] = identity
+        entry["owner"] = owner
+        entry["repository"] = repo
+        entry["branch"] = branch
+        entry["registry_platforms"] = platforms
+        entry.setdefault("source", "legacy_detected" if platforms else "unknown")
+        entry.setdefault("confidence", "unknown")
+        entry.setdefault("evidence_class", "legacy")
+        entry.setdefault("reviewed", False)
+        if platforms_changed and manual_changes_are_reviewed:
+            mark_manual_registry_edit(entry)
+
+    for key in list(entries):
+        if key not in registry_keys:
+            del entries[key]
+
+    return metadata
+
+
+def choose_platforms_for_registry(current_platforms, decision, metadata_entry=None, is_new=False):
+    current_platforms = normalize_platforms(current_platforms)
+    detected_platforms = decision_platforms(decision)
+
+    if not detected_platforms:
+        return current_platforms, "no_decision"
+
+    if metadata_entry and metadata_entry.get("reviewed"):
+        return current_platforms, "kept_reviewed"
+
+    if detected_platforms == current_platforms:
+        return current_platforms, "unchanged"
+
+    confidence = decision_confidence(decision)
+
+    if not current_platforms:
+        if confidence_rank(confidence) >= confidence_rank("medium"):
+            return detected_platforms, "accepted_new_medium_or_high"
+        return current_platforms, "kept_low_confidence_new"
+
+    if confidence == "high":
+        return detected_platforms, "accepted_high_confidence_change"
+
+    return current_platforms, "kept_existing_requires_high_confidence"
+
+
+def update_platform_metadata_entry(metadata, key, owner, repo, branch, registry_platforms, decision=None, policy_action=None):
+    metadata = normalize_platform_metadata(metadata)
+    entries = metadata["entries"]
+    previous = entries.get(key) if isinstance(entries.get(key), dict) else {}
+    identity = platform_metadata_identity(owner, repo, branch)
+    identity_changed = previous.get("identity") not in {None, identity}
+    reviewed = bool(previous.get("reviewed")) and not identity_changed
+
+    registry_platforms = normalize_platforms(registry_platforms)
+    detection = decision_to_dict(decision)
+    confidence = previous.get("confidence", "unknown")
+    evidence_class = previous.get("evidence_class", "legacy")
+    source = previous.get("source", "legacy_detected" if registry_platforms else "unknown")
+
+    if reviewed:
+        source = "reviewed"
+    elif detection and registry_platforms == normalize_platforms(detection.get("platforms")):
+        source = "detected"
+        confidence = detection.get("confidence", "unknown")
+        evidence_class = detection.get("evidence_class", "unknown")
+    elif identity_changed:
+        source = "legacy_detected" if registry_platforms else "unknown"
+        confidence = "unknown"
+        evidence_class = "legacy"
+
+    updated = {
+        "identity": identity,
+        "owner": owner,
+        "repository": repo,
+        "branch": branch,
+        "registry_platforms": registry_platforms,
+        "source": source,
+        "confidence": confidence,
+        "evidence_class": evidence_class,
+        "reviewed": reviewed,
+    }
+
+    if detection:
+        updated["last_detection"] = detection
+    elif previous.get("last_detection") is not None:
+        updated["last_detection"] = previous["last_detection"]
+
+    if policy_action:
+        updated["policy_action"] = policy_action
+    elif previous.get("policy_action"):
+        updated["policy_action"] = previous["policy_action"]
+
+    if identity_changed and previous.get("identity"):
+        updated["previous_identity"] = previous["identity"]
+
+    entries[key] = updated
+    return metadata
 
 
 def is_skipped_path(path):
@@ -497,30 +746,78 @@ def decide_platforms(scores, assume_generic_python_is_cross_platform=True):
     both_score = scores["both"]
 
     if scores["linux_only"] >= 8 and windows_score < 6:
-        return PlatformDecision(["linux"], linux_score, windows_score, both_score, "high", scores["reasons"])
+        return PlatformDecision(
+            ["linux"],
+            linux_score,
+            windows_score,
+            both_score,
+            "high",
+            scores["reasons"],
+            "explicit_linux_only",
+        )
 
     if scores["windows_only"] >= 8 and linux_score < 6:
-        return PlatformDecision(["windows"], linux_score, windows_score, both_score, "high", scores["reasons"])
+        return PlatformDecision(
+            ["windows"],
+            linux_score,
+            windows_score,
+            both_score,
+            "high",
+            scores["reasons"],
+            "explicit_windows_only",
+        )
 
     if both_score >= 8:
-        return PlatformDecision(DEFAULT_PLATFORMS, linux_score, windows_score, both_score, "high", scores["reasons"])
+        return PlatformDecision(
+            DEFAULT_PLATFORMS,
+            linux_score,
+            windows_score,
+            both_score,
+            "high",
+            scores["reasons"],
+            "explicit_both",
+        )
 
     if linux_score >= 8 and windows_score >= 8:
-        return PlatformDecision(DEFAULT_PLATFORMS, linux_score, windows_score, both_score, "medium", scores["reasons"])
+        return PlatformDecision(
+            DEFAULT_PLATFORMS,
+            linux_score,
+            windows_score,
+            both_score,
+            "medium",
+            scores["reasons"],
+            "mixed_platform_evidence",
+        )
 
     if linux_score >= 8 and windows_score < 6:
-        return PlatformDecision(["linux"], linux_score, windows_score, both_score, "medium", scores["reasons"])
+        return PlatformDecision(
+            ["linux"],
+            linux_score,
+            windows_score,
+            both_score,
+            "medium",
+            scores["reasons"],
+            "linux_evidence",
+        )
 
     if windows_score >= 8 and linux_score < 6:
-        return PlatformDecision(["windows"], linux_score, windows_score, both_score, "medium", scores["reasons"])
+        return PlatformDecision(
+            ["windows"],
+            linux_score,
+            windows_score,
+            both_score,
+            "medium",
+            scores["reasons"],
+            "windows_evidence",
+        )
 
     if assume_generic_python_is_cross_platform:
         reasons = list(scores["reasons"])
         if not reasons:
             reasons.append("generic: no Linux-only or Windows-only evidence found")
-        return PlatformDecision(DEFAULT_PLATFORMS, linux_score, windows_score, both_score, "low", reasons)
+        return PlatformDecision(DEFAULT_PLATFORMS, linux_score, windows_score, both_score, "low", reasons, "generic_python")
 
-    return PlatformDecision([], linux_score, windows_score, both_score, "unknown", scores["reasons"])
+    return PlatformDecision([], linux_score, windows_score, both_score, "unknown", scores["reasons"], "unknown")
 
 
 def detect_platforms_from_repository_data(repo_info=None, file_texts=None, assume_generic_python_is_cross_platform=True):
@@ -566,9 +863,23 @@ def detect_platforms_for_repo(owner, repo, branch, repo_info=None):
     return decision if decision.platforms else None
 
 
-def update_registry_platforms(registry_file=REGISTRY_FILE, missing_only=False, dry_run=False, limit=None, sleep_seconds=None):
+def update_registry_platforms(
+    registry_file=REGISTRY_FILE,
+    metadata_file=PLATFORM_METADATA_FILE,
+    missing_only=False,
+    dry_run=False,
+    limit=None,
+    sleep_seconds=None,
+):
     with open(registry_file, "r", encoding="utf-8") as f:
         registry = json.load(f)
+
+    metadata_exists = os.path.exists(metadata_file)
+    platform_metadata = ensure_platform_metadata_for_registry(
+        load_platform_metadata(metadata_file),
+        registry,
+        manual_changes_are_reviewed=metadata_exists,
+    )
 
     stats = {
         "scanned": 0,
@@ -576,6 +887,7 @@ def update_registry_platforms(registry_file=REGISTRY_FILE, missing_only=False, d
         "unchanged": 0,
         "failed": 0,
         "skipped": 0,
+        "metadata_updated": 0,
     }
 
     if sleep_seconds is None:
@@ -605,9 +917,38 @@ def update_registry_platforms(registry_file=REGISTRY_FILE, missing_only=False, d
             print("no decision")
             stats["failed"] += 1
         elif decision.platforms != current_platforms:
-            registry[key] = set_registry_entry_platforms(data, decision.platforms)
-            print(f"{current_platforms or ['unknown']} -> {decision.platforms} ({decision.confidence})")
-            stats["updated"] += 1
+            metadata_entry = platform_metadata["entries"].get(key, {})
+            next_platforms, policy_action = choose_platforms_for_registry(
+                current_platforms,
+                decision,
+                metadata_entry=metadata_entry,
+                is_new=False,
+            )
+            if next_platforms != current_platforms:
+                registry[key] = set_registry_entry_platforms(data, next_platforms)
+                print(f"{current_platforms or ['unknown']} -> {next_platforms} ({decision.confidence}, {policy_action})")
+                stats["updated"] += 1
+            else:
+                print(
+                    f"{current_platforms or ['unknown']} unchanged; "
+                    f"detected {decision.platforms} ({decision.confidence}, {policy_action})"
+                )
+                stats["unchanged"] += 1
+
+            before = json.dumps(platform_metadata["entries"].get(key, {}), sort_keys=True)
+            platform_metadata = update_platform_metadata_entry(
+                platform_metadata,
+                key,
+                owner,
+                repo,
+                branch,
+                next_platforms,
+                decision=decision,
+                policy_action=policy_action,
+            )
+            after = json.dumps(platform_metadata["entries"].get(key, {}), sort_keys=True)
+            if after != before:
+                stats["metadata_updated"] += 1
         else:
             print(f"{current_platforms} unchanged")
             stats["unchanged"] += 1
@@ -620,12 +961,17 @@ def update_registry_platforms(registry_file=REGISTRY_FILE, missing_only=False, d
             json.dump(registry, f, indent=4)
             f.write("\n")
 
+    if stats["metadata_updated"] and not dry_run:
+        platform_metadata = ensure_platform_metadata_for_registry(platform_metadata, registry)
+        save_platform_metadata(platform_metadata, metadata_file)
+
     return stats
 
 
 def main():
     parser = argparse.ArgumentParser(description="Detect likely Domoticz plugin platform support and update registry metadata.")
     parser.add_argument("--registry", default=REGISTRY_FILE, help="Path to registry.json")
+    parser.add_argument("--metadata", default=PLATFORM_METADATA_FILE, help="Path to platform detection sidecar JSON")
     parser.add_argument("--missing-only", action="store_true", help="Only classify entries without platform metadata")
     parser.add_argument("--dry-run", action="store_true", help="Print changes without writing registry.json")
     parser.add_argument("--limit", type=int, help="Limit the number of registry entries scanned")
@@ -634,6 +980,7 @@ def main():
 
     stats = update_registry_platforms(
         registry_file=args.registry,
+        metadata_file=args.metadata,
         missing_only=args.missing_only,
         dry_run=args.dry_run,
         limit=args.limit,
@@ -642,7 +989,8 @@ def main():
     print(
         "Platform scan complete: "
         f"{stats['scanned']} scanned, {stats['updated']} updated, "
-        f"{stats['unchanged']} unchanged, {stats['failed']} failed, {stats['skipped']} skipped."
+        f"{stats['unchanged']} unchanged, {stats['failed']} failed, "
+        f"{stats['skipped']} skipped, {stats['metadata_updated']} metadata updated."
     )
 
 
