@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.14.2](https://github.com/adrighem/PyPluginStore/compare/v2.14.1...v2.14.2) (2026-07-02)
+
+
+### Bug Fixes
+
+* add non-git badges and implement branch-aware updates (fixes [#73](https://github.com/adrighem/PyPluginStore/issues/73), closes [#74](https://github.com/adrighem/PyPluginStore/issues/74)) ([73b0c1c](https://github.com/adrighem/PyPluginStore/commit/73b0c1c40152a68d2059bf5d4a0a115c762e14d6))
+* **updater:** upgrade to robust fetch-and-reset updater sequence (fixes [#73](https://github.com/adrighem/PyPluginStore/issues/73)) ([0b6b003](https://github.com/adrighem/PyPluginStore/commit/0b6b0032123a760a01f2a01f3118e17d0652f440))
+
 ## [2.14.1](https://github.com/adrighem/PyPluginStore/compare/v2.14.0...v2.14.1) (2026-07-01)
 
 
