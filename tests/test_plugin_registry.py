@@ -243,6 +243,7 @@ def test_build_git_clone_url_only_normalizes_real_github_hosts(plugin_core_modul
 def test_list_plugins_response_includes_manager_and_update_status(plugin_core_module, tmp_path, monkeypatch):
     plugins_dir, _ = configure_home(plugin_core_module, tmp_path)
     write_plugin_py(plugins_dir / "OtherPlugin", key="OTHER", name="OtherPlugin")
+    (plugins_dir / "OtherPlugin" / ".git").mkdir()
     (plugins_dir / ".hidden").mkdir()
     plugin = plugin_core_module.BasePlugin()
     plugin.plugin_data = {
@@ -270,7 +271,9 @@ def test_list_plugins_response_includes_manager_and_update_status(plugin_core_mo
     }
     assert response["local_plugins"] == []
     assert response["installed_match_details"]["00-PyPluginStore"]["source"] == "plugin.py externallink"
+    assert response["installed_match_details"]["00-PyPluginStore"]["is_git"] is False
     assert response["installed_match_details"]["OtherPlugin"]["source"] == "exact folder key"
+    assert response["installed_match_details"]["OtherPlugin"]["is_git"] is True
     assert response["platforms"] == {}
 
 

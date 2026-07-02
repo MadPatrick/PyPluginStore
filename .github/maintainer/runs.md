@@ -1,5 +1,27 @@
 # Maintainer Runs
 
+## 2026-07-01 - Git indicators and robust branch-aware updates
+
+Scope:
+- Active public items:
+  - Open issues: `ISSUE:30`, `ISSUE:64`, `ISSUE:73`, `ISSUE:74`.
+- Diagnosed `ISSUE:74` where non-Git/unmanaged plugins are displayed similarly to standard plugins in the UI, and added explicit `Non-Git` badges and update-disabling logic to make this clear.
+- Diagnosed `ISSUE:73` where updates can fail or falsely report being up-to-date in detached HEAD or untracked local configurations, and updated `UpdatePythonPlugin` to check out and pull the registered branch explicitly.
+
+Prepared local changes:
+- `getInstalledPlugins` in `plugin_core.py` now populates and returns an `is_git` property inside `installed_match_details`.
+- `UpdatePythonPlugin` in `plugin_core.py` now fetches the registered branch name from `self.plugin_data` and runs `git checkout <branch>` and `git pull --force origin <branch>`.
+- `pypluginstore.html` now parses `is_git` and renders a `Non-Git` badge for unmanaged plugins, as well as disabling the Update button with a clear tooltip.
+- Regenerated `plugin.py`.
+
+Verification:
+- `pytest`: 133 passed.
+- `python3 .github/scripts/validate_plugins.py`: passed for all 328 plugins.
+
+Notes:
+- Product changes committed locally on master.
+- Drafted responses to close both `ISSUE:74` and `ISSUE:73` upon approval.
+
 ## 2026-07-01 - Docker Git ownership bypass and Luxtronik registry integration
 
 Scope:

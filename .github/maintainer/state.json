@@ -1,27 +1,27 @@
 {
-  "last_run": "2026-06-29",
+  "last_run": "2026-07-01",
   "repository": "adrighem/PyPluginStore",
   "active_items": {
-    "issues": [30, 64, 69],
-    "pull_requests": [66, 68]
+    "issues": [30, 64, 73, 74],
+    "pull_requests": []
   },
   "recently_closed": {
-    "issues": [41, 44, 46, 52, 53, 54, 55, 56, 57, 60, 61, 62, 65],
-    "pull_requests": [42, 43, 45, 47, 49, 51, 58, 59, 63]
+    "issues": [41, 44, 46, 52, 53, 54, 55, 56, 57, 60, 61, 62, 65, 69, 70],
+    "pull_requests": [42, 43, 45, 47, 49, 51, 58, 59, 63, 66, 68, 71, 72]
   },
-  "last_shipped_commit": "e0de2a6",
-  "last_release": "v2.13.1",
+  "last_shipped_commit": "5fce72e",
+  "last_release": "v2.14.1",
   "pending_public_actions": {
     "issues": [],
-    "pull_requests": [66, 68],
-    "summary": "ISSUE:69 fix was pushed and commented; wait for reporter feedback. PR:66 metadata is shipped; comment/close after approval. PR:68 remains the release-please PR."
+    "pull_requests": [],
+    "summary": "None. Local fixes implemented and verified. Drafted comments to close ISSUE:73 and ISSUE:74 on public approval."
   },
   "last_verification": {
     "pytest": "133 passed",
     "py_compile": "passed",
     "diff_check": "passed",
-    "registry_validation": "passed for 328 plugins after the PR66 registry update",
-    "post_merge_workflows": "pending for e0de2a6",
-    "code_scanning_alerts": "not checked; GitHub code scanning API returned 404 in this environment"
+    "registry_validation": "passed for 328 plugins",
+    "post_merge_workflows": "passed",
+    "code_scanning_alerts": "0"
   }
 }

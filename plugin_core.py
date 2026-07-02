@@ -2082,6 +2082,7 @@ class BasePlugin:
             if not os.path.isdir(plugin_path) or plugin_folder.startswith("."):
                 continue
 
+            is_git_repo = os.path.isdir(os.path.join(plugin_path, ".git"))
             match = self.match_installed_plugin(
                 plugin_folder,
                 plugin_path,
@@ -2096,7 +2097,9 @@ class BasePlugin:
             if matched_key:
                 self.add_installed_plugin(installed_plugins, matched_key)
                 installed_plugin_folders[matched_key] = plugin_folder
-                installed_plugin_match_details[matched_key] = self.match_detail_for_response(plugin_folder, match)
+                detail = self.match_detail_for_response(plugin_folder, match)
+                detail["is_git"] = is_git_repo
+                installed_plugin_match_details[matched_key] = detail
                 if plugin_folder not in self.plugin_data:
                     self.add_installed_plugin(installed_plugins, plugin_folder)
                     installed_plugin_folders[plugin_folder] = plugin_folder
@@ -2104,6 +2107,7 @@ class BasePlugin:
                         "folder": plugin_folder,
                         "source": "local folder alias",
                         "detail": "Physical folder is also listed because it is not a registry plugin key.",
+                        "is_git": is_git_repo,
                     }
             elif plugin_folder not in self.plugin_data:
                 self.add_installed_plugin(installed_plugins, plugin_folder)
@@ -2112,6 +2116,7 @@ class BasePlugin:
                     "folder": plugin_folder,
                     "source": "local folder",
                     "detail": "No registry match was found; folder is listed as a local plugin.",
+                    "is_git": is_git_repo,
                 }
 
         self.installed_plugin_folders = installed_plugin_folders
@@ -2920,6 +2925,10 @@ class BasePlugin:
 
         Domoticz.Log("Resetting and Updating Plugin:" + ppKey)
 
+        branch = "master"
+        if ppKey in self.plugin_data and len(self.plugin_data[ppKey]) >= 4:
+            branch = self.plugin_data[ppKey][3] or "master"
+
         ppGitReset = ["git", "reset", "--hard", "HEAD"]
         res_reset = host.run_git(ppGitReset, plugin_dir, timeout=30)
         if res_reset is None:
@@ -2939,7 +2948,29 @@ class BasePlugin:
                 return False, message
             return False, (res_reset.stderr or res_reset.stdout or "Git reset failed").strip()
 
-        ppUrl = ["git", "pull", "--force"]
+        ppGitCheckout = ["git", "checkout", branch]
+        Domoticz.Debug("Calling: " + " ".join(ppGitCheckout) + " on folder " + plugin_dir)
+        res_checkout = host.run_git(ppGitCheckout, plugin_dir, timeout=30)
+        if res_checkout is None:
+            return False, "Git checkout failed"
+        if res_checkout.stdout:
+            Domoticz.Debug("Git Checkout Response:" + res_checkout.stdout)
+        if res_checkout.stderr and not host.is_git_dubious_ownership(res_checkout):
+            Domoticz.Debug("Git Checkout Error:" + res_checkout.stderr.strip())
+        if res_checkout.returncode != 0:
+            if host.is_git_dubious_ownership(res_checkout):
+                return False, host.git_ownership_failure_message(plugin_dir)
+            ppGitCheckoutForce = ["git", "checkout", "-B", branch, "origin/" + branch]
+            Domoticz.Debug("Calling force checkout: " + " ".join(ppGitCheckoutForce) + " on folder " + plugin_dir)
+            res_checkout_force = host.run_git(ppGitCheckoutForce, plugin_dir, timeout=30)
+            if res_checkout_force is None:
+                return False, "Git checkout failed"
+            if res_checkout_force.returncode != 0:
+                if host.is_git_dubious_ownership(res_checkout_force):
+                    return False, host.git_ownership_failure_message(plugin_dir)
+                return False, (res_checkout_force.stderr or res_checkout_force.stdout or "Git checkout failed").strip()
+
+        ppUrl = ["git", "pull", "--force", "origin", branch]
         Domoticz.Debug("Calling: " + " ".join(ppUrl) + " on folder " + plugin_dir)
 
         res = host.run_git(ppUrl, plugin_dir, timeout=120)

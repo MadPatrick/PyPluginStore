@@ -386,6 +386,25 @@
         color: var(--primary);
         border-color: rgba(74, 158, 218, 0.45);
     }
+
+    .non-git-badge {
+        display: inline-block;
+        background: rgba(230, 126, 34, 0.18);
+        color: #e67e22;
+        border: 1px solid rgba(230, 126, 34, 0.4);
+        padding: 2px 8px;
+        border-radius: 10px;
+        font-size: 0.7em;
+        font-weight: 600;
+        letter-spacing: 0.03em;
+    }
+
+    #pypluginstore-container .btn-update-disabled {
+        background: rgba(107, 130, 160, 0.08) !important;
+        color: #5d6d7e !important;
+        border-color: rgba(107, 130, 160, 0.25) !important;
+        cursor: not-allowed;
+    }
 </style>
 
 <div id="pypluginstore-container">
@@ -438,6 +457,7 @@
     let updateStatusCache = {};
     let versionsCache = {};
     let platformCache = {};
+    let installedMatchDetailsCache = {};
     let managerKey = null;
     let currentSort = 'name';
     const INSTALLED_FILTER_STORAGE_KEY = 'pypluginstore.installedOnly';
@@ -602,6 +622,7 @@
                 updateStatusCache = response.update_status || {};
                 versionsCache = response.versions || {};
                 platformCache = response.platforms || {};
+                installedMatchDetailsCache = response.installed_match_details || {};
                 managerKey = response.manager_key || null;
                 filterAndRender();
                 setStatus(`Loaded ${Object.keys(response.data).length} plugins.`);
@@ -731,6 +752,8 @@
             const updateStatus = updateStatusCache[key] || 'unknown';
             const platforms = platformCache[key] || ['unknown'];
             const displayName = formatPluginDisplayName(key);
+            const matchDetails = installedMatchDetailsCache[key] || {};
+            const isGit = matchDetails.is_git !== false;
 
             let timeStr = "";
             if (updatedAt) {
@@ -760,6 +783,14 @@
                 badge.className = 'installed-badge';
                 badge.textContent = 'Installed';
                 headerLeft.appendChild(badge);
+
+                if (isGit === false) {
+                    const nonGitBadge = document.createElement('span');
+                    nonGitBadge.className = 'non-git-badge';
+                    nonGitBadge.textContent = 'Non-Git';
+                    nonGitBadge.title = 'This plugin was not installed using Git/GitHub. Updates through PyPluginStore are not available.';
+                    headerLeft.appendChild(nonGitBadge);
+                }
             }
 
             header.appendChild(headerLeft);
@@ -822,15 +853,20 @@
             actions.appendChild(repoLink);
 
             if (isInstalled) {
-                const updateClass = updateStatus === 'available' ? 'btn-update btn-update-available' : 'btn-update btn-update-current';
-                const updateTitle = updateStatus === 'available' ? 'Update available' :
-                    (updateStatus === 'current' ? 'Already up-to-date' : 'Update status unknown');
-
                 const updateButton = document.createElement('button');
-                updateButton.className = updateClass;
+                if (isGit === false) {
+                    updateButton.className = 'btn-update btn-update-disabled';
+                    updateButton.title = 'Cannot update non-Git plugins';
+                    updateButton.disabled = true;
+                } else {
+                    const updateClass = updateStatus === 'available' ? 'btn-update btn-update-available' : 'btn-update btn-update-current';
+                    const updateTitle = updateStatus === 'available' ? 'Update available' :
+                        (updateStatus === 'current' ? 'Already up-to-date' : 'Update status unknown');
+                    updateButton.className = updateClass;
+                    updateButton.title = updateTitle;
+                }
                 updateButton.dataset.key = key;
                 updateButton.dataset.action = 'update';
-                updateButton.title = updateTitle;
                 updateButton.type = 'button';
                 updateButton.textContent = 'Update';
                 actions.appendChild(updateButton);
@@ -906,6 +942,7 @@
                 updateStatusCache = response.update_status || {};
                 versionsCache = response.versions || versionsCache;
                 platformCache = response.platforms || platformCache;
+                installedMatchDetailsCache = response.installed_match_details || installedMatchDetailsCache;
                 managerKey = response.manager_key || managerKey;
                 filterAndRender();
                 setStatus("Update status refreshed.");

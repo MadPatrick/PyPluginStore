@@ -1,5 +1,25 @@
 # Maintainer Decisions
 
+## 2026-07-01 - Non-Git UI Badges and Branch-Aware Pulls
+
+Decision: Provide clear non-Git visual indicators in the custom web UI and implement branch-aware checkouts/pulls during updates.
+
+Rationale:
+- `ISSUE:74`: When a plugin was manually copied/extracted without a `.git` folder (unmanaged plugin), PyPluginStore detected it as installed but could not update it (returning an unknown update status). The web UI rendered it similarly to other up-to-date plugins, offering no clear indication that it was unmanaged. Adding an explicit `"is_git": false` metadata field from the backend and rendering a "Non-Git" badge with a disabled "Update" button clarifies this state.
+- `ISSUE:73`: Automatic update checks or manual pulls can fail/fizzle or falsely report "already up-to-date" if a plugin's local branch has no tracked upstream set or is in a detached HEAD state. Making `UpdatePythonPlugin` fetch-and-checkout the registered branch and pull explicitly via `git pull --force origin <branch>` guarantees robust update behavior regardless of tracking or detached HEAD states.
+
+Implementation notes:
+- Modified `getInstalledPlugins` in `plugin_core.py` to identify if each installed plugin folder contains a `.git` folder and return `"is_git"` within `"installed_match_details"`.
+- Modified `UpdatePythonPlugin` in `plugin_core.py` to retrieve the registered branch, run `git checkout <branch>`, and pull with `git pull --force origin <branch>`.
+- Modified `pypluginstore.html` to define `installedMatchDetailsCache`, extract `isGit`, append a "Non-Git" badge when appropriate, and disable the "Update" button with an informative tooltip for non-Git installations.
+- Updated `tests/test_plugin_registry.py` to verify that `is_git` is correctly computed and returned.
+- Updated `tests/test_plugin_update_status.py` to assert on the updated git command sequence (reset, checkout, pull origin master).
+- Regenerated `plugin.py` from `plugin_core.py`.
+
+Verification:
+- `pytest`: 133 passed.
+- `python3 .github/scripts/validate_plugins.py`: passed.
+
 ## 2026-07-01 - Docker Git ownership bypass and Luxtronik registry integration
 
 Decision: Use `safe.directory` config overrides as the primary retry mechanism for Git dubious ownership errors, and integrate the Luxtronik plugin registry changes from `PR:71` (changing key to `luxtronikex` and branch to `dist`) while preserving Windows support.

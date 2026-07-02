@@ -297,9 +297,10 @@ def test_update_command_uses_detected_repository_folder(plugin_core_module, tmp_
         "plugin_key": "deCONZ",
     }
     assert all(cwd == plugin_dir for _, cwd in git_calls)
-    assert [command for command, _ in git_calls[-2:]] == [
+    assert [command for command, _ in git_calls[-3:]] == [
         ["git", "reset", "--hard", "HEAD"],
-        ["git", "pull", "--force"],
+        ["git", "checkout", "master"],
+        ["git", "pull", "--force", "origin", "master"],
     ]
     assert status_calls == [("deCONZ", plugin_dir, False)]
 
