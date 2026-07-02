@@ -370,15 +370,16 @@ def main():
                 remove_registry_entry(registry, update_times, platform_metadata, key, skip_reason)
                 stats["removed"] += 1
             else:
-                # Update metadata
+                # Update metadata. Registry branches are curated and must not
+                # follow repository default-branch changes automatically.
                 updated_desc = info.get('description') or data[2]
-                updated_branch = info.get('default_branch') or data[3]
+                registry_branch = data[3]
                 updated_at = info.get('pushed_at') or info.get('updated_at')
                 current_platforms = get_registry_entry_platforms(data)
-                platform_decision = detect_platforms_for_repo(owner, repo_name, updated_branch, info)
+                platform_decision = detect_platforms_for_repo(owner, repo_name, registry_branch, info)
                 detected_platforms = decision_platforms(platform_decision)
                 metadata_entry = platform_metadata["entries"].get(key, {})
-                if metadata_entry.get("identity") != platform_metadata_identity(owner, repo_name, updated_branch):
+                if metadata_entry.get("identity") != platform_metadata_identity(owner, repo_name, registry_branch):
                     metadata_entry = {}
                 next_platforms, platform_policy = choose_platforms_for_registry(
                     current_platforms,
@@ -389,7 +390,6 @@ def main():
 
                 # Check if changed
                 if (updated_desc != data[2] or
-                    updated_branch != data[3] or
                     update_times.get(key) != updated_at or
                     next_platforms != current_platforms):
 
@@ -409,7 +409,7 @@ def main():
                         owner,
                         repo_name,
                         updated_desc,
-                        updated_branch,
+                        registry_branch,
                         next_platforms
                     )
                     if updated_at:
@@ -423,7 +423,7 @@ def main():
                         key,
                         owner,
                         repo_name,
-                        updated_branch,
+                        registry_branch,
                         next_platforms,
                         decision=platform_decision,
                         policy_action=platform_policy,

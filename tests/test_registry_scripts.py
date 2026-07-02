@@ -578,6 +578,71 @@ def test_scanner_updates_existing_registry_platforms(scan_plugins_module, tmp_pa
     assert metadata["entries"]["Plugin"]["source"] == "detected"
 
 
+def test_scanner_never_updates_existing_registry_branch(scan_plugins_module, tmp_path, monkeypatch):
+    registry_file = tmp_path / "registry.json"
+    update_times_file = tmp_path / "update_times.json"
+    metadata_file = tmp_path / "platform_detection.json"
+    registry_file.write_text(json.dumps({
+        "Idle": ["Idle", "Idle", "Idle", "master"],
+        "luxtronikex": [
+            "Rouzax",
+            "luxtronik-domoticz-plugin-v2",
+            "description",
+            "dist",
+            "",
+            ["linux", "windows"],
+        ],
+    }))
+    update_times_file.write_text(json.dumps({
+        "luxtronikex": "2026-03-14T14:52:18Z",
+    }))
+
+    repo_info = {
+        "archived": False,
+        "disabled": False,
+        "size": 100,
+        "full_name": "Rouzax/luxtronik-domoticz-plugin-v2",
+        "owner": {"login": "Rouzax"},
+        "name": "luxtronik-domoticz-plugin-v2",
+        "description": "updated description",
+        "default_branch": "main",
+        "pushed_at": "2026-07-02T11:45:18Z",
+    }
+
+    seen_branches = []
+
+    def detect_platforms(owner, repo, branch, repo_info=None):
+        seen_branches.append(branch)
+        return platform_decision(["linux", "windows"], confidence="high")
+
+    patch_scanner_paths(scan_plugins_module, monkeypatch, registry_file, update_times_file, metadata_file)
+    monkeypatch.setattr(scan_plugins_module, "get_repo_info", lambda owner, repo: repo_info)
+    monkeypatch.setattr(scan_plugins_module, "search_github", lambda: [])
+    monkeypatch.setattr(scan_plugins_module, "search_gitlab", lambda: [])
+    monkeypatch.setattr(scan_plugins_module, "search_codeberg", lambda: [])
+    monkeypatch.setattr(scan_plugins_module, "detect_platforms_for_repo", detect_platforms)
+    monkeypatch.setenv("GITHUB_TOKEN", "test-token")
+
+    scan_plugins_module.main()
+
+    registry = json.loads(registry_file.read_text())
+    metadata = json.loads(metadata_file.read_text())
+
+    assert seen_branches == ["dist"]
+    assert registry["luxtronikex"] == [
+        "Rouzax",
+        "luxtronik-domoticz-plugin-v2",
+        "updated description",
+        "dist",
+        "",
+        ["linux", "windows"],
+    ]
+    assert metadata["entries"]["luxtronikex"]["branch"] == "dist"
+    assert metadata["entries"]["luxtronikex"]["identity"] == (
+        "github.com/rouzax/luxtronik-domoticz-plugin-v2@dist"
+    )
+
+
 def test_scanner_adds_platforms_for_new_plugins(scan_plugins_module, tmp_path, monkeypatch):
     registry_file = tmp_path / "registry.json"
     update_times_file = tmp_path / "update_times.json"
