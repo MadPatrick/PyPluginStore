@@ -3,6 +3,6 @@
   "type": "feature",
   "status": "in_progress",
   "created_at": "2026-07-02T06:58:10Z",
-  "updated_at": "2026-07-02T06:58:10Z",
+  "updated_at": "2026-07-02T07:11:20Z",
   "description": "Support Codeberg and GitLab plugin repositories in PyPluginStore runtime and registry scans. Refs #76."
 }
