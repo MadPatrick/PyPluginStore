@@ -771,6 +771,28 @@
             "windows"
         ]
     ],
+    "Domoticz-Stromer-plugin": [
+        "codeberg.org/Hoog",
+        "Domoticz-Stromer-plugin",
+        "Domoticz plugin for integrating Stromer portal data.",
+        "main",
+        "",
+        [
+            "linux",
+            "windows"
+        ]
+    ],
+    "DomoticzSabNZBDPlugin": [
+        "gitlab.com/r.boeters",
+        "DomoticzSabNZBDPlugin",
+        "SabNZBD Python plugin for Domoticz Home Automation",
+        "master",
+        "",
+        [
+            "linux",
+            "windows"
+        ]
+    ],
     "Domoticz-Shelly-Plugin": [
         "lemassykoi",
         "Domoticz-Shelly-Plugin",

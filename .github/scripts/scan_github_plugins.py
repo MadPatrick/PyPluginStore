@@ -19,6 +19,8 @@ from detect_plugin_platforms import (
 
 REGISTRY_FILE = os.path.join(SCRIPT_DIR, '../../registry.json')
 UPDATE_TIMES_FILE = os.path.join(SCRIPT_DIR, '../../update_times.json')
+DEFAULT_GIT_HOST = "github.com"
+SUPPORTED_GIT_HOSTS = ("github.com", "gitlab.com", "codeberg.org")
 
 # Repositories that should never be added to or kept in the registry.
 REPO_BLOCKLIST = {
@@ -30,6 +32,29 @@ REPO_BLOCKLIST = {
 
 def is_valid_plugin_repo(repo_name):
     return bool(repo_name) and not repo_name.startswith('.') and '/' not in repo_name and '\\' not in repo_name
+
+def split_registry_owner(author):
+    author = str(author or "").strip().strip("/")
+    for host in SUPPORTED_GIT_HOSTS:
+        if author.lower() == host:
+            return host, ""
+        if author.lower().startswith(host + "/"):
+            return host, author[len(host) + 1:]
+    return DEFAULT_GIT_HOST, author
+
+
+def get_registry_owner(host, owner_path):
+    host = str(host or DEFAULT_GIT_HOST).strip().lower()
+    owner_path = str(owner_path or "").strip().strip("/")
+    if host == DEFAULT_GIT_HOST:
+        return owner_path
+    return host + "/" + owner_path
+
+
+def get_repository_identity(owner, repo):
+    host, owner_path = split_registry_owner(owner)
+    return f"{host}/{owner_path}/{repo}".lower()
+
 
 def normalize_full_name(owner, repo):
     return f"{owner}/{repo}".lower()
@@ -44,6 +69,8 @@ def get_repo_skip_reason(repo):
         return "Repo archived"
     if repo.get('disabled'):
         return "Repo disabled"
+    if repo.get('empty') or repo.get('empty_repo'):
+        return "Repo empty"
 
     size = repo.get('size')
     if size is not None:
@@ -68,23 +95,134 @@ def build_registry_entry(owner, repo_name, description, branch, platforms=None):
         entry = set_registry_entry_platforms(entry, normalized_platforms)
     return entry
 
-def get_repo_info(owner, repo):
-    url = f'https://api.github.com/repos/{owner}/{repo}'
-    headers = {'User-Agent': 'Domoticz-Plugin-Scanner', 'Accept': 'application/vnd.github.v3+json'}
 
+def github_headers():
+    headers = {'User-Agent': 'Domoticz-Plugin-Scanner', 'Accept': 'application/vnd.github.v3+json'}
     token = os.environ.get('GITHUB_TOKEN')
     if token:
         headers['Authorization'] = f'token {token}'
+    return headers
 
-    req = urllib.request.Request(url, headers=headers)
+
+def gitlab_headers():
+    headers = {'User-Agent': 'Domoticz-Plugin-Scanner', 'Accept': 'application/json'}
+    token = os.environ.get('GITLAB_TOKEN')
+    if token:
+        headers['PRIVATE-TOKEN'] = token
+    return headers
+
+
+def generic_headers():
+    return {'User-Agent': 'Domoticz-Plugin-Scanner', 'Accept': 'application/json'}
+
+
+def fetch_json(url, headers=None):
+    req = urllib.request.Request(url, headers=headers or generic_headers())
     try:
         with urllib.request.urlopen(req) as response:
             return json.loads(response.read().decode())
     except HTTPError as e:
         if e.code == 404:
             return "DELETED"
-        print(f"Error fetching {owner}/{repo}: {e}")
+        print(f"Error fetching {url}: {e}")
+    except Exception as e:
+        print(f"Error fetching {url}: {e}")
+    return None
+
+
+def normalize_gitlab_project(project):
+    full_name = project.get('path_with_namespace') or project.get('full_name') or ""
+    if "/" not in full_name:
         return None
+    owner_path, repo_name = full_name.rsplit("/", 1)
+    return {
+        "host": "gitlab.com",
+        "archived": bool(project.get('archived')),
+        "disabled": False,
+        "empty_repo": bool(project.get('empty_repo', False)),
+        "size": project.get('repository_size', project.get('size', 1)),
+        "full_name": full_name,
+        "owner": {"login": owner_path},
+        "name": repo_name,
+        "description": project.get('description') or "",
+        "default_branch": project.get('default_branch') or "master",
+        "pushed_at": project.get('last_activity_at') or project.get('updated_at'),
+    }
+
+
+def normalize_codeberg_repo(repo):
+    full_name = repo.get('full_name') or ""
+    if "/" not in full_name:
+        return None
+    owner_path, repo_name = full_name.rsplit("/", 1)
+    return {
+        "host": "codeberg.org",
+        "archived": bool(repo.get('archived')),
+        "disabled": False,
+        "empty": bool(repo.get('empty')),
+        "size": repo.get('size', 1),
+        "full_name": full_name,
+        "owner": {"login": owner_path},
+        "name": repo_name,
+        "description": repo.get('description') or "",
+        "default_branch": repo.get('default_branch') or "master",
+        "pushed_at": repo.get('updated_at') or repo.get('pushed_at'),
+    }
+
+
+def raw_plugin_url_for_repo(repo):
+    host = repo.get('host', DEFAULT_GIT_HOST)
+    owner = repo.get('owner', {}).get('login', '')
+    repo_name = repo.get('name', '')
+    branch = repo.get('default_branch') or 'master'
+    path = "/".join(urllib.parse.quote(part, safe="") for part in (owner + "/" + repo_name).split("/") if part)
+    branch = urllib.parse.quote(branch, safe="")
+    if host == "gitlab.com":
+        return f"https://gitlab.com/{path}/-/raw/{branch}/plugin.py"
+    if host == "codeberg.org":
+        return f"https://codeberg.org/{path}/raw/branch/{branch}/plugin.py"
+    return f"https://raw.githubusercontent.com/{path}/{branch}/plugin.py"
+
+
+def has_root_plugin_py(repo):
+    url = raw_plugin_url_for_repo(repo)
+    headers = gitlab_headers() if repo.get('host') == "gitlab.com" else generic_headers()
+    try:
+        req = urllib.request.Request(url, headers=headers)
+        with urllib.request.urlopen(req, timeout=10) as response:
+            return response.read(4096).strip() != b""
+    except Exception:
+        return False
+
+
+def get_github_repo_info(owner, repo):
+    url = f'https://api.github.com/repos/{owner}/{repo}'
+    return fetch_json(url, github_headers())
+
+
+def get_gitlab_repo_info(owner_path, repo):
+    project_path = urllib.parse.quote(owner_path + "/" + repo, safe="")
+    data = fetch_json(f'https://gitlab.com/api/v4/projects/{project_path}', gitlab_headers())
+    if data == "DELETED" or data is None:
+        return data
+    return normalize_gitlab_project(data)
+
+
+def get_codeberg_repo_info(owner_path, repo):
+    path = "/".join(urllib.parse.quote(part, safe="") for part in (owner_path + "/" + repo).split("/"))
+    data = fetch_json(f'https://codeberg.org/api/v1/repos/{path}', generic_headers())
+    if data == "DELETED" or data is None:
+        return data
+    return normalize_codeberg_repo(data)
+
+
+def get_repo_info(owner, repo):
+    host, owner_path = split_registry_owner(owner)
+    if host == "gitlab.com":
+        return get_gitlab_repo_info(owner_path, repo)
+    if host == "codeberg.org":
+        return get_codeberg_repo_info(owner_path, repo)
+    return get_github_repo_info(owner_path, repo)
 
 def search_github():
     # Multiple queries to be more comprehensive
@@ -98,10 +236,7 @@ def search_github():
     all_items = []
     seen_full_names = set()
 
-    headers = {'User-Agent': 'Domoticz-Plugin-Scanner', 'Accept': 'application/vnd.github.v3+json'}
-    token = os.environ.get('GITHUB_TOKEN')
-    if token:
-        headers['Authorization'] = f'token {token}'
+    headers = github_headers()
 
     for query in queries:
         print(f"Searching for: {query}")
@@ -121,6 +256,60 @@ def search_github():
             print(f"Error searching GitHub for '{query}': {e}")
 
     return all_items
+
+
+def search_gitlab():
+    queries = [
+        'domoticz plugin',
+        'domoticz python plugin',
+    ]
+    all_items = []
+    seen_full_names = set()
+
+    for query in queries:
+        print(f"Searching GitLab for: {query}")
+        encoded_query = urllib.parse.quote(query)
+        url = (
+            'https://gitlab.com/api/v4/projects?'
+            f'search={encoded_query}&simple=true&per_page=100&order_by=last_activity_at&sort=desc'
+        )
+        data = fetch_json(url, gitlab_headers())
+        if not isinstance(data, list):
+            continue
+        for item in data:
+            repo = normalize_gitlab_project(item)
+            if repo and repo['full_name'] not in seen_full_names and has_root_plugin_py(repo):
+                all_items.append(repo)
+                seen_full_names.add(repo['full_name'])
+
+    return all_items
+
+
+def search_codeberg():
+    queries = [
+        'domoticz',
+        'domoticz plugin',
+    ]
+    all_items = []
+    seen_full_names = set()
+
+    for query in queries:
+        print(f"Searching Codeberg for: {query}")
+        encoded_query = urllib.parse.quote(query)
+        url = f'https://codeberg.org/api/v1/repos/search?q={encoded_query}&limit=50'
+        data = fetch_json(url, generic_headers())
+        items = data.get('data', []) if isinstance(data, dict) else []
+        for item in items:
+            repo = normalize_codeberg_repo(item)
+            if repo and repo['full_name'] not in seen_full_names and has_root_plugin_py(repo):
+                all_items.append(repo)
+                seen_full_names.add(repo['full_name'])
+
+    return all_items
+
+
+def search_repositories():
+    return search_github() + search_gitlab() + search_codeberg()
 
 def main():
     if not os.path.exists(REGISTRY_FILE):
@@ -198,15 +387,20 @@ def main():
 
     # 2. Discover New Plugins
     print("Searching for new plugins...")
-    new_items = search_github()
-    existing_full_names = {f"{v[0].lower()}/{v[1].lower()}" for k, v in registry.items() if k != "Idle"}
+    new_items = search_repositories()
+    existing_full_names = {
+        get_repository_identity(v[0], v[1])
+        for k, v in registry.items()
+        if k != "Idle" and isinstance(v, list) and len(v) >= 2
+    }
 
     for repo in new_items:
-        full_name = repo['full_name'].lower()
+        repo_host = repo.get('host', DEFAULT_GIT_HOST)
+        owner = repo['owner']['login']
+        repo_name = repo['name']
+        registry_owner = get_registry_owner(repo_host, owner)
+        full_name = get_repository_identity(registry_owner, repo_name)
         if full_name not in existing_full_names:
-            owner = repo['owner']['login']
-            repo_name = repo['name']
-
             block_reason = get_repo_block_reason(owner, repo_name)
             if block_reason:
                 print(f"[-] Skipping {repo['full_name']} ({block_reason})")
@@ -224,7 +418,7 @@ def main():
             description = repo['description'] or f"{repo_name} plugin for Domoticz"
             default_branch = repo['default_branch']
             pushed_at = repo.get('pushed_at') or repo.get('updated_at')
-            platform_decision = detect_platforms_for_repo(owner, repo_name, default_branch, repo)
+            platform_decision = detect_platforms_for_repo(registry_owner, repo_name, default_branch, repo)
             platforms = platform_decision.platforms if platform_decision is not None else []
 
             key = repo_name
@@ -233,7 +427,7 @@ def main():
 
             print(f"[+] Adding {key}")
             registry[key] = build_registry_entry(
-                owner,
+                registry_owner,
                 repo_name,
                 description,
                 default_branch,

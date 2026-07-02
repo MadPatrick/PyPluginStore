@@ -93,6 +93,43 @@ def test_validate_repository_uses_argument_list_and_disables_prompts(validate_pl
     assert calls[0]["text"] is True
 
 
+def test_validate_repository_uses_supported_host_urls(validate_plugins_module, monkeypatch):
+    calls = []
+
+    def fake_run(cmd, env, capture_output, text):
+        calls.append(cmd)
+        return SimpleNamespace(returncode=0, stdout="abc123\trefs/heads/main\n", stderr="")
+
+    monkeypatch.setattr(validate_plugins_module.subprocess, "run", fake_run)
+
+    assert validate_plugins_module.validate_repository(
+        "codeberg.org/Hoog",
+        "Domoticz-Stromer-plugin",
+        "main",
+    ) is True
+    assert validate_plugins_module.validate_repository(
+        "gitlab.com/r.boeters",
+        "DomoticzSabNZBDPlugin",
+        "master",
+    ) is True
+    assert calls == [
+        [
+            "git",
+            "ls-remote",
+            "--heads",
+            "https://codeberg.org/Hoog/Domoticz-Stromer-plugin",
+            "main",
+        ],
+        [
+            "git",
+            "ls-remote",
+            "--heads",
+            "https://gitlab.com/r.boeters/DomoticzSabNZBDPlugin",
+            "master",
+        ],
+    ]
+
+
 def test_validate_repository_requires_matching_branch_output(validate_plugins_module, monkeypatch):
     def fake_run(cmd, env, capture_output, text):
         return SimpleNamespace(returncode=0, stdout="", stderr="")
@@ -135,6 +172,51 @@ def test_scanner_explains_unscannable_repositories(scan_plugins_module, repo, ex
 def test_scanner_blocks_explicit_repositories(scan_plugins_module):
     assert scan_plugins_module.get_repo_block_reason("domoticz", "domoticz") == "Repo blocklisted"
     assert scan_plugins_module.get_repo_block_reason("owner", "repo") is None
+
+
+def test_scanner_normalizes_supported_host_registry_entries(scan_plugins_module):
+    assert scan_plugins_module.get_registry_owner("github.com", "owner") == "owner"
+    assert scan_plugins_module.get_registry_owner("codeberg.org", "Hoog") == "codeberg.org/Hoog"
+    assert scan_plugins_module.get_repository_identity("gitlab.com/r.boeters", "DomoticzSabNZBDPlugin") == (
+        "gitlab.com/r.boeters/domoticzsabnzbdplugin"
+    )
+
+
+def test_scanner_checks_root_plugin_py_on_supported_hosts(scan_plugins_module, monkeypatch):
+    fetched_urls = []
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc_value, traceback):
+            return False
+
+        def read(self, size=-1):
+            return b'"""<plugin key="Test" name="Test"></plugin>"""'
+
+    def fake_urlopen(request, timeout=0):
+        fetched_urls.append(request.full_url)
+        return FakeResponse()
+
+    monkeypatch.setattr(scan_plugins_module.urllib.request, "urlopen", fake_urlopen)
+
+    assert scan_plugins_module.has_root_plugin_py({
+        "host": "codeberg.org",
+        "owner": {"login": "Hoog"},
+        "name": "Domoticz-Stromer-plugin",
+        "default_branch": "main",
+    }) is True
+    assert scan_plugins_module.has_root_plugin_py({
+        "host": "gitlab.com",
+        "owner": {"login": "r.boeters"},
+        "name": "DomoticzSabNZBDPlugin",
+        "default_branch": "master",
+    }) is True
+    assert fetched_urls == [
+        "https://codeberg.org/Hoog/Domoticz-Stromer-plugin/raw/branch/main/plugin.py",
+        "https://gitlab.com/r.boeters/DomoticzSabNZBDPlugin/-/raw/master/plugin.py",
+    ]
 
 
 def test_platform_detector_flags_linux_only_dependencies(platform_detector_module):
@@ -192,6 +274,78 @@ def test_platform_detector_respects_explicit_both_support(platform_detector_modu
 
     assert decision.platforms == ["linux", "windows"]
     assert decision.confidence == "high"
+
+
+def test_platform_detector_fetches_codeberg_tree_and_raw_urls(platform_detector_module, monkeypatch):
+    fetched_json_urls = []
+    fetched_text_urls = []
+
+    def fake_fetch_json(url, timeout=20):
+        fetched_json_urls.append(url)
+        return {
+            "tree": [
+                {"type": "blob", "path": "README.md", "size": 40},
+                {"type": "blob", "path": "plugin.py", "size": 40},
+            ],
+        }
+
+    def fake_fetch_text(url, timeout=20):
+        fetched_text_urls.append(url)
+        return "Domoticz plugin\nimport Domoticz\n"
+
+    monkeypatch.setattr(platform_detector_module, "fetch_json", fake_fetch_json)
+    monkeypatch.setattr(platform_detector_module, "fetch_text", fake_fetch_text)
+
+    decision = platform_detector_module.detect_platforms_for_repo(
+        "codeberg.org/Hoog",
+        "Domoticz-Stromer-plugin",
+        "main",
+        repo_info={"description": "Domoticz plugin"},
+    )
+
+    assert fetched_json_urls == [
+        "https://codeberg.org/api/v1/repos/Hoog/Domoticz-Stromer-plugin/git/trees/main?recursive=1",
+    ]
+    assert fetched_text_urls == [
+        "https://codeberg.org/Hoog/Domoticz-Stromer-plugin/raw/branch/main/README.md",
+        "https://codeberg.org/Hoog/Domoticz-Stromer-plugin/raw/branch/main/plugin.py",
+    ]
+    assert decision.platforms == ["linux", "windows"]
+
+
+def test_platform_detector_fetches_gitlab_tree_and_raw_urls(platform_detector_module, monkeypatch):
+    fetched_json_urls = []
+    fetched_text_urls = []
+
+    def fake_fetch_json(url, timeout=20):
+        fetched_json_urls.append(url)
+        return [
+            {"type": "blob", "path": "README.md", "size": 40},
+            {"type": "blob", "path": "plugin.py", "size": 40},
+        ]
+
+    def fake_fetch_text(url, timeout=20):
+        fetched_text_urls.append(url)
+        return "Domoticz plugin\nimport Domoticz\n"
+
+    monkeypatch.setattr(platform_detector_module, "fetch_json", fake_fetch_json)
+    monkeypatch.setattr(platform_detector_module, "fetch_text", fake_fetch_text)
+
+    decision = platform_detector_module.detect_platforms_for_repo(
+        "gitlab.com/r.boeters",
+        "DomoticzSabNZBDPlugin",
+        "master",
+        repo_info={"description": "Domoticz plugin"},
+    )
+
+    assert fetched_json_urls == [
+        "https://gitlab.com/api/v4/projects/r.boeters%2FDomoticzSabNZBDPlugin/repository/tree?recursive=true&per_page=100&ref=master",
+    ]
+    assert fetched_text_urls == [
+        "https://gitlab.com/r.boeters/DomoticzSabNZBDPlugin/-/raw/master/README.md",
+        "https://gitlab.com/r.boeters/DomoticzSabNZBDPlugin/-/raw/master/plugin.py",
+    ]
+    assert decision.platforms == ["linux", "windows"]
 
 
 def test_platform_detector_writes_platforms_in_sixth_registry_slot(platform_detector_module):
@@ -282,6 +436,76 @@ def test_scanner_adds_platforms_for_new_plugins(scan_plugins_module, tmp_path, m
     registry = json.loads(registry_file.read_text())
 
     assert registry["repo"] == ["owner", "repo", "description", "main", "", ["windows"]]
+
+
+def test_scanner_adds_codeberg_and_gitlab_plugins(scan_plugins_module, tmp_path, monkeypatch):
+    registry_file = tmp_path / "registry.json"
+    update_times_file = tmp_path / "update_times.json"
+    registry_file.write_text(json.dumps({
+        "Idle": ["Idle", "Idle", "Idle", "master"],
+    }))
+    update_times_file.write_text(json.dumps({}))
+
+    codeberg_repo = {
+        "archived": False,
+        "disabled": False,
+        "size": 100,
+        "host": "codeberg.org",
+        "full_name": "Hoog/Domoticz-Stromer-plugin",
+        "owner": {"login": "Hoog"},
+        "name": "Domoticz-Stromer-plugin",
+        "description": "Domoticz plugin for integrating Stromer portal data.",
+        "default_branch": "main",
+        "pushed_at": "2026-06-30T19:36:29Z",
+    }
+    gitlab_repo = {
+        "archived": False,
+        "disabled": False,
+        "size": 100,
+        "host": "gitlab.com",
+        "full_name": "r.boeters/DomoticzSabNZBDPlugin",
+        "owner": {"login": "r.boeters"},
+        "name": "DomoticzSabNZBDPlugin",
+        "description": "SabNZBD Python plugin for Domoticz Home Automation",
+        "default_branch": "master",
+        "pushed_at": "2019-08-16T18:29:37.958Z",
+    }
+
+    monkeypatch.setattr(scan_plugins_module, "REGISTRY_FILE", str(registry_file))
+    monkeypatch.setattr(scan_plugins_module, "UPDATE_TIMES_FILE", str(update_times_file))
+    monkeypatch.setattr(scan_plugins_module, "search_github", lambda: [])
+    monkeypatch.setattr(scan_plugins_module, "search_codeberg", lambda: [codeberg_repo])
+    monkeypatch.setattr(scan_plugins_module, "search_gitlab", lambda: [gitlab_repo])
+    monkeypatch.setattr(
+        scan_plugins_module,
+        "detect_platforms_for_repo",
+        lambda owner, repo, branch, repo_info=None: SimpleNamespace(platforms=["linux", "windows"]),
+    )
+    monkeypatch.setenv("GITHUB_TOKEN", "test-token")
+
+    scan_plugins_module.main()
+
+    registry = json.loads(registry_file.read_text())
+    update_times = json.loads(update_times_file.read_text())
+
+    assert registry["Domoticz-Stromer-plugin"] == [
+        "codeberg.org/Hoog",
+        "Domoticz-Stromer-plugin",
+        "Domoticz plugin for integrating Stromer portal data.",
+        "main",
+        "",
+        ["linux", "windows"],
+    ]
+    assert registry["DomoticzSabNZBDPlugin"] == [
+        "gitlab.com/r.boeters",
+        "DomoticzSabNZBDPlugin",
+        "SabNZBD Python plugin for Domoticz Home Automation",
+        "master",
+        "",
+        ["linux", "windows"],
+    ]
+    assert update_times["Domoticz-Stromer-plugin"] == "2026-06-30T19:36:29Z"
+    assert update_times["DomoticzSabNZBDPlugin"] == "2019-08-16T18:29:37.958Z"
 
 
 def test_scanner_removes_empty_existing_repo_and_does_not_readd(scan_plugins_module, tmp_path, monkeypatch):

@@ -21,6 +21,8 @@ MAX_ANALYSIS_FILES = 40
 MAX_TEXT_FILE_BYTES = 160_000
 
 API_USER_AGENT = "Domoticz-Plugin-Platform-Scanner"
+DEFAULT_GIT_HOST = "github.com"
+SUPPORTED_GIT_HOSTS = ("github.com", "gitlab.com", "codeberg.org")
 
 LINUX_ONLY_PATTERNS = [
     (r"\blinux\s+only\b", 10, "states Linux only"),
@@ -180,8 +182,35 @@ def github_headers():
     return headers
 
 
-def fetch_json(url, timeout=20):
-    req = urllib.request.Request(url, headers=github_headers())
+def gitlab_headers():
+    headers = {
+        "Accept": "application/json",
+        "User-Agent": API_USER_AGENT,
+    }
+    token = os.environ.get("GITLAB_TOKEN")
+    if token:
+        headers["PRIVATE-TOKEN"] = token
+    return headers
+
+
+def generic_headers():
+    return {
+        "Accept": "application/json",
+        "User-Agent": API_USER_AGENT,
+    }
+
+
+def headers_for_url(url):
+    hostname = urllib.parse.urlparse(url).hostname or ""
+    if hostname in {"api.github.com", "raw.githubusercontent.com"}:
+        return github_headers()
+    if hostname == "gitlab.com":
+        return gitlab_headers()
+    return generic_headers()
+
+
+def fetch_json(url, timeout=20, headers=None):
+    req = urllib.request.Request(url, headers=headers or headers_for_url(url))
     try:
         with urllib.request.urlopen(req, timeout=timeout) as response:
             return json.loads(response.read().decode("utf-8"))
@@ -192,8 +221,8 @@ def fetch_json(url, timeout=20):
     return None
 
 
-def fetch_text(url, timeout=20):
-    req = urllib.request.Request(url, headers=github_headers())
+def fetch_text(url, timeout=20, headers=None):
+    req = urllib.request.Request(url, headers=headers or headers_for_url(url))
     try:
         with urllib.request.urlopen(req, timeout=timeout) as response:
             content = response.read(MAX_TEXT_FILE_BYTES + 1)
@@ -213,13 +242,47 @@ def quote_repo_path(path):
     return urllib.parse.quote(str(path), safe="/")
 
 
+def split_registry_owner(author):
+    author = str(author or "").strip().strip("/")
+    for host in SUPPORTED_GIT_HOSTS:
+        if author.lower() == host:
+            return host, ""
+        if author.lower().startswith(host + "/"):
+            return host, author[len(host) + 1:]
+    return DEFAULT_GIT_HOST, author
+
+
+def repository_path(owner, repo):
+    host, owner_path = split_registry_owner(owner)
+    path_parts = [part for part in (owner_path + "/" + repo).split("/") if part]
+    return host, "/".join(path_parts)
+
+
 def get_repo_tree(owner, repo, branch):
-    url = (
-        "https://api.github.com/repos/"
-        f"{quote_path_part(owner)}/{quote_path_part(repo)}/git/trees/"
-        f"{quote_path_part(branch)}?recursive=1"
-    )
-    data = fetch_json(url)
+    host, path = repository_path(owner, repo)
+    if host == "gitlab.com":
+        project_path = urllib.parse.quote(path, safe="")
+        url = (
+            "https://gitlab.com/api/v4/projects/"
+            f"{project_path}/repository/tree?recursive=true&per_page=100&ref={quote_path_part(branch)}"
+        )
+        data = fetch_json(url)
+        return data if isinstance(data, list) else None
+
+    if host == "codeberg.org":
+        url = (
+            "https://codeberg.org/api/v1/repos/"
+            f"{quote_repo_path(path)}/git/trees/{quote_path_part(branch)}?recursive=1"
+        )
+        data = fetch_json(url)
+    else:
+        url = (
+            "https://api.github.com/repos/"
+            f"{quote_repo_path(path)}/git/trees/"
+            f"{quote_path_part(branch)}?recursive=1"
+        )
+        data = fetch_json(url)
+
     if not isinstance(data, dict):
         return None
     tree = data.get("tree")
@@ -229,9 +292,24 @@ def get_repo_tree(owner, repo, branch):
 
 
 def get_raw_file(owner, repo, branch, path):
+    host, repo_path = repository_path(owner, repo)
+    if host == "gitlab.com":
+        url = (
+            "https://gitlab.com/"
+            f"{quote_repo_path(repo_path)}/-/raw/{quote_path_part(branch)}/{quote_repo_path(path)}"
+        )
+        return fetch_text(url)
+
+    if host == "codeberg.org":
+        url = (
+            "https://codeberg.org/"
+            f"{quote_repo_path(repo_path)}/raw/branch/{quote_path_part(branch)}/{quote_repo_path(path)}"
+        )
+        return fetch_text(url)
+
     url = (
         "https://raw.githubusercontent.com/"
-        f"{quote_path_part(owner)}/{quote_path_part(repo)}/"
+        f"{quote_repo_path(repo_path)}/"
         f"{quote_path_part(branch)}/{quote_repo_path(path)}"
     )
     return fetch_text(url)

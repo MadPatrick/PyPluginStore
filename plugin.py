@@ -54,6 +54,19 @@ import Domoticz
 
 
 API_PAYLOAD_MAX_LENGTH = 2000
+DEFAULT_GIT_HOST = "github.com"
+SUPPORTED_GIT_HOSTS = ("github.com", "gitlab.com", "codeberg.org")
+REPOSITORY_PATH_STOP_PARTS = {
+    "-",
+    "blob",
+    "commits",
+    "issues",
+    "pulls",
+    "raw",
+    "releases",
+    "src",
+    "tree",
+}
 
 
 def parameter_get(parameters, key, default):
@@ -1175,6 +1188,65 @@ class BasePlugin:
     def get_local_registry_file(self):
         return os.path.join(self.get_plugin_home_folder(), "registry_local.json")
 
+    def supported_git_host(self, hostname):
+        hostname = str(hostname or "").strip().lower()
+        return hostname if hostname in SUPPORTED_GIT_HOSTS else ""
+
+    def clean_repository_path_parts(self, path_parts):
+        cleaned_parts = []
+        for part in path_parts:
+            part = urllib.parse.unquote(str(part or "").strip())
+            if not part:
+                continue
+            if part in REPOSITORY_PATH_STOP_PARTS:
+                break
+            cleaned_parts.append(part)
+
+        if cleaned_parts and cleaned_parts[-1].endswith(".git"):
+            cleaned_parts[-1] = cleaned_parts[-1][:-4]
+        return cleaned_parts
+
+    def split_supported_repo_reference(self, repo_reference):
+        repo_reference = str(repo_reference or "").strip().rstrip("/")
+        if not repo_reference:
+            return "", []
+
+        if re.match(r"^[^/@:]+@[^:]+:.+", repo_reference):
+            user_host, path = repo_reference.split(":", 1)
+            host = self.supported_git_host(user_host.split("@")[-1])
+            if not host:
+                return "", []
+            return host, self.clean_repository_path_parts(path.split("/"))
+
+        parsed_url = urllib.parse.urlparse(repo_reference)
+        if parsed_url.hostname:
+            host = self.supported_git_host(parsed_url.hostname)
+            if not host:
+                return "", []
+            return host, self.clean_repository_path_parts(parsed_url.path.split("/"))
+
+        shorthand_url = urllib.parse.urlparse("//" + repo_reference)
+        host = self.supported_git_host(shorthand_url.hostname)
+        if host:
+            return host, self.clean_repository_path_parts(shorthand_url.path.split("/"))
+
+        return "", []
+
+    def repository_path_from_entry(self, author, repository):
+        repository = str(repository or "").strip().strip("/")
+        host, path_parts = self.split_supported_repo_reference(author)
+        if not host:
+            host = DEFAULT_GIT_HOST
+            path_parts = self.clean_repository_path_parts(str(author or "").strip().split("/"))
+
+        if repository:
+            path_parts = list(path_parts) + [repository]
+
+        return host, self.clean_repository_path_parts(path_parts)
+
+    def quote_url_path_parts(self, path_parts):
+        return "/".join(urllib.parse.quote(str(part), safe="") for part in path_parts)
+
     def build_git_clone_url(self, author, repository):
         author = str(author or "").strip()
         repository = str(repository or "").strip()
@@ -1185,24 +1257,33 @@ class BasePlugin:
         if author.startswith("http://") or author.startswith("https://"):
             clone_url = author.rstrip("/")
             parsed_url = urllib.parse.urlparse(clone_url)
-            if parsed_url.scheme in ("http", "https") and parsed_url.hostname == "github.com":
-                path_parts = [part for part in parsed_url.path.split("/") if part]
-                if len(path_parts) >= 2:
-                    clone_url = parsed_url.scheme + "://github.com/" + path_parts[0] + "/" + path_parts[1]
-                    if not clone_url.endswith(".git"):
-                        clone_url += ".git"
-            return clone_url
-
-        shorthand_url = urllib.parse.urlparse("//" + author)
-        if shorthand_url.hostname == "github.com":
-            path_parts = [part for part in shorthand_url.path.split("/") if part]
-            if len(path_parts) >= 2:
-                clone_url = "https://github.com/" + path_parts[0] + "/" + path_parts[1]
+            host, path_parts = self.split_supported_repo_reference(clone_url)
+            if parsed_url.scheme in ("http", "https") and host and len(path_parts) >= 2:
+                clone_url = parsed_url.scheme + "://" + host + "/" + self.quote_url_path_parts(path_parts)
                 if not clone_url.endswith(".git"):
                     clone_url += ".git"
-                return clone_url
+            return clone_url
+
+        host, path_parts = self.repository_path_from_entry(author, repository)
+        if host and len(path_parts) >= 2:
+            return "https://" + host + "/" + self.quote_url_path_parts(path_parts) + ".git"
 
         return f"https://github.com/{author}/{repository}.git"
+
+    def build_raw_plugin_url(self, author, repository, branch):
+        host, path_parts = self.repository_path_from_entry(author, repository)
+        if not host or len(path_parts) < 2:
+            return ""
+
+        repo_path = self.quote_url_path_parts(path_parts)
+        branch = urllib.parse.quote(str(branch or ""), safe="")
+        if host == "github.com":
+            return "https://raw.githubusercontent.com/" + repo_path + "/" + branch + "/plugin.py"
+        if host == "gitlab.com":
+            return "https://gitlab.com/" + repo_path + "/-/raw/" + branch + "/plugin.py"
+        if host == "codeberg.org":
+            return "https://codeberg.org/" + repo_path + "/raw/branch/" + branch + "/plugin.py"
+        return ""
 
     def normalize_plugin_folder_name(self, folder_name):
         folder_name = str(folder_name or "").strip().strip("/\\")
@@ -1255,39 +1336,14 @@ class BasePlugin:
             remote_url = remote_url[:-4]
         return remote_url.lower()
 
-    def normalize_github_repo_identity(self, repo_url):
-        repo_url = str(repo_url or "").strip()
-        if not repo_url:
+    def normalize_git_repo_identity(self, repo_url):
+        host, path_parts = self.split_supported_repo_reference(repo_url)
+        if not host or len(path_parts) < 2:
             return ""
+        return (host + "/" + "/".join(path_parts)).lower()
 
-        if re.match(r"^[^/@:]+@github\.com:.+", repo_url, re.IGNORECASE):
-            path = repo_url.split(":", 1)[1]
-            path_parts = [part for part in path.split("/") if part]
-            if len(path_parts) >= 2:
-                repository = path_parts[1]
-                if repository.endswith(".git"):
-                    repository = repository[:-4]
-                return ("github.com/" + path_parts[0] + "/" + repository).lower()
-
-        parsed_url = urllib.parse.urlparse(repo_url)
-        if parsed_url.hostname and parsed_url.hostname.lower() == "github.com":
-            path_parts = [part for part in parsed_url.path.split("/") if part]
-            if len(path_parts) >= 2:
-                repository = path_parts[1]
-                if repository.endswith(".git"):
-                    repository = repository[:-4]
-                return ("github.com/" + path_parts[0] + "/" + repository).lower()
-
-        shorthand_url = urllib.parse.urlparse("//" + repo_url)
-        if shorthand_url.hostname and shorthand_url.hostname.lower() == "github.com":
-            path_parts = [part for part in shorthand_url.path.split("/") if part]
-            if len(path_parts) >= 2:
-                repository = path_parts[1]
-                if repository.endswith(".git"):
-                    repository = repository[:-4]
-                return ("github.com/" + path_parts[0] + "/" + repository).lower()
-
-        return ""
+    def normalize_github_repo_identity(self, repo_url):
+        return self.normalize_git_repo_identity(repo_url)
 
     def normalize_plugin_metadata_value(self, value):
         return re.sub(r"[^a-z0-9]+", "", str(value or "").lower())
@@ -2211,7 +2267,10 @@ class BasePlugin:
                 author = self.plugin_data[plugin_key][0]
                 repository = self.plugin_data[plugin_key][1]
                 branch = self.plugin_data[plugin_key][3]
-                url = f"https://raw.githubusercontent.com/{author}/{repository}/{branch}/plugin.py"
+                url = self.build_raw_plugin_url(author, repository, branch)
+                if not url:
+                    Domoticz.Debug("Could not build remote version URL for " + str(repository))
+                    continue
                 try:
                     req = urllib.request.Request(url)
                     with urllib.request.urlopen(req, timeout=5) as response:

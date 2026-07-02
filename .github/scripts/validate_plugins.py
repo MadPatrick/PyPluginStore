@@ -6,6 +6,8 @@ import subprocess
 # Adjust path relative to the current script location
 SCRIPT_DIR = os.path.dirname(__file__)
 REGISTRY_FILE_PATH = os.path.join(SCRIPT_DIR, '../../registry.json')
+DEFAULT_GIT_HOST = "github.com"
+SUPPORTED_GIT_HOSTS = ("github.com", "gitlab.com", "codeberg.org")
 
 def load_registry():
     print(f"Checking if registry file exists at: {REGISTRY_FILE_PATH}")
@@ -55,8 +57,25 @@ def validate_registry_entry(key, data):
             if str(platform_name).strip().lower() not in {"linux", "windows"}:
                 raise ValueError(f"Plugin '{key}' has unsupported platform '{platform_name}'.")
 
+
+def split_registry_owner(author):
+    author = str(author or "").strip().strip("/")
+    for host in SUPPORTED_GIT_HOSTS:
+        if author.lower() == host:
+            return host, ""
+        if author.lower().startswith(host + "/"):
+            return host, author[len(host) + 1:]
+    return DEFAULT_GIT_HOST, author
+
+
+def build_repository_url(author, repository):
+    host, owner_path = split_registry_owner(author)
+    path_parts = [part for part in (owner_path + "/" + repository).split("/") if part]
+    return "https://" + host + "/" + "/".join(path_parts)
+
+
 def validate_repository(author, repository, branch):
-    repo_url = f"https://github.com/{author}/{repository}"
+    repo_url = build_repository_url(author, repository)
     env = os.environ.copy()
     env["GIT_TERMINAL_PROMPT"] = "0"
     repo_clone_cmd = ["git", "ls-remote", "--heads", repo_url, branch]

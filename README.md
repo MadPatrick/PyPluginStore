@@ -1,6 +1,6 @@
 # PyPluginStore for Domoticz (PyPluginStore)
 
-A robust and modern plugin manager for Domoticz that allows you to install and automatically update other Python plugins directly from GitHub.
+A robust and modern plugin manager for Domoticz that allows you to install and automatically update other Python plugins from GitHub, Codeberg, and GitLab.
 
 **Supported platforms:** PyPluginStore supports Linux, including Raspberry Pi, and Windows Domoticz installations with Python plugin support. Individual third-party plugins may still be Linux-only or Windows-only depending on their own dependencies and OS integrations.
 

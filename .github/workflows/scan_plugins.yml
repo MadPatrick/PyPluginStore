@@ -26,6 +26,7 @@ jobs:
       - name: Run Plugin Scanner
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLAB_TOKEN: ${{ secrets.GITLAB_TOKEN }}
         run: |
           python .github/scripts/scan_github_plugins.py
 
@@ -36,7 +37,7 @@ jobs:
           commit-message: "feat: update Domoticz Python plugin registry"
           title: "Update Domoticz Python plugin registry from weekly scan"
           body: |
-            This automated PR updates the Domoticz Python plugin registry with newly discovered plugins, refreshed repository metadata, and inferred platform badges.
+            This automated PR updates the Domoticz Python plugin registry with newly discovered plugins, refreshed repository metadata, and inferred platform badges from supported Git forges.
 
             The platform badge inference checks repository metadata, README and install text, selected source files, platform-specific imports, scripts, and OS-specific paths or commands.
           branch: "auto-add-plugins"

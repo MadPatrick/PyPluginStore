@@ -110,6 +110,45 @@ for (const [input, expected] of Object.entries(cases)) {{
     assert result.returncode == 0, result.stderr
 
 
+def test_repo_url_builder_supports_codeberg_and_gitlab_hosts():
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("node is not installed")
+
+    function_source = extract_js_function(load_inline_script(), "buildRepoUrl")
+    cases = [
+        ["owner", "repo", "https://github.com/owner/repo"],
+        ["codeberg.org/Hoog", "Domoticz-Stromer-plugin", "https://codeberg.org/Hoog/Domoticz-Stromer-plugin"],
+        ["gitlab.com/r.boeters", "DomoticzSabNZBDPlugin", "https://gitlab.com/r.boeters/DomoticzSabNZBDPlugin"],
+        ["git@gitlab.com:r.boeters/DomoticzSabNZBDPlugin.git", "", "https://gitlab.com/r.boeters/DomoticzSabNZBDPlugin"],
+        ["https://codeberg.org/Hoog/Domoticz-Stromer-plugin/src/branch/main", "", "https://codeberg.org/Hoog/Domoticz-Stromer-plugin"],
+        ["https://gitlab.com/r.boeters/DomoticzSabNZBDPlugin/-/tree/master", "", "https://gitlab.com/r.boeters/DomoticzSabNZBDPlugin"],
+    ]
+    node_script = f"""
+{function_source}
+const cases = {json.dumps(cases)};
+for (const [author, repo, expected] of cases) {{
+    const actual = buildRepoUrl(author, repo);
+    if (actual !== expected) {{
+        throw new Error(`${{author}}/${{repo}}: expected "${{expected}}", got "${{actual}}"`);
+    }}
+}}
+"""
+
+    with tempfile.NamedTemporaryFile(suffix=".js", mode="w", delete=False) as f:
+        f.write(node_script)
+        temp_path = f.name
+    try:
+        result = subprocess.run(
+            [node, temp_path],
+            capture_output=True,
+            text=True,
+        )
+    finally:
+        os.remove(temp_path)
+    assert result.returncode == 0, result.stderr
+
+
 def test_update_buttons_keep_shared_and_state_specific_classes():
     html = (REPO_ROOT / "pypluginstore.html").read_text()
 

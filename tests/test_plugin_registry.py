@@ -227,6 +227,27 @@ def test_build_git_clone_url_accepts_owner_repo_and_full_urls(plugin_core_module
     assert plugin.build_git_clone_url("file:///srv/git/local-plugin", "") == "file:///srv/git/local-plugin"
 
 
+def test_build_git_clone_url_accepts_codeberg_and_gitlab_hosts(plugin_core_module):
+    plugin = plugin_core_module.BasePlugin()
+
+    assert plugin.build_git_clone_url(
+        "codeberg.org/Hoog",
+        "Domoticz-Stromer-plugin",
+    ) == "https://codeberg.org/Hoog/Domoticz-Stromer-plugin.git"
+    assert plugin.build_git_clone_url(
+        "gitlab.com/r.boeters",
+        "DomoticzSabNZBDPlugin",
+    ) == "https://gitlab.com/r.boeters/DomoticzSabNZBDPlugin.git"
+    assert plugin.build_git_clone_url(
+        "https://gitlab.com/r.boeters/DomoticzSabNZBDPlugin/-/tree/master",
+        "",
+    ) == "https://gitlab.com/r.boeters/DomoticzSabNZBDPlugin.git"
+    assert plugin.build_git_clone_url(
+        "https://codeberg.org/Hoog/Domoticz-Stromer-plugin/src/branch/main",
+        "",
+    ) == "https://codeberg.org/Hoog/Domoticz-Stromer-plugin.git"
+
+
 def test_build_git_clone_url_only_normalizes_real_github_hosts(plugin_core_module):
     plugin = plugin_core_module.BasePlugin()
 
@@ -238,6 +259,69 @@ def test_build_git_clone_url_only_normalizes_real_github_hosts(plugin_core_modul
         "https://example.com/github.com/owner/repo/tree/main",
         "",
     ) == "https://example.com/github.com/owner/repo/tree/main"
+
+
+def test_normalize_git_repo_identity_supports_codeberg_and_gitlab(plugin_core_module):
+    plugin = plugin_core_module.BasePlugin()
+
+    assert plugin.normalize_git_repo_identity(
+        "git@gitlab.com:r.boeters/DomoticzSabNZBDPlugin.git",
+    ) == "gitlab.com/r.boeters/domoticzsabnzbdplugin"
+    assert plugin.normalize_git_repo_identity(
+        "https://codeberg.org/Hoog/Domoticz-Stromer-plugin/src/branch/main",
+    ) == "codeberg.org/hoog/domoticz-stromer-plugin"
+    assert plugin.normalize_github_repo_identity(
+        "https://codeberg.org/Hoog/Domoticz-Stromer-plugin",
+    ) == "codeberg.org/hoog/domoticz-stromer-plugin"
+
+
+def test_get_plugin_versions_fetches_raw_plugin_py_for_supported_hosts(plugin_core_module, tmp_path, monkeypatch):
+    plugins_dir, _ = configure_home(plugin_core_module, tmp_path)
+    (plugins_dir / "Stromer").mkdir()
+    (plugins_dir / "Stromer" / "plugin.py").write_text(
+        '"""\n<plugin key="Stromer" name="Stromer" version="1.0.0">\n</plugin>\n"""\n'
+    )
+    (plugins_dir / "SabNZBD").mkdir()
+    (plugins_dir / "SabNZBD" / "plugin.py").write_text(
+        '"""\n<plugin key="SabNZBD" name="SabNZBD" version="0.0.1">\n</plugin>\n"""\n'
+    )
+    plugin = plugin_core_module.BasePlugin()
+    plugin.plugin_data = {
+        "Stromer": ["codeberg.org/Hoog", "Domoticz-Stromer-plugin", "description", "main", ""],
+        "SabNZBD": ["gitlab.com/r.boeters", "DomoticzSabNZBDPlugin", "description", "master", ""],
+    }
+    fetched_urls = []
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc_value, traceback):
+            return False
+
+        def read(self):
+            return b'"""\n<plugin key="Remote" name="Remote" version="2.0.0">\n</plugin>\n"""\n'
+
+    def fake_urlopen(request, timeout=0):
+        fetched_urls.append(request.full_url)
+        return FakeResponse()
+
+    monkeypatch.setattr(plugin_core_module.urllib.request, "urlopen", fake_urlopen)
+
+    versions = plugin.get_plugin_versions(
+        ["Stromer", "SabNZBD"],
+        {"Stromer": "available", "SabNZBD": "available"},
+        str(plugins_dir),
+    )
+
+    assert fetched_urls == [
+        "https://codeberg.org/Hoog/Domoticz-Stromer-plugin/raw/branch/main/plugin.py",
+        "https://gitlab.com/r.boeters/DomoticzSabNZBDPlugin/-/raw/master/plugin.py",
+    ]
+    assert versions == {
+        "Stromer": {"installed": "1.0.0", "available": "2.0.0"},
+        "SabNZBD": {"installed": "0.0.1", "available": "2.0.0"},
+    }
 
 
 def test_list_plugins_response_includes_manager_and_update_status(plugin_core_module, tmp_path, monkeypatch):

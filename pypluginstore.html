@@ -699,22 +699,45 @@
     function buildRepoUrl(author, repo) {
         const cleanAuthor = String(author || '').trim();
         const cleanRepo = String(repo || '').trim();
+        const supportedHosts = ['github.com', 'gitlab.com', 'codeberg.org'];
 
-        if (cleanAuthor.startsWith('git@github.com:')) {
-            return 'https://github.com/' + cleanAuthor
-                .slice('git@github.com:'.length)
-                .replace(/\.git$/, '');
+        function stripRepoUrl(url) {
+            let stripped = String(url || '').trim().replace(/\/$/, '');
+            const markers = [
+                '/-/tree/',
+                '/-/blob/',
+                '/tree/',
+                '/blob/',
+                '/src/branch/',
+                '/raw/branch/'
+            ];
+            for (const marker of markers) {
+                if (stripped.indexOf(marker) !== -1) {
+                    stripped = stripped.split(marker, 1)[0];
+                    break;
+                }
+            }
+            return stripped.replace(/\.git$/, '');
+        }
+
+        function encodePath(value) {
+            return String(value || '').split('/').map(encodeURIComponent).join('/');
+        }
+
+        const sshMatch = cleanAuthor.match(/^git@([^:]+):(.+)$/);
+        if (sshMatch && supportedHosts.indexOf(sshMatch[1].toLowerCase()) !== -1) {
+            return stripRepoUrl('https://' + sshMatch[1].toLowerCase() + '/' + sshMatch[2]);
         }
 
         if (cleanAuthor.startsWith('http://') || cleanAuthor.startsWith('https://')) {
-            return cleanAuthor
-                .split('/tree/', 1)[0]
-                .split('/blob/', 1)[0]
-                .replace(/\.git$/, '');
+            return stripRepoUrl(cleanAuthor);
         }
 
-        if (cleanAuthor.startsWith('github.com/')) {
-            return 'https://' + cleanAuthor.replace(/\.git$/, '');
+        for (const host of supportedHosts) {
+            if (cleanAuthor.toLowerCase() === host || cleanAuthor.toLowerCase().startsWith(host + '/')) {
+                const path = cleanRepo ? cleanAuthor.replace(/\/$/, '') + '/' + cleanRepo : cleanAuthor;
+                return stripRepoUrl('https://' + encodePath(path));
+            }
         }
 
         return 'https://github.com/' + encodeURIComponent(cleanAuthor) + '/' + encodeURIComponent(cleanRepo);
