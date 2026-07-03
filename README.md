@@ -273,6 +273,17 @@ GITHUB_TOKEN="$(gh auth token)" python .github/scripts/detect_plugin_platforms.p
 
 The detector uses GitHub repository metadata, README/install text, selected source files, platform-specific imports, scripts, paths, and command usage. Generic Python plugins with no Linux-only or Windows-only evidence are classified as likely supporting both platforms.
 
+Maintainers can audit the public registry for entries whose configured branch no longer contains a root-level `plugin.py` with:
+
+```bash
+python .github/scripts/cleanup_registry.py
+python .github/scripts/cleanup_registry.py --apply
+```
+
+The cleanup script supports GitHub, Codeberg, and GitLab entries. Dry-run is the default; `--apply` removes missing entries from `registry.json`, `update_times.json`, and `.github/platform_detection.json`.
+
+CI validation also checks that every public registry entry points to an existing root-level `plugin.py`.
+
 ---
 
 ## ⚠️ Security Warning

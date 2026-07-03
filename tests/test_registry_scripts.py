@@ -1,4 +1,5 @@
 import json
+import urllib.error
 from types import SimpleNamespace
 
 import pytest
@@ -40,6 +41,14 @@ def scan_plugins_module():
     return load_module_from_path(
         "scan_github_plugins_under_test",
         REPO_ROOT / ".github" / "scripts" / "scan_github_plugins.py",
+    )
+
+
+@pytest.fixture
+def cleanup_registry_module():
+    return load_module_from_path(
+        "cleanup_registry_under_test",
+        REPO_ROOT / ".github" / "scripts" / "cleanup_registry.py",
     )
 
 
@@ -210,6 +219,68 @@ def test_validate_repository_requires_matching_branch_output(validate_plugins_mo
     assert validate_plugins_module.validate_repository("owner", "empty-repo", "main") is False
 
 
+def test_validate_root_plugin_py_accepts_present_file_on_supported_hosts(validate_plugins_module):
+    fetched_urls = []
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc_value, traceback):
+            return False
+
+        def read(self, size=-1):
+            return b"import Domoticz\n"
+
+    def fake_urlopen(request, timeout=0):
+        fetched_urls.append(request.full_url)
+        return FakeResponse()
+
+    assert validate_plugins_module.validate_root_plugin_py(
+        "Domoticz-Stromer-plugin",
+        "codeberg.org/Hoog",
+        "Domoticz-Stromer-plugin",
+        "main",
+        opener=fake_urlopen,
+    ) is True
+
+    assert fetched_urls == [
+        "https://codeberg.org/Hoog/Domoticz-Stromer-plugin/raw/branch/main/plugin.py",
+    ]
+
+
+@pytest.mark.parametrize(
+    ("content", "error"),
+    [
+        (b"", None),
+        (None, urllib.error.HTTPError("https://example.invalid/plugin.py", 404, "Not Found", {}, None)),
+    ],
+)
+def test_validate_root_plugin_py_rejects_missing_or_empty_file(validate_plugins_module, content, error):
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc_value, traceback):
+            return False
+
+        def read(self, size=-1):
+            return content
+
+    def fake_urlopen(request, timeout=0):
+        if error is not None:
+            raise error
+        return FakeResponse()
+
+    assert validate_plugins_module.validate_root_plugin_py(
+        "BrokenPlugin",
+        "owner",
+        "repo",
+        "main",
+        opener=fake_urlopen,
+    ) is False
+
+
 @pytest.mark.parametrize(
     ("repo_name", "expected"),
     [
@@ -288,6 +359,161 @@ def test_scanner_checks_root_plugin_py_on_supported_hosts(scan_plugins_module, m
         "https://codeberg.org/Hoog/Domoticz-Stromer-plugin/raw/branch/main/plugin.py",
         "https://gitlab.com/r.boeters/DomoticzSabNZBDPlugin/-/raw/master/plugin.py",
     ]
+
+
+def test_cleanup_registry_builds_raw_plugin_urls_for_supported_hosts(cleanup_registry_module):
+    assert cleanup_registry_module.raw_plugin_url("owner", "repo", "main") == (
+        "https://raw.githubusercontent.com/owner/repo/main/plugin.py"
+    )
+    assert cleanup_registry_module.raw_plugin_url(
+        "codeberg.org/Hoog",
+        "Domoticz-Stromer-plugin",
+        "main",
+    ) == "https://codeberg.org/Hoog/Domoticz-Stromer-plugin/raw/branch/main/plugin.py"
+    assert cleanup_registry_module.raw_plugin_url(
+        "gitlab.com/r.boeters",
+        "DomoticzSabNZBDPlugin",
+        "master",
+    ) == "https://gitlab.com/r.boeters/DomoticzSabNZBDPlugin/-/raw/master/plugin.py"
+
+
+def test_cleanup_registry_dry_run_does_not_remove_entries(cleanup_registry_module, tmp_path):
+    registry_file = tmp_path / "registry.json"
+    update_times_file = tmp_path / "update_times.json"
+    metadata_file = tmp_path / "platform_detection.json"
+    registry = {
+        "Idle": ["Idle", "Idle", "Idle", "master"],
+        "Good": ["owner", "present", "description", "main"],
+        "Missing": ["owner", "missing", "description", "main"],
+        "Empty": ["owner", "empty", "description", "main"],
+        "ServerError": ["owner", "server-error", "description", "main"],
+    }
+    update_times = {
+        "Good": "2026-06-14T15:10:03Z",
+        "Missing": "2026-06-14T15:10:03Z",
+        "Empty": "2026-06-14T15:10:03Z",
+        "ServerError": "2026-06-14T15:10:03Z",
+    }
+    metadata = {
+        "version": 1,
+        "entries": {
+            key: {"registry_platforms": ["linux"]}
+            for key in ("Good", "Missing", "Empty", "ServerError")
+        },
+    }
+    registry_file.write_text(json.dumps(registry))
+    update_times_file.write_text(json.dumps(update_times))
+    metadata_file.write_text(json.dumps(metadata))
+
+    class FakeResponse:
+        def __init__(self, content):
+            self.content = content
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc_value, traceback):
+            return False
+
+        def read(self, size=-1):
+            return self.content
+
+    def fake_urlopen(request, timeout=0):
+        url = request.full_url
+        if "/present/" in url:
+            return FakeResponse(b"import Domoticz\n")
+        if "/missing/" in url:
+            raise urllib.error.HTTPError(url, 404, "Not Found", {}, None)
+        if "/empty/" in url:
+            return FakeResponse(b"")
+        if "/server-error/" in url:
+            raise urllib.error.HTTPError(url, 500, "Server Error", {}, None)
+        raise AssertionError(f"Unexpected URL: {url}")
+
+    stats = cleanup_registry_module.cleanup_registry_files(
+        str(registry_file),
+        str(update_times_file),
+        str(metadata_file),
+        apply_changes=False,
+        sleep_seconds=0,
+        opener=fake_urlopen,
+    )
+
+    assert stats == {
+        "checked": 4,
+        "present": 1,
+        "would_remove": 2,
+        "removed": 0,
+        "errors": 1,
+    }
+    assert json.loads(registry_file.read_text()) == registry
+    assert json.loads(update_times_file.read_text()) == update_times
+    assert json.loads(metadata_file.read_text()) == metadata
+
+
+def test_cleanup_registry_apply_removes_missing_entries_from_sidecars(cleanup_registry_module, tmp_path):
+    registry_file = tmp_path / "registry.json"
+    update_times_file = tmp_path / "update_times.json"
+    metadata_file = tmp_path / "platform_detection.json"
+    registry_file.write_text(json.dumps({
+        "Idle": ["Idle", "Idle", "Idle", "master"],
+        "Good": ["owner", "present", "description", "main"],
+        "Missing": ["owner", "missing", "description", "main"],
+        "ServerError": ["owner", "server-error", "description", "main"],
+    }))
+    update_times_file.write_text(json.dumps({
+        "Good": "2026-06-14T15:10:03Z",
+        "Missing": "2026-06-14T15:10:03Z",
+        "ServerError": "2026-06-14T15:10:03Z",
+    }))
+    metadata_file.write_text(json.dumps({
+        "version": 1,
+        "entries": {
+            "Good": {"registry_platforms": ["linux"]},
+            "Missing": {"registry_platforms": ["linux"]},
+            "ServerError": {"registry_platforms": ["linux"]},
+        },
+    }))
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc_value, traceback):
+            return False
+
+        def read(self, size=-1):
+            return b"import Domoticz\n"
+
+    def fake_urlopen(request, timeout=0):
+        url = request.full_url
+        if "/present/" in url:
+            return FakeResponse()
+        if "/missing/" in url:
+            raise urllib.error.HTTPError(url, 404, "Not Found", {}, None)
+        if "/server-error/" in url:
+            raise urllib.error.HTTPError(url, 500, "Server Error", {}, None)
+        raise AssertionError(f"Unexpected URL: {url}")
+
+    stats = cleanup_registry_module.cleanup_registry_files(
+        str(registry_file),
+        str(update_times_file),
+        str(metadata_file),
+        apply_changes=True,
+        sleep_seconds=0,
+        opener=fake_urlopen,
+    )
+
+    registry = json.loads(registry_file.read_text())
+    update_times = json.loads(update_times_file.read_text())
+    metadata = json.loads(metadata_file.read_text())
+
+    assert stats["removed"] == 1
+    assert "Good" in registry
+    assert "Missing" not in registry
+    assert "ServerError" in registry
+    assert "Missing" not in update_times
+    assert "Missing" not in metadata["entries"]
 
 
 def test_platform_detector_flags_linux_only_dependencies(platform_detector_module):

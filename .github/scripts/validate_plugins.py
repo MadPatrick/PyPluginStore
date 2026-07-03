@@ -4,7 +4,9 @@ import json
 import subprocess
 
 # Adjust path relative to the current script location
-SCRIPT_DIR = os.path.dirname(__file__)
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+if SCRIPT_DIR not in sys.path:
+    sys.path.insert(0, SCRIPT_DIR)
 REGISTRY_FILE_PATH = os.path.join(SCRIPT_DIR, '../../registry.json')
 PLATFORM_METADATA_FILE_PATH = os.path.join(SCRIPT_DIR, '../../.github/platform_detection.json')
 DEFAULT_GIT_HOST = "github.com"
@@ -16,6 +18,11 @@ try:
     from detect_plugin_platforms import get_registry_entry_platforms
 except ImportError:
     get_registry_entry_platforms = None
+
+try:
+    from cleanup_registry import check_root_plugin_py
+except ImportError:
+    check_root_plugin_py = None
 
 def load_registry():
     print(f"Checking if registry file exists at: {REGISTRY_FILE_PATH}")
@@ -149,6 +156,27 @@ def validate_repository(author, repository, branch):
         print(f"stderr: {result.stderr}")
     return result.returncode == 0 and bool(result.stdout.strip())
 
+
+def validate_root_plugin_py(key, author, repository, branch, opener=None):
+    if check_root_plugin_py is None:
+        print("Root plugin.py validation is unavailable because cleanup_registry.py could not be imported.")
+        return False
+
+    result = check_root_plugin_py(
+        key,
+        [author, repository, "", branch],
+        opener=opener,
+    )
+    if result.status == "present":
+        return True
+
+    detail = f" ({result.reason})" if result.reason else ""
+    print(f"Root plugin.py check failed for {key}: {result.status}{detail}")
+    if result.url:
+        print(f"Checked URL: {result.url}")
+    return False
+
+
 def main():
     print("Loading registry file...")
     plugin_data = load_registry()
@@ -161,8 +189,17 @@ def main():
     all_valid = True
     for key, data in plugin_data.items():
         print(f"Validating repository for plugin: {key}")
-        is_valid = validate_repository(data["author"], data["repository"], data["branch"])
-        if is_valid:
+        repository_is_valid = validate_repository(data["author"], data["repository"], data["branch"])
+        plugin_file_is_valid = False
+        if repository_is_valid:
+            plugin_file_is_valid = validate_root_plugin_py(
+                key,
+                data["author"],
+                data["repository"],
+                data["branch"],
+            )
+
+        if repository_is_valid and plugin_file_is_valid:
             print(f"✅ Repository {data['author']}/{data['repository']} on branch {data['branch']} is valid.")
         else:
             print(f"❌ Repository {data['author']}/{data['repository']} on branch {data['branch']} is invalid.")
