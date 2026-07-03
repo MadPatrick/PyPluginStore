@@ -85,6 +85,7 @@ class HostRuntime:
     def __init__(self, parameters):
         self.parameters = parameters
         self._git_ownership_reported = set()
+        self._git_ownership_safe_directory_reported = set()
         self._git_ownership_repair_attempted = set()
 
     def parameter(self, key, default):
@@ -257,10 +258,6 @@ class HostRuntime:
 
     def handle_git_ownership_failure(self, result, command, cwd, timeout):
         repo_dir = os.path.realpath(os.path.abspath(cwd))
-        if repo_dir in self._git_ownership_repair_attempted:
-            return result
-
-        self._git_ownership_repair_attempted.add(repo_dir)
 
         # Build modified command with safe.directory
         safe_command = list(command)
@@ -268,10 +265,18 @@ class HostRuntime:
             safe_command.insert(1, "-c")
             safe_command.insert(2, "safe.directory=" + repo_dir)
 
-        Domoticz.Log("Git refused the plugin repository due to file ownership; retrying with safe.directory bypass.")
-        retry_result = self._run_git_once(safe_command, cwd, timeout=timeout)
-        if retry_result is not None and not self.is_git_dubious_ownership(retry_result):
-            return retry_result
+            if repo_dir not in self._git_ownership_safe_directory_reported:
+                Domoticz.Log("Git refused the plugin repository due to file ownership; retrying with safe.directory bypass.")
+                self._git_ownership_safe_directory_reported.add(repo_dir)
+
+            retry_result = self._run_git_once(safe_command, cwd, timeout=timeout)
+            if retry_result is not None and not self.is_git_dubious_ownership(retry_result):
+                return retry_result
+
+        if repo_dir in self._git_ownership_repair_attempted:
+            return result
+
+        self._git_ownership_repair_attempted.add(repo_dir)
 
         # Fallback to original chown repair if safe.directory fails
         if repo_dir not in self._git_ownership_reported:
@@ -1129,6 +1134,384 @@ def make_host_runtime(parameters):
     return LinuxHostRuntime(parameters)
 
 
+class RegistryEntry:
+    def __init__(
+        self,
+        key,
+        author,
+        repository,
+        description,
+        branch,
+        updated_at="",
+        platforms=None,
+        updated_at_slot_present=False,
+        local=False,
+    ):
+        self.key = str(key or "")
+        self.author = str(author or "")
+        self.repository = str(repository or "")
+        self.description = str(description or "")
+        self.branch = str(branch or "master")
+        self.updated_at = str(updated_at or "")
+        self.platforms = list(platforms or ["unknown"])
+        self.updated_at_slot_present = bool(updated_at_slot_present or self.updated_at)
+        self.local = bool(local)
+
+    def to_legacy_list(self):
+        entry = [self.author, self.repository, self.description, self.branch]
+        if self.updated_at_slot_present or self.updated_at:
+            entry.append(self.updated_at)
+        return entry
+
+    def copy_with(self, author=None, repository=None, branch=None):
+        return RegistryEntry(
+            self.key,
+            self.author if author is None else author,
+            self.repository if repository is None else repository,
+            self.description,
+            self.branch if branch is None else branch,
+            self.updated_at,
+            self.platforms,
+            self.updated_at_slot_present,
+            self.local,
+        )
+
+
+class RegistryService:
+    def __init__(self, plugin):
+        self.plugin = plugin
+
+    def normalize_entry(self, key, data, local=False, default_platforms=None):
+        platforms = ["unknown"]
+        if isinstance(data, dict):
+            author = data.get("author", data.get("owner", ""))
+            repository = data.get("repository", data.get("repo", ""))
+            description = data.get("description", "")
+            branch = data.get("branch", "master")
+            updated_at = data.get("updated_at", "")
+            platforms = self.plugin.normalize_platforms(data.get("platforms", data.get("platform", None)))
+            entry = RegistryEntry(
+                key,
+                author,
+                repository,
+                description,
+                branch,
+                updated_at,
+                platforms,
+                bool(updated_at),
+                local,
+            )
+        elif isinstance(data, list):
+            raw_entry = list(data[:5])
+            if len(data) > 5:
+                platforms = self.plugin.normalize_platforms(data[5])
+            elif default_platforms is not None:
+                platforms = self.plugin.normalize_platforms(default_platforms)
+            if len(raw_entry) < 4:
+                Domoticz.Error("Plugin '" + str(key) + "' registry entry must contain owner, repository, description and branch.")
+                return None, ["unknown"]
+            updated_at = raw_entry[4] if len(raw_entry) >= 5 else ""
+            entry = RegistryEntry(
+                key,
+                raw_entry[0],
+                raw_entry[1],
+                raw_entry[2],
+                raw_entry[3],
+                updated_at,
+                platforms,
+                len(raw_entry) >= 5,
+                local,
+            )
+        else:
+            Domoticz.Error("Plugin '" + str(key) + "' has an invalid registry entry.")
+            return None, ["unknown"]
+
+        return entry, platforms
+
+    def normalize_registry(self, registry, local_keys=None):
+        local_keys = set(local_keys or [])
+        normalized_registry = {}
+        plugin_platforms = {}
+        registry_entries = {}
+        for key, data in registry.items():
+            if key == "Idle":
+                normalized_registry[key] = data
+                plugin_platforms[key] = ["unknown"]
+                continue
+
+            try:
+                self.plugin.get_host().validate_plugin_key(key)
+            except ValueError as e:
+                Domoticz.Error("Skipping invalid plugin key '" + str(key) + "': " + str(e))
+                continue
+
+            entry, platforms = self.normalize_entry(key, data, local=key in local_keys)
+            if entry is None:
+                continue
+            normalized_registry[key] = entry.to_legacy_list()
+            plugin_platforms[key] = platforms
+            registry_entries[key] = entry
+        return normalized_registry, plugin_platforms, registry_entries
+
+
+class UpdateStatusService:
+    def __init__(self, plugin):
+        self.plugin = plugin
+
+    def refresh_single_plugin_update_status(self, plugin_key, plugin_dir, fetch_first=True):
+        if plugin_key not in self.plugin.plugin_data:
+            self.plugin.update_status[plugin_key] = "unknown"
+            return "unknown"
+
+        update_status = self.plugin.getGitUpdateStatus(plugin_dir, plugin_key, fetch_first=fetch_first)
+        self.plugin.update_status[plugin_key] = update_status
+        return update_status
+
+    def refresh_installed_update_statuses(self, installed_plugins=None, plugins_dir=None):
+        if plugins_dir is None:
+            plugins_dir = self.plugin.get_host().plugins_dir()
+        if installed_plugins is None:
+            installed_plugins = self.plugin.getInstalledPlugins(plugins_dir)
+
+        update_status = {}
+        for plugin_key in installed_plugins:
+            if plugin_key not in self.plugin.plugin_data:
+                update_status[plugin_key] = "unknown"
+                continue
+
+            try:
+                plugin_dir = self.plugin.resolve_installed_plugin_dir(plugin_key, plugins_dir)
+            except ValueError as e:
+                Domoticz.Error(str(e))
+                update_status[plugin_key] = "unknown"
+                continue
+            update_status[plugin_key] = self.plugin.refresh_single_plugin_update_status(plugin_key, plugin_dir)
+
+        self.plugin.update_status.update(update_status)
+        return update_status
+
+    def get_git_update_status(self, plugin_dir, plugin_key=None, fetch_first=True):
+        if not os.path.isdir(os.path.join(plugin_dir, ".git")):
+            return "unknown"
+
+        try:
+            if fetch_first and not self.plugin.fetch_git_repo(plugin_dir):
+                return "unknown"
+
+            remote_ref = self.plugin.get_git_remote_ref(plugin_dir) or "@{u}"
+            if plugin_key:
+                update_times = dict(self.plugin.update_times) if self.plugin.update_times else self.plugin.load_cached_update_times()
+                if self.plugin.refresh_git_update_time(plugin_key, plugin_dir, update_times, remote_ref):
+                    self.plugin.save_update_times_cache(update_times)
+                    self.plugin.apply_update_times(update_times)
+
+            ahead_behind = self.plugin.get_git_ahead_behind(plugin_dir, remote_ref)
+            if ahead_behind is None:
+                return "unknown"
+
+            behind = ahead_behind[1]
+            if behind > 0:
+                return "available"
+            return "current"
+        except Exception as e:
+            Domoticz.Debug(f"Could not determine update status for {plugin_dir}: {e}")
+            return "unknown"
+
+
+class GitInstallUpdateStrategy:
+    def __init__(self, plugin):
+        self.plugin = plugin
+
+    def install(self, entry):
+        Domoticz.Debug("InstallPythonPlugin called")
+
+        host = self.plugin.get_host()
+        plugins_dir = host.plugins_dir()
+        try:
+            plugin_dir = host.resolve_plugin_dir(entry.key)
+            plugin_key = host.validate_plugin_key(entry.key)
+        except ValueError as e:
+            Domoticz.Error(str(e))
+            return False, str(e)
+
+        try:
+            existing_plugin_dir = self.plugin.resolve_installed_plugin_dir(plugin_key, plugins_dir)
+        except ValueError as e:
+            Domoticz.Error(str(e))
+            return False, str(e)
+
+        if os.path.isdir(existing_plugin_dir):
+            existing_folder = os.path.basename(existing_plugin_dir)
+            Domoticz.Log("Plugin " + plugin_key + " is already installed in folder " + existing_folder + ".")
+            self.plugin.refresh_single_plugin_update_time(plugin_key, existing_plugin_dir, fetch_first=False)
+            self.plugin.refresh_single_plugin_update_status(plugin_key, existing_plugin_dir, fetch_first=False)
+            self.plugin.installDependencies(plugin_key)
+            return True, "Plugin already installed."
+
+        Domoticz.Log("Installing Plugin:" + entry.description)
+        clone_command = [
+            "git",
+            "clone",
+            "-b",
+            entry.branch or "master",
+            self.plugin.build_git_clone_url(entry.author, entry.repository),
+            plugin_key,
+        ]
+        Domoticz.Log("Calling: " + " ".join(clone_command))
+
+        result = host.run_git(clone_command, plugins_dir, timeout=120)
+        if result is None:
+            return False, "Git clone failed"
+        if result.stdout:
+            Domoticz.Debug("Git Response: " + result.stdout.strip())
+        if result.stderr:
+            Domoticz.Debug("Git Error: " + result.stderr.strip())
+        if result.returncode != 0:
+            Domoticz.Error("Git clone failed for plugin " + plugin_key + ".")
+            return False, (result.stderr or result.stdout or "Git clone failed").strip()
+        Domoticz.Log("Plugin " + plugin_key + " installed successfully.")
+
+        if not os.path.isdir(plugin_dir):
+            Domoticz.Error("Plugin folder was not created: " + plugin_dir)
+            return False, "Plugin folder was not created."
+
+        self.plugin.refresh_single_plugin_update_time(plugin_key, plugin_dir, fetch_first=False)
+        self.plugin.refresh_single_plugin_update_status(plugin_key, plugin_dir, fetch_first=False)
+        self.plugin.installDependencies(plugin_key)
+        Domoticz.Log("---Restarting Domoticz MAY BE REQUIRED to activate new plugins---")
+        return True, ""
+
+    def update(self, entry, queue_on_lock=True):
+        Domoticz.Debug("UpdatePythonPlugin called")
+
+        host = self.plugin.get_host()
+        try:
+            plugin_key = host.validate_plugin_key(entry.key)
+            plugin_dir = self.plugin.resolve_installed_plugin_dir(plugin_key)
+        except ValueError as e:
+            Domoticz.Error(str(e))
+            return False, str(e)
+
+        is_self_update = plugin_key == self.plugin.get_current_plugin_folder()
+
+        if entry.description in self.plugin.exception_list:
+            Domoticz.Log("Plugin:" + entry.description + " excluded by Exclusion file (exclusion.txt). Skipping!!!")
+            return True, "Excluded by exception list"
+
+        if is_self_update:
+            Domoticz.Log("Self update requested for PyPluginStore.")
+            update_success, update_message = host.schedule_self_update(plugin_dir)
+            if update_success:
+                self.plugin.update_status[plugin_key] = "unknown"
+            return update_success, update_message
+
+        Domoticz.Log("Resetting and Updating Plugin:" + plugin_key)
+
+        branch = entry.branch or "master"
+        fetch_command = ["git", "fetch", "origin"]
+        Domoticz.Debug("Calling: " + " ".join(fetch_command) + " on folder " + plugin_dir)
+        fetch_result = host.run_git(fetch_command, plugin_dir, timeout=60)
+        if fetch_result is None:
+            return False, "Git fetch failed"
+        if fetch_result.stdout:
+            Domoticz.Debug("Git Fetch Response:" + fetch_result.stdout)
+        if fetch_result.stderr and not host.is_git_dubious_ownership(fetch_result):
+            Domoticz.Debug("Git Fetch Error:" + fetch_result.stderr.strip())
+        if fetch_result.returncode != 0:
+            if host.is_git_dubious_ownership(fetch_result):
+                return False, host.git_ownership_failure_message(plugin_dir)
+            return False, (fetch_result.stderr or fetch_result.stdout or "Git fetch failed").strip()
+
+        diff_command = ["git", "diff", "--quiet", "HEAD...origin/" + branch]
+        Domoticz.Debug("Calling: " + " ".join(diff_command) + " on folder " + plugin_dir)
+        diff_result = host.run_git(diff_command, plugin_dir, timeout=15)
+        is_already_current = (diff_result is not None and diff_result.returncode == 0)
+
+        checkout_command = ["git", "checkout", "-B", branch, "origin/" + branch]
+        Domoticz.Debug("Calling: " + " ".join(checkout_command) + " on folder " + plugin_dir)
+        checkout_result = host.run_git(checkout_command, plugin_dir, timeout=30)
+        if checkout_result is None:
+            return False, "Git checkout failed"
+        if checkout_result.stdout:
+            Domoticz.Debug("Git Checkout Response:" + checkout_result.stdout)
+        if checkout_result.stderr and not host.is_git_dubious_ownership(checkout_result):
+            Domoticz.Debug("Git Checkout Error:" + checkout_result.stderr.strip())
+        if checkout_result.returncode != 0:
+            if host.is_git_dubious_ownership(checkout_result):
+                return False, host.git_ownership_failure_message(plugin_dir)
+            if host.is_locked_file_message(checkout_result.stderr + checkout_result.stdout):
+                message = "Plugin files are in use; update queued for the next startup."
+                if queue_on_lock:
+                    self.plugin.queuePendingOperation("update", plugin_key)
+                Domoticz.Error(message)
+                return False, message
+            return False, (checkout_result.stderr or checkout_result.stdout or "Git checkout failed").strip()
+
+        reset_command = ["git", "reset", "--hard", "origin/" + branch]
+        Domoticz.Debug("Calling: " + " ".join(reset_command) + " on folder " + plugin_dir)
+        reset_result = host.run_git(reset_command, plugin_dir, timeout=30)
+        if reset_result is None:
+            return False, "Git reset failed"
+        if reset_result.stdout:
+            Domoticz.Debug("Git Reset Response:" + reset_result.stdout)
+        if reset_result.stderr and not host.is_git_dubious_ownership(reset_result):
+            Domoticz.Debug("Git Reset Error:" + reset_result.stderr.strip())
+        if reset_result.returncode != 0:
+            if host.is_git_dubious_ownership(reset_result):
+                return False, host.git_ownership_failure_message(plugin_dir)
+            if host.is_locked_file_message(reset_result.stderr + reset_result.stdout):
+                message = "Plugin files are in use; update queued for the next startup."
+                if queue_on_lock:
+                    self.plugin.queuePendingOperation("update", plugin_key)
+                Domoticz.Error(message)
+                return False, message
+            return False, (reset_result.stderr or reset_result.stdout or "Git reset failed").strip()
+
+        if is_already_current:
+            Domoticz.Log("Plugin " + plugin_key + " already Up-To-Date")
+        else:
+            Domoticz.Log("Succesfully pulled gitHub update for plugin " + plugin_key)
+            Domoticz.Log("---Restarting Domoticz MAY BE REQUIRED to activate new plugins---")
+
+        self.plugin.refresh_single_plugin_update_time(plugin_key, plugin_dir, fetch_first=False)
+        self.plugin.refresh_single_plugin_update_status(plugin_key, plugin_dir, fetch_first=False)
+        self.plugin.installDependencies(plugin_key)
+        return True, ""
+
+    def check_for_update(self, entry):
+        Domoticz.Debug("CheckForUpdatePythonPlugin called")
+
+        if entry.description in self.plugin.exception_list:
+            self.plugin.update_status[entry.key] = "unknown"
+            Domoticz.Log("Plugin:" + entry.description + " excluded by Exclusion file (exclusion.txt). Skipping!!!")
+            return None
+
+        Domoticz.Debug("Checking Plugin:" + entry.key + " for updates")
+
+        try:
+            plugin_dir = self.plugin.resolve_installed_plugin_dir(entry.key)
+        except ValueError as e:
+            self.plugin.update_status[entry.key] = "unknown"
+            Domoticz.Error(str(e))
+            return None
+
+        if not os.path.isdir(os.path.join(plugin_dir, ".git")):
+            self.plugin.update_status[entry.key] = "unknown"
+            Domoticz.Log("Plugin:" + entry.key + " is not installed from gitHub. Ignoring!!.")
+            return None
+
+        update_status = self.plugin.getGitUpdateStatus(plugin_dir, entry.key)
+        self.plugin.update_status[entry.key] = update_status
+        if update_status == "available":
+            Domoticz.Log("Found that we are behind on plugin " + entry.key)
+            self.plugin.fnSelectedNotify(entry.key)
+        elif update_status == "current":
+            Domoticz.Log("Plugin " + entry.key + " already Up-To-Date")
+        else:
+            Domoticz.Debug("Could not determine update status for " + entry.key + ".")
+
+        return None
+
 
 class BasePlugin:
     enabled = False
@@ -1145,6 +1528,7 @@ class BasePlugin:
         self.exception_list = []
         self.secpoluser_list = {}
         self.plugin_data = {}
+        self.registry_entries = {}
         self.local_plugin_keys = []
         self.update_times = {}
         self.update_status = {}
@@ -1154,6 +1538,9 @@ class BasePlugin:
         self.host = None
         self.installed_plugin_folders = {}
         self.installed_plugin_match_details = {}
+        self.registry_service = RegistryService(self)
+        self.update_status_service = UpdateStatusService(self)
+        self.install_update_strategy = GitInstallUpdateStrategy(self)
 
     def get_host(self):
         parameters = globals().get("Parameters", {})
@@ -1187,6 +1574,44 @@ class BasePlugin:
 
     def get_local_registry_file(self):
         return os.path.join(self.get_plugin_home_folder(), "registry_local.json")
+
+    def get_registry_entry(self, plugin_key):
+        data = self.plugin_data.get(plugin_key)
+        if data is not None:
+            has_explicit_platforms = (
+                plugin_key in self.plugin_platforms
+                or (isinstance(data, list) and len(data) > 5)
+                or (
+                    isinstance(data, dict)
+                    and ("platforms" in data or "platform" in data)
+                )
+            )
+            entry, platforms = self.registry_service.normalize_entry(
+                plugin_key,
+                data,
+                local=plugin_key in self.local_plugin_keys,
+                default_platforms=self.plugin_platforms.get(plugin_key),
+            )
+            if entry is None:
+                return None
+            self.registry_entries[plugin_key] = entry
+            if has_explicit_platforms:
+                self.plugin_platforms[plugin_key] = platforms
+            return entry
+
+        return self.registry_entries.get(plugin_key)
+
+    def get_registry_entry_for_operation(self, plugin_key, author="", repository="", branch=""):
+        entry = self.get_registry_entry(plugin_key)
+        if entry is None:
+            entry = RegistryEntry(plugin_key, author, repository, "", branch or "master")
+        else:
+            entry = entry.copy_with(
+                author=author if author else None,
+                repository=repository if repository else None,
+                branch=branch if branch else None,
+            )
+        return entry
 
     def supported_git_host(self, hostname):
         hostname = str(hostname or "").strip().lower()
@@ -1395,8 +1820,8 @@ class BasePlugin:
         return metadata
 
     def plugin_metadata_matches_registry(self, plugin_key, plugin_dir, metadata=None):
-        data = self.plugin_data.get(plugin_key)
-        if not isinstance(data, list) or len(data) < 4:
+        entry = self.get_registry_entry(plugin_key)
+        if entry is None:
             return False
 
         if metadata is None:
@@ -1405,7 +1830,7 @@ class BasePlugin:
                 Domoticz.Debug("Skipped possible plugin match for folder " + os.path.basename(plugin_dir) + " because plugin.py metadata could not be verified.")
                 return False
 
-        clone_url = self.build_git_clone_url(data[0], data[1])
+        clone_url = self.build_git_clone_url(entry.author, entry.repository)
         expected_repo_identity = self.normalize_github_repo_identity(clone_url)
         externallink = metadata.get("externallink", "")
         externallink_identity = self.normalize_github_repo_identity(externallink)
@@ -1417,7 +1842,7 @@ class BasePlugin:
 
         repo_folder = self.plugin_folder_name_from_clone_url(clone_url)
         expected_names = set()
-        for expected_name in (plugin_key, data[1], repo_folder):
+        for expected_name in (plugin_key, entry.repository, repo_folder):
             expected_names.add(self.normalize_plugin_metadata_value(expected_name))
             expected_names.add(
                 self.normalize_plugin_metadata_value(
@@ -1475,22 +1900,23 @@ class BasePlugin:
         remote_lookup = {}
         repo_identity_lookup = {}
 
-        for plugin_key, data in self.plugin_data.items():
-            if plugin_key == "Idle" or not isinstance(data, list) or len(data) < 4:
+        for plugin_key in self.plugin_data:
+            entry = self.get_registry_entry(plugin_key)
+            if plugin_key == "Idle" or entry is None:
                 continue
 
             exact_name_lookup[self.normalize_plugin_folder_name(plugin_key)] = plugin_key
             self.add_flexible_name_candidate(flexible_name_lookup, plugin_key, plugin_key)
             self.add_flexible_name_candidate(metadata_name_lookup, plugin_key, plugin_key)
 
-        for plugin_key, data in self.plugin_data.items():
-            if plugin_key == "Idle" or not isinstance(data, list) or len(data) < 4:
+        for plugin_key in self.plugin_data:
+            entry = self.get_registry_entry(plugin_key)
+            if plugin_key == "Idle" or entry is None:
                 continue
 
-            author = data[0]
-            repository = data[1]
-            branch = data[3]
-            clone_url = self.build_git_clone_url(author, repository)
+            repository = entry.repository
+            branch = entry.branch
+            clone_url = self.build_git_clone_url(entry.author, repository)
             repo_folder = self.plugin_folder_name_from_clone_url(clone_url)
             name_candidates = [repository, repo_folder]
 
@@ -1947,10 +2373,16 @@ class BasePlugin:
         for key, data in self.plugin_data.items():
             if key == "Idle":
                 continue
+
+            updated_at = update_times.get(key, "")
+            entry = self.get_registry_entry(key)
+            if entry is not None:
+                entry.updated_at = updated_at
+                entry.updated_at_slot_present = True
+
             if not isinstance(data, list):
                 continue
 
-            updated_at = update_times.get(key, "")
             if len(data) == 4:
                 data.append(updated_at)
             elif len(data) >= 5:
@@ -1997,6 +2429,10 @@ class BasePlugin:
                 data.append(updated_at)
             elif len(data) >= 5:
                 data[4] = updated_at
+        entry = self.get_registry_entry(plugin_key)
+        if entry is not None:
+            entry.updated_at = updated_at
+            entry.updated_at_slot_present = True
 
         Domoticz.Log("Git update date changed for " + plugin_key + ": " + updated_at)
         if remote_url:
@@ -2251,7 +2687,8 @@ class BasePlugin:
     def get_plugin_versions(self, installed_plugins, update_status, plugins_dir):
         versions = {}
         for plugin_key in installed_plugins:
-            if plugin_key not in self.plugin_data:
+            entry = self.get_registry_entry(plugin_key)
+            if entry is None:
                 continue
 
             try:
@@ -2264,12 +2701,9 @@ class BasePlugin:
             available_version = None
 
             if update_status.get(plugin_key) == "available":
-                author = self.plugin_data[plugin_key][0]
-                repository = self.plugin_data[plugin_key][1]
-                branch = self.plugin_data[plugin_key][3]
-                url = self.build_raw_plugin_url(author, repository, branch)
+                url = self.build_raw_plugin_url(entry.author, entry.repository, entry.branch)
                 if not url:
-                    Domoticz.Debug("Could not build remote version URL for " + str(repository))
+                    Domoticz.Debug("Could not build remote version URL for " + str(entry.repository))
                     continue
                 try:
                     req = urllib.request.Request(url)
@@ -2283,7 +2717,7 @@ class BasePlugin:
                                     available_version = html.unescape(val or "")
                                     break
                 except Exception as e:
-                    Domoticz.Debug(f"Could not fetch remote version for {repository}: {e}")
+                    Domoticz.Debug(f"Could not fetch remote version for {entry.repository}: {e}")
 
             if installed_version or available_version:
                 versions[plugin_key] = {}
@@ -2294,36 +2728,10 @@ class BasePlugin:
         return versions
 
     def refresh_single_plugin_update_status(self, plugin_key, plugin_dir, fetch_first=True):
-        if plugin_key not in self.plugin_data:
-            self.update_status[plugin_key] = "unknown"
-            return "unknown"
-
-        update_status = self.getGitUpdateStatus(plugin_dir, plugin_key, fetch_first=fetch_first)
-        self.update_status[plugin_key] = update_status
-        return update_status
+        return self.update_status_service.refresh_single_plugin_update_status(plugin_key, plugin_dir, fetch_first)
 
     def refreshInstalledUpdateStatuses(self, installed_plugins=None, plugins_dir=None):
-        if plugins_dir is None:
-            plugins_dir = self.get_host().plugins_dir()
-        if installed_plugins is None:
-            installed_plugins = self.getInstalledPlugins(plugins_dir)
-
-        update_status = {}
-        for plugin_key in installed_plugins:
-            if plugin_key not in self.plugin_data:
-                update_status[plugin_key] = "unknown"
-                continue
-
-            try:
-                plugin_dir = self.resolve_installed_plugin_dir(plugin_key, plugins_dir)
-            except ValueError as e:
-                Domoticz.Error(str(e))
-                update_status[plugin_key] = "unknown"
-                continue
-            update_status[plugin_key] = self.refresh_single_plugin_update_status(plugin_key, plugin_dir)
-
-        self.update_status.update(update_status)
-        return update_status
+        return self.update_status_service.refresh_installed_update_statuses(installed_plugins, plugins_dir)
 
     def get_managed_installed_plugin_keys(self, plugins_dir=None):
         if plugins_dir is None:
@@ -2340,14 +2748,19 @@ class BasePlugin:
         if not self_key:
             return
 
-        self.plugin_data[self_key] = [
+        entry = RegistryEntry(
+            self_key,
             "adrighem",
             "PyPluginStore",
             "PyPluginStore plugin manager",
             "master",
-            self.update_times.get(self_key, "")
-        ]
-        self.plugin_platforms[self_key] = ["linux", "windows"]
+            self.update_times.get(self_key, ""),
+            ["linux", "windows"],
+            True,
+        )
+        self.registry_entries[self_key] = entry
+        self.plugin_data[self_key] = entry.to_legacy_list()
+        self.plugin_platforms[self_key] = entry.platforms
 
     def normalize_platforms(self, platforms):
         if not platforms:
@@ -2366,51 +2779,14 @@ class BasePlugin:
         return normalized or ["unknown"]
 
     def normalize_registry_entry(self, key, data):
-        platforms = ["unknown"]
-        if isinstance(data, dict):
-            author = data.get("author", data.get("owner", ""))
-            repository = data.get("repository", data.get("repo", ""))
-            description = data.get("description", "")
-            branch = data.get("branch", "master")
-            updated_at = data.get("updated_at", "")
-            platforms = self.normalize_platforms(data.get("platforms", data.get("platform", None)))
-            entry = [author, repository, description, branch]
-            if updated_at:
-                entry.append(updated_at)
-        elif isinstance(data, list):
-            entry = list(data[:5])
-            if len(data) > 5:
-                platforms = self.normalize_platforms(data[5])
-        else:
-            Domoticz.Error("Plugin '" + str(key) + "' has an invalid registry entry.")
-            return None, ["unknown"]
-
-        if len(entry) < 4:
-            Domoticz.Error("Plugin '" + str(key) + "' registry entry must contain owner, repository, description and branch.")
-            return None, ["unknown"]
-
-        return entry, platforms
+        entry, platforms = self.registry_service.normalize_entry(key, data)
+        if entry is None:
+            return None, platforms
+        return entry.to_legacy_list(), platforms
 
     def normalize_registry(self, registry):
-        normalized_registry = {}
-        plugin_platforms = {}
-        for key, data in registry.items():
-            if key == "Idle":
-                normalized_registry[key] = data
-                plugin_platforms[key] = ["unknown"]
-                continue
-
-            try:
-                self.get_host().validate_plugin_key(key)
-            except ValueError as e:
-                Domoticz.Error("Skipping invalid plugin key '" + str(key) + "': " + str(e))
-                continue
-
-            entry, platforms = self.normalize_registry_entry(key, data)
-            if entry is None:
-                continue
-            normalized_registry[key] = entry
-            plugin_platforms[key] = platforms
+        normalized_registry, plugin_platforms, registry_entries = self.registry_service.normalize_registry(registry)
+        self.registry_entries = registry_entries
         return normalized_registry, plugin_platforms
 
     def fetch_registry(self):
@@ -2429,12 +2805,17 @@ class BasePlugin:
             Domoticz.Log("Merged " + str(len(local_registry)) + " local plugin registry entries.")
 
         if registry_loaded:
-            self.plugin_data, self.plugin_platforms = self.normalize_registry(merged_registry)
+            (
+                self.plugin_data,
+                self.plugin_platforms,
+                self.registry_entries,
+            ) = self.registry_service.normalize_registry(merged_registry, local_plugin_keys)
             self.local_plugin_keys = local_plugin_keys
         elif self.plugin_data:
             Domoticz.Error("No plugin registry found. Keeping existing plugin registry.")
         else:
             self.plugin_data = {}
+            self.registry_entries = {}
             self.plugin_platforms = {}
             self.local_plugin_keys = []
             Domoticz.Error("No plugin registry found. Plugins cannot be managed.")
@@ -2604,12 +2985,16 @@ class BasePlugin:
         if Parameters["Mode4"] == 'All':
             Domoticz.Log("Updating All Plugins!!!")
             for plugin_key in self.get_managed_installed_plugin_keys(plugins_dir):
-                self.UpdatePythonPlugin(self.plugin_data[plugin_key][0], self.plugin_data[plugin_key][1], plugin_key)
+                entry = self.get_registry_entry(plugin_key)
+                if entry is not None:
+                    self.UpdatePythonPlugin(entry.author, entry.repository, plugin_key)
 
         if Parameters["Mode4"] == 'AllNotify':
             Domoticz.Log("Collecting Updates for All Plugins!!!")
             for plugin_key in self.get_managed_installed_plugin_keys(plugins_dir):
-                self.CheckForUpdatePythonPlugin(self.plugin_data[plugin_key][0], self.plugin_data[plugin_key][1], plugin_key)
+                entry = self.get_registry_entry(plugin_key)
+                if entry is not None:
+                    self.CheckForUpdatePythonPlugin(entry.author, entry.repository, plugin_key)
 
         Domoticz.Log("Plugin Manager Ready. Use the 'Custom' menu to manage plugins.")
         Domoticz.Heartbeat(60)
@@ -2731,10 +3116,11 @@ class BasePlugin:
             if action == "remove":
                 success, message = self.removePlugin(plugin_key, queue_on_lock=False)
             elif action == "update":
-                if plugin_key in self.plugin_data:
+                entry = self.get_registry_entry(plugin_key)
+                if entry is not None:
                     success, message = self.UpdatePythonPlugin(
-                        self.plugin_data[plugin_key][0],
-                        self.plugin_data[plugin_key][1],
+                        entry.author,
+                        entry.repository,
                         plugin_key,
                         queue_on_lock=False
                     )
@@ -2823,11 +3209,9 @@ class BasePlugin:
             })
         elif action == "install":
             plugin_key = payload.get("plugin_key")
-            if plugin_key in self.plugin_data:
-                plugin_author = self.plugin_data[plugin_key][0]
-                plugin_repository = self.plugin_data[plugin_key][1]
-                plugin_branch = self.plugin_data[plugin_key][3]
-                install_success, install_message = self.InstallPythonPlugin(plugin_author, plugin_repository, plugin_key, plugin_branch)
+            entry = self.get_registry_entry(plugin_key)
+            if entry is not None:
+                install_success, install_message = self.InstallPythonPlugin(entry.author, entry.repository, plugin_key, entry.branch)
                 if install_success:
                     self.sendApiResponse({"status": "success", "action": action, "plugin_key": plugin_key})
                 else:
@@ -2836,10 +3220,9 @@ class BasePlugin:
                 self.sendApiResponse({"status": "error", "message": "Plugin not found"})
         elif action == "update":
             plugin_key = payload.get("plugin_key")
-            if plugin_key in self.plugin_data:
-                plugin_author = self.plugin_data[plugin_key][0]
-                plugin_repository = self.plugin_data[plugin_key][1]
-                update_success, update_message = self.UpdatePythonPlugin(plugin_author, plugin_repository, plugin_key)
+            entry = self.get_registry_entry(plugin_key)
+            if entry is not None:
+                update_success, update_message = self.UpdatePythonPlugin(entry.author, entry.repository, plugin_key)
                 if update_success:
                     response = {"status": "success", "action": action, "plugin_key": plugin_key}
                     if update_message:
@@ -2873,31 +3256,7 @@ class BasePlugin:
         return self.refreshInstalledUpdateStatuses(installed_plugins, plugins_dir)
 
     def getGitUpdateStatus(self, plugin_dir, plugin_key=None, fetch_first=True):
-        if not os.path.isdir(os.path.join(plugin_dir, ".git")):
-            return "unknown"
-
-        try:
-            if fetch_first and not self.fetch_git_repo(plugin_dir):
-                return "unknown"
-
-            remote_ref = self.get_git_remote_ref(plugin_dir) or "@{u}"
-            if plugin_key:
-                update_times = dict(self.update_times) if self.update_times else self.load_cached_update_times()
-                if self.refresh_git_update_time(plugin_key, plugin_dir, update_times, remote_ref):
-                    self.save_update_times_cache(update_times)
-                    self.apply_update_times(update_times)
-
-            ahead_behind = self.get_git_ahead_behind(plugin_dir, remote_ref)
-            if ahead_behind is None:
-                return "unknown"
-
-            behind = ahead_behind[1]
-            if behind > 0:
-                return "available"
-            return "current"
-        except Exception as e:
-            Domoticz.Debug(f"Could not determine update status for {plugin_dir}: {e}")
-            return "unknown"
+        return self.update_status_service.get_git_update_status(plugin_dir, plugin_key, fetch_first)
 
     def sendApiResponse(self, response_dict):
         if 1 in Devices:
@@ -2934,203 +3293,34 @@ class BasePlugin:
             if Parameters["Mode4"] == 'All':
                 Domoticz.Log("Checking Updates for All Plugins!!!")
                 for plugin_key in self.get_managed_installed_plugin_keys(plugins_dir):
-                    self.UpdatePythonPlugin(self.plugin_data[plugin_key][0], self.plugin_data[plugin_key][1], plugin_key)
+                    entry = self.get_registry_entry(plugin_key)
+                    if entry is not None:
+                        self.UpdatePythonPlugin(entry.author, entry.repository, plugin_key)
 
             if Parameters["Mode4"] == 'AllNotify':
                 Domoticz.Log("Collecting Updates for All Plugins!!!")
                 for plugin_key in self.get_managed_installed_plugin_keys(plugins_dir):
-                    self.CheckForUpdatePythonPlugin(self.plugin_data[plugin_key][0], self.plugin_data[plugin_key][1], plugin_key)
+                    entry = self.get_registry_entry(plugin_key)
+                    if entry is not None:
+                        self.CheckForUpdatePythonPlugin(entry.author, entry.repository, plugin_key)
 
     def InstallPythonPlugin(self, ppAuthor, ppRepository, ppKey, ppBranch):
-        Domoticz.Debug("InstallPythonPlugin called")
-
-        host = self.get_host()
-        plugins_dir = host.plugins_dir()
-        try:
-            plugin_dir = host.resolve_plugin_dir(ppKey)
-            ppKey = host.validate_plugin_key(ppKey)
-        except ValueError as e:
-            Domoticz.Error(str(e))
-            return False, str(e)
-
-        try:
-            existing_plugin_dir = self.resolve_installed_plugin_dir(ppKey, plugins_dir)
-        except ValueError as e:
-            Domoticz.Error(str(e))
-            return False, str(e)
-
-        if os.path.isdir(existing_plugin_dir):
-            existing_folder = os.path.basename(existing_plugin_dir)
-            Domoticz.Log("Plugin " + ppKey + " is already installed in folder " + existing_folder + ".")
-            self.refresh_single_plugin_update_time(ppKey, existing_plugin_dir, fetch_first=False)
-            self.refresh_single_plugin_update_status(ppKey, existing_plugin_dir, fetch_first=False)
-            self.installDependencies(ppKey)
-            return True, "Plugin already installed."
-
-        Domoticz.Log("Installing Plugin:" + self.plugin_data[ppKey][2])
-        ppCloneCmd = ["git", "clone", "-b", ppBranch, self.build_git_clone_url(ppAuthor, ppRepository), ppKey]
-        Domoticz.Log("Calling: " + " ".join(ppCloneCmd))
-
-        result = host.run_git(ppCloneCmd, plugins_dir, timeout=120)
-        if result is None:
-            return False, "Git clone failed"
-        if result.stdout:
-            Domoticz.Debug("Git Response: " + result.stdout.strip())
-        if result.stderr:
-            Domoticz.Debug("Git Error: " + result.stderr.strip())
-        if result.returncode != 0:
-            Domoticz.Error("Git clone failed for plugin " + ppKey + ".")
-            return False, (result.stderr or result.stdout or "Git clone failed").strip()
-        Domoticz.Log("Plugin " + ppKey + " installed successfully.")
-
-        if not os.path.isdir(plugin_dir):
-            Domoticz.Error("Plugin folder was not created: " + plugin_dir)
-            return False, "Plugin folder was not created."
-
-        self.refresh_single_plugin_update_time(ppKey, plugin_dir, fetch_first=False)
-        self.refresh_single_plugin_update_status(ppKey, plugin_dir, fetch_first=False)
-        self.installDependencies(ppKey)
-        Domoticz.Log("---Restarting Domoticz MAY BE REQUIRED to activate new plugins---")
-        return True, ""
+        entry = self.get_registry_entry_for_operation(ppKey, ppAuthor, ppRepository, ppBranch)
+        return self.install_update_strategy.install(entry)
 
     def UpdatePythonPlugin(self, ppAuthor, ppRepository, ppKey, queue_on_lock=True):
-        Domoticz.Debug("UpdatePythonPlugin called")
-
-        host = self.get_host()
-        try:
-            ppKey = host.validate_plugin_key(ppKey)
-            plugin_dir = self.resolve_installed_plugin_dir(ppKey)
-        except ValueError as e:
-            Domoticz.Error(str(e))
-            return False, str(e)
-
-        is_self_update = ppKey == self.get_current_plugin_folder()
-
-        if (ppKey in self.plugin_data and self.plugin_data[ppKey][2] in self.exception_list):
-            Domoticz.Log("Plugin:" + self.plugin_data[ppKey][2] + " excluded by Exclusion file (exclusion.txt). Skipping!!!")
-            return True, "Excluded by exception list"
-
-        if is_self_update:
-            Domoticz.Log("Self update requested for PyPluginStore.")
-            update_success, update_message = host.schedule_self_update(plugin_dir)
-            if update_success:
-                self.update_status[ppKey] = "unknown"
-            return update_success, update_message
-
-        Domoticz.Log("Resetting and Updating Plugin:" + ppKey)
-
-        branch = "master"
-        if ppKey in self.plugin_data and len(self.plugin_data[ppKey]) >= 4:
-            branch = self.plugin_data[ppKey][3] or "master"
-
-        ppGitFetch = ["git", "fetch", "origin"]
-        Domoticz.Debug("Calling: " + " ".join(ppGitFetch) + " on folder " + plugin_dir)
-        res_fetch = host.run_git(ppGitFetch, plugin_dir, timeout=60)
-        if res_fetch is None:
-            return False, "Git fetch failed"
-        if res_fetch.stdout:
-            Domoticz.Debug("Git Fetch Response:" + res_fetch.stdout)
-        if res_fetch.stderr and not host.is_git_dubious_ownership(res_fetch):
-            Domoticz.Debug("Git Fetch Error:" + res_fetch.stderr.strip())
-        if res_fetch.returncode != 0:
-            if host.is_git_dubious_ownership(res_fetch):
-                return False, host.git_ownership_failure_message(plugin_dir)
-            return False, (res_fetch.stderr or res_fetch.stdout or "Git fetch failed").strip()
-
-        ppGitDiff = ["git", "diff", "--quiet", "HEAD...origin/" + branch]
-        Domoticz.Debug("Calling: " + " ".join(ppGitDiff) + " on folder " + plugin_dir)
-        res_diff = host.run_git(ppGitDiff, plugin_dir, timeout=15)
-        is_already_current = (res_diff is not None and res_diff.returncode == 0)
-
-        ppGitCheckout = ["git", "checkout", "-B", branch, "origin/" + branch]
-        Domoticz.Debug("Calling: " + " ".join(ppGitCheckout) + " on folder " + plugin_dir)
-        res_checkout = host.run_git(ppGitCheckout, plugin_dir, timeout=30)
-        if res_checkout is None:
-            return False, "Git checkout failed"
-        if res_checkout.stdout:
-            Domoticz.Debug("Git Checkout Response:" + res_checkout.stdout)
-        if res_checkout.stderr and not host.is_git_dubious_ownership(res_checkout):
-            Domoticz.Debug("Git Checkout Error:" + res_checkout.stderr.strip())
-        if res_checkout.returncode != 0:
-            if host.is_git_dubious_ownership(res_checkout):
-                return False, host.git_ownership_failure_message(plugin_dir)
-            if host.is_locked_file_message(res_checkout.stderr + res_checkout.stdout):
-                message = "Plugin files are in use; update queued for the next startup."
-                if queue_on_lock:
-                    self.queuePendingOperation("update", ppKey)
-                Domoticz.Error(message)
-                return False, message
-            return False, (res_checkout.stderr or res_checkout.stdout or "Git checkout failed").strip()
-
-        ppGitReset = ["git", "reset", "--hard", "origin/" + branch]
-        Domoticz.Debug("Calling: " + " ".join(ppGitReset) + " on folder " + plugin_dir)
-        res_reset = host.run_git(ppGitReset, plugin_dir, timeout=30)
-        if res_reset is None:
-            return False, "Git reset failed"
-        if res_reset.stdout:
-            Domoticz.Debug("Git Reset Response:" + res_reset.stdout)
-        if res_reset.stderr and not host.is_git_dubious_ownership(res_reset):
-            Domoticz.Debug("Git Reset Error:" + res_reset.stderr.strip())
-        if res_reset.returncode != 0:
-            if host.is_git_dubious_ownership(res_reset):
-                return False, host.git_ownership_failure_message(plugin_dir)
-            if host.is_locked_file_message(res_reset.stderr + res_reset.stdout):
-                message = "Plugin files are in use; update queued for the next startup."
-                if queue_on_lock:
-                    self.queuePendingOperation("update", ppKey)
-                Domoticz.Error(message)
-                return False, message
-            return False, (res_reset.stderr or res_reset.stdout or "Git reset failed").strip()
-
-        if is_already_current:
-            Domoticz.Log("Plugin " + ppKey + " already Up-To-Date")
-        else:
-            Domoticz.Log("Succesfully pulled gitHub update for plugin " + ppKey)
-            Domoticz.Log("---Restarting Domoticz MAY BE REQUIRED to activate new plugins---")
-
-        self.refresh_single_plugin_update_time(ppKey, plugin_dir, fetch_first=False)
-        self.refresh_single_plugin_update_status(ppKey, plugin_dir, fetch_first=False)
-        self.installDependencies(ppKey)
-        return True, ""
+        entry = self.get_registry_entry_for_operation(ppKey, ppAuthor, ppRepository)
+        return self.install_update_strategy.update(entry, queue_on_lock=queue_on_lock)
 
     def CheckForUpdatePythonPlugin(self, ppAuthor, ppRepository, ppKey):
-        Domoticz.Debug("CheckForUpdatePythonPlugin called")
-
-        if ppKey in self.plugin_data and self.plugin_data[ppKey][2] in self.exception_list:
-            self.update_status[ppKey] = "unknown"
-            Domoticz.Log("Plugin:" + self.plugin_data[ppKey][2] + " excluded by Exclusion file (exclusion.txt). Skipping!!!")
-            return
-
-        Domoticz.Debug("Checking Plugin:" + ppKey + " for updates")
-
-        try:
-            plugin_dir = self.resolve_installed_plugin_dir(ppKey)
-        except ValueError as e:
-            self.update_status[ppKey] = "unknown"
-            Domoticz.Error(str(e))
-            return None
-
-        if not os.path.isdir(os.path.join(plugin_dir, ".git")):
-            self.update_status[ppKey] = "unknown"
-            Domoticz.Log("Plugin:" + ppKey + " is not installed from gitHub. Ignoring!!.")
-            return None
-
-        update_status = self.getGitUpdateStatus(plugin_dir, ppKey)
-        self.update_status[ppKey] = update_status
-        if update_status == "available":
-            Domoticz.Log("Found that we are behind on plugin " + ppKey)
-            self.fnSelectedNotify(ppKey)
-        elif update_status == "current":
-            Domoticz.Log("Plugin " + ppKey + " already Up-To-Date")
-        else:
-            Domoticz.Debug("Could not determine update status for " + ppKey + ".")
-
-        return None
+        entry = self.get_registry_entry_for_operation(ppKey, ppAuthor, ppRepository)
+        return self.install_update_strategy.check_for_update(entry)
 
     def fnSelectedNotify(self, plugin_key):
         Domoticz.Debug("fnSelectedNotify called")
         Domoticz.Log("Preparing Notification")
-        plugin_name = self.plugin_data[plugin_key][2] if plugin_key in self.plugin_data else plugin_key
+        entry = self.get_registry_entry(plugin_key)
+        plugin_name = entry.description if entry is not None and entry.description else plugin_key
         MailSubject = platform.node() + ": Domoticz Plugin Updates Available for " + plugin_name
         MailBody = plugin_name + " has updates available!!"
         self.sendDomoticzNotification(MailSubject, MailBody)

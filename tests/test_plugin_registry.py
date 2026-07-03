@@ -217,6 +217,50 @@ def test_registry_normalizer_accepts_object_entries_with_platforms(plugin_core_m
     assert platforms["ListPlugin"] == ["windows"]
 
 
+def test_registry_entry_model_preserves_legacy_shape(plugin_core_module):
+    plugin = plugin_core_module.BasePlugin()
+
+    registry, platforms = plugin.normalize_registry({
+        "ObjectPlugin": {
+            "owner": "owner",
+            "repository": "repo",
+            "description": "description",
+            "branch": "main",
+            "platforms": ["linux"],
+        },
+        "ListPlugin": ["owner", "repo", "description", "main", "", ["windows"]],
+    })
+
+    assert registry == {
+        "ObjectPlugin": ["owner", "repo", "description", "main"],
+        "ListPlugin": ["owner", "repo", "description", "main", ""],
+    }
+    assert platforms == {
+        "ObjectPlugin": ["linux"],
+        "ListPlugin": ["windows"],
+    }
+    assert plugin.registry_entries["ObjectPlugin"].to_legacy_list() == registry["ObjectPlugin"]
+    assert plugin.registry_entries["ListPlugin"].to_legacy_list() == registry["ListPlugin"]
+
+
+def test_get_registry_entry_rebuilds_from_legacy_plugin_data(plugin_core_module):
+    plugin = plugin_core_module.BasePlugin()
+    plugin.plugin_data = {
+        "ManualPlugin": ["owner", "repo", "description", "develop", "2026-06-14T15:10:03Z"],
+    }
+    plugin.plugin_platforms = {"ManualPlugin": ["windows"]}
+
+    entry = plugin.get_registry_entry("ManualPlugin")
+
+    assert entry.key == "ManualPlugin"
+    assert entry.author == "owner"
+    assert entry.repository == "repo"
+    assert entry.description == "description"
+    assert entry.branch == "develop"
+    assert entry.updated_at == "2026-06-14T15:10:03Z"
+    assert entry.platforms == ["windows"]
+
+
 def test_build_git_clone_url_accepts_owner_repo_and_full_urls(plugin_core_module):
     plugin = plugin_core_module.BasePlugin()
 

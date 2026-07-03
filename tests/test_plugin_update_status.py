@@ -53,6 +53,44 @@ def test_run_git_bypasses_dubious_ownership_with_safe_directory(plugin_core_modu
     assert not any("ownership does not match the Domoticz user" in message for message in recorded_messages(plugin_core_module, "Error"))
 
 
+def test_run_git_reuses_safe_directory_bypass_for_later_commands(plugin_core_module, tmp_path, monkeypatch):
+    _, manager_dir = configure_home(plugin_core_module, tmp_path)
+    (manager_dir / ".git").mkdir()
+    runtime = plugin_core_module.LinuxHostRuntime(plugin_core_module.Parameters)
+    calls = []
+    repairs = []
+
+    def fake_run(command, cwd=None, **kwargs):
+        calls.append((command, Path(cwd)))
+        if "-c" in command and any(str(part).startswith("safe.directory=") for part in command):
+            return FakeGitResult(stdout="ok\n", returncode=0)
+        return FakeGitResult(stderr=DUBIOUS_OWNERSHIP_ERROR, returncode=128)
+
+    monkeypatch.setattr(plugin_core_module.subprocess, "run", fake_run)
+    monkeypatch.setattr(
+        runtime,
+        "repair_git_repository_ownership",
+        lambda cwd: repairs.append(Path(cwd)) or True,
+    )
+
+    fetch_result = runtime.run_git(["git", "fetch", "--quiet"], manager_dir)
+    log_result = runtime.run_git(["git", "log", "-1", "--format=%ct", "origin/master"], manager_dir)
+
+    assert fetch_result.returncode == 0
+    assert log_result.returncode == 0
+    assert calls == [
+        (["git", "fetch", "--quiet"], manager_dir),
+        (["git", "-c", "safe.directory=" + str(manager_dir.resolve()), "fetch", "--quiet"], manager_dir),
+        (["git", "log", "-1", "--format=%ct", "origin/master"], manager_dir),
+        (
+            ["git", "-c", "safe.directory=" + str(manager_dir.resolve()), "log", "-1", "--format=%ct", "origin/master"],
+            manager_dir,
+        ),
+    ]
+    assert repairs == []
+    assert len([message for message in recorded_messages(plugin_core_module, "Log") if "safe.directory bypass" in message]) == 1
+
+
 def test_run_git_falls_back_to_repair_when_bypass_fails(plugin_core_module, tmp_path, monkeypatch):
     _, manager_dir = configure_home(plugin_core_module, tmp_path)
     (manager_dir / ".git").mkdir()
@@ -692,6 +730,46 @@ def test_install_command_reports_clone_failure(plugin_core_module, tmp_path, mon
 
     assert responses[0]["status"] == "error"
     assert "repository not found" in responses[0]["message"]
+
+
+def test_install_wrapper_passes_registry_entry_to_strategy(plugin_core_module, monkeypatch):
+    plugin = plugin_core_module.BasePlugin()
+    plugin.plugin_data = {
+        "Plugin": ["owner", "repo", "description", "main", ""],
+    }
+    calls = []
+
+    def fake_install(entry):
+        calls.append(entry)
+        return True, ""
+
+    monkeypatch.setattr(plugin.install_update_strategy, "install", fake_install)
+
+    assert plugin.InstallPythonPlugin("override-owner", "override-repo", "Plugin", "develop") == (True, "")
+    assert calls[0].key == "Plugin"
+    assert calls[0].author == "override-owner"
+    assert calls[0].repository == "override-repo"
+    assert calls[0].description == "description"
+    assert calls[0].branch == "develop"
+
+
+def test_update_wrapper_uses_explicit_strategy(plugin_core_module, monkeypatch):
+    plugin = plugin_core_module.BasePlugin()
+    plugin.plugin_data = {
+        "Plugin": ["owner", "repo", "description", "develop", ""],
+    }
+    calls = []
+
+    def fake_update(entry, queue_on_lock=True):
+        calls.append((entry, queue_on_lock))
+        return True, ""
+
+    monkeypatch.setattr(plugin.install_update_strategy, "update", fake_update)
+
+    assert plugin.UpdatePythonPlugin("owner", "repo", "Plugin", queue_on_lock=False) == (True, "")
+    assert calls[0][0].key == "Plugin"
+    assert calls[0][0].branch == "develop"
+    assert calls[0][1] is False
 
 
 def test_daily_heartbeat_refreshes_update_status_once(plugin_core_module, tmp_path, monkeypatch):
