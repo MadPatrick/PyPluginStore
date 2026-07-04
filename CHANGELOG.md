@@ -1,5 +1,20 @@
 # Changelog
 
+## [2.15.1](https://github.com/adrighem/PyPluginStore/compare/v2.15.0...v2.15.1) (2026-07-04)
+
+
+### Bug Fixes
+
+* align self update git ownership handling ([a9de821](https://github.com/adrighem/PyPluginStore/commit/a9de82121d4de602ac4fec15b3bd2b901a4962e2)), closes [#86](https://github.com/adrighem/PyPluginStore/issues/86)
+* avoid ownership repair for managed git repos ([fd284e7](https://github.com/adrighem/PyPluginStore/commit/fd284e7413b7e3b12ff32ba976071bc45fcfa9bf)), closes [#86](https://github.com/adrighem/PyPluginStore/issues/86)
+* clarify git ownership diagnostics ([10432fb](https://github.com/adrighem/PyPluginStore/commit/10432fbf4eb52e2823689ca05f58a08af367e53d)), closes [#86](https://github.com/adrighem/PyPluginStore/issues/86)
+* prune stale update times during registry scans ([2c94c69](https://github.com/adrighem/PyPluginStore/commit/2c94c6939fc1ad72089d49312fbb4610341cad4f)), closes [#84](https://github.com/adrighem/PyPluginStore/issues/84)
+
+
+### Documentation
+
+* update issue 86 investigation note ([6156dff](https://github.com/adrighem/PyPluginStore/commit/6156dff64b0e389c89ff2d96f0c40f8444dcbfca)), closes [#86](https://github.com/adrighem/PyPluginStore/issues/86)
+
 ## [2.15.0](https://github.com/adrighem/PyPluginStore/compare/v2.14.2...v2.15.0) (2026-07-02)
 
 
