@@ -129,6 +129,54 @@ class HostRuntime:
         output = self.git_result_output(result).lower()
         return "detected dubious ownership in repository" in output
 
+    def username_for_uid(self, uid):
+        try:
+            import pwd
+            return pwd.getpwuid(uid).pw_name
+        except Exception:
+            return ""
+
+    def groupname_for_gid(self, gid):
+        try:
+            import grp
+            return grp.getgrgid(gid).gr_name
+        except Exception:
+            return ""
+
+    def format_owner(self, uid, gid):
+        user = self.username_for_uid(uid)
+        group = self.groupname_for_gid(gid)
+        numeric = str(uid) + ":" + str(gid)
+        if user and group:
+            return user + ":" + group + " (" + numeric + ")"
+        return numeric
+
+    def path_owner_description(self, path):
+        if not path:
+            return ""
+        try:
+            stat_result = os.stat(path)
+            return self.format_owner(stat_result.st_uid, stat_result.st_gid)
+        except Exception:
+            return ""
+
+    def process_owner_description(self):
+        if not hasattr(os, "geteuid"):
+            return ""
+        uid = os.geteuid()
+        gid = os.getegid() if hasattr(os, "getegid") else -1
+        return self.format_owner(uid, gid)
+
+    def git_ownership_guidance(self, cwd):
+        details = []
+        expected_owner = self.process_owner_description()
+        current_owner = self.path_owner_description(cwd)
+        if current_owner:
+            details.append("Current owner: " + current_owner + ".")
+        if expected_owner:
+            details.append("Expected owner: " + expected_owner + " (the Domoticz process user).")
+        return " ".join(details)
+
     def git_ownership_repair_message(self, cwd):
         return (
             "Git refused the plugin repository because file ownership does not match the Domoticz user. "
@@ -137,9 +185,12 @@ class HostRuntime:
 
     def git_ownership_failure_message(self, cwd):
         location = " for " + str(cwd) if cwd else ""
+        guidance = self.git_ownership_guidance(cwd)
+        guidance = " " + guidance if guidance else ""
         return (
             "Git refused the plugin repository because file ownership does not match the Domoticz user. "
             "PyPluginStore could not fix ownership" + location + "; fix the plugin folder ownership manually."
+            + guidance
         )
 
     def format_command(self, command):

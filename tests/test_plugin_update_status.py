@@ -1,3 +1,4 @@
+import os
 from datetime import datetime
 from pathlib import Path
 
@@ -20,6 +21,20 @@ DUBIOUS_OWNERSHIP_ERROR = (
 
 def recorded_messages(plugin_core_module, level):
     return [args[0] for args, _ in plugin_core_module.Domoticz.calls[level] if args]
+
+
+def test_git_ownership_failure_message_includes_current_and_expected_owner(plugin_core_module, tmp_path):
+    _, manager_dir = configure_home(plugin_core_module, tmp_path)
+    runtime = plugin_core_module.LinuxHostRuntime(plugin_core_module.Parameters)
+
+    message = runtime.git_ownership_failure_message(manager_dir)
+    path_owner = manager_dir.stat()
+
+    assert "Current owner:" in message
+    assert str(path_owner.st_uid) + ":" + str(path_owner.st_gid) in message
+    assert "Expected owner:" in message
+    assert str(os.geteuid()) + ":" + str(os.getegid()) in message
+    assert "the Domoticz process user" in message
 
 
 def test_run_git_bypasses_dubious_ownership_with_safe_directory(plugin_core_module, tmp_path, monkeypatch):
