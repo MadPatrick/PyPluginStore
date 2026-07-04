@@ -124,6 +124,21 @@ def test_validate_platform_metadata_rejects_stale_or_mismatched_sidecar(validate
         })
 
 
+def test_validate_update_times_rejects_stale_sidecar(validate_plugins_module, tmp_path, monkeypatch):
+    update_times_file = tmp_path / "update_times.json"
+    update_times_file.write_text(json.dumps({
+        "Plugin": "2026-06-14T15:10:03Z",
+        "OldPlugin": "2026-04-20T17:51:05Z",
+    }))
+    monkeypatch.setattr(validate_plugins_module, "UPDATE_TIMES_FILE_PATH", str(update_times_file))
+
+    with pytest.raises(ValueError, match="OldPlugin"):
+        validate_plugins_module.validate_update_times({
+            "Idle": ["Idle", "Idle", "Idle", "master"],
+            "Plugin": ["owner", "repo", "description", "main"],
+        })
+
+
 @pytest.mark.parametrize(
     ("key", "entry"),
     [
@@ -1060,6 +1075,46 @@ def test_scanner_treats_existing_registry_entries_missing_from_sidecar_as_review
     assert metadata["entries"]["ManualPlugin"]["reviewed"] is True
     assert metadata["entries"]["ManualPlugin"]["policy_action"] == "kept_reviewed"
     assert metadata["entries"]["ManualPlugin"]["last_detection"]["platforms"] == ["linux"]
+
+
+def test_scanner_prunes_stale_update_times(scan_plugins_module, tmp_path, monkeypatch):
+    registry_file = tmp_path / "registry.json"
+    update_times_file = tmp_path / "update_times.json"
+    metadata_file = tmp_path / "platform_detection.json"
+    registry_file.write_text(json.dumps({
+        "Idle": ["Idle", "Idle", "Idle", "master"],
+        "Plugin": ["owner", "repo", "description", "main"],
+    }))
+    update_times_file.write_text(json.dumps({
+        "Plugin": "2026-06-14T15:10:03Z",
+        "OldPlugin": "2026-04-20T17:51:05Z",
+    }))
+
+    repo_info = {
+        "archived": False,
+        "disabled": False,
+        "size": 100,
+        "full_name": "owner/repo",
+        "owner": {"login": "owner"},
+        "name": "repo",
+        "description": "description",
+        "default_branch": "main",
+        "pushed_at": "2026-06-14T15:10:03Z",
+    }
+
+    patch_scanner_paths(scan_plugins_module, monkeypatch, registry_file, update_times_file, metadata_file)
+    monkeypatch.setattr(scan_plugins_module, "get_repo_info", lambda owner, repo: repo_info)
+    monkeypatch.setattr(scan_plugins_module, "search_github", lambda: [])
+    monkeypatch.setattr(scan_plugins_module, "search_gitlab", lambda: [])
+    monkeypatch.setattr(scan_plugins_module, "search_codeberg", lambda: [])
+    monkeypatch.setattr(scan_plugins_module, "detect_platforms_for_repo", lambda *args, **kwargs: None)
+    monkeypatch.setenv("GITHUB_TOKEN", "test-token")
+
+    scan_plugins_module.main()
+
+    update_times = json.loads(update_times_file.read_text())
+
+    assert update_times == {"Plugin": "2026-06-14T15:10:03Z"}
 
 
 def test_scanner_adds_codeberg_and_gitlab_plugins(scan_plugins_module, tmp_path, monkeypatch):

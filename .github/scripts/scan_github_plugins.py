@@ -98,6 +98,15 @@ def remove_registry_entry(registry, update_times, platform_metadata, key, reason
         del update_times[key]
     platform_metadata.get("entries", {}).pop(key, None)
 
+
+def prune_stale_update_times(update_times, registry):
+    registry_keys = {key for key in registry if key != "Idle"}
+    stale_keys = sorted(key for key in update_times if key not in registry_keys)
+    for key in stale_keys:
+        print(f"[-] Removing stale update time for {key} (not in registry)")
+        del update_times[key]
+    return stale_keys
+
 def build_registry_entry(owner, repo_name, description, branch, platforms=None):
     entry = [owner, repo_name, description, branch]
     normalized_platforms = normalize_platforms(platforms)
@@ -341,7 +350,7 @@ def main():
         manual_changes_are_reviewed=platform_metadata_exists,
     )
 
-    stats = {"updated": 0, "removed": 0, "added": 0, "metadata_updated": 0}
+    stats = {"updated": 0, "removed": 0, "added": 0, "metadata_updated": 0, "update_times_pruned": 0}
 
     # 1. Sync Existing Plugins
     print("Syncing existing plugins...")
@@ -515,8 +524,11 @@ def main():
                 stats["metadata_updated"] += 1
             stats["added"] += 1
 
+    stale_update_time_keys = prune_stale_update_times(update_times, registry)
+    stats["update_times_pruned"] = len(stale_update_time_keys)
+
     # 3. Save Results
-    if stats["updated"] > 0 or stats["removed"] > 0 or stats["added"] > 0 or stats["metadata_updated"] > 0:
+    if any(stats.values()):
         platform_metadata = ensure_platform_metadata_for_registry(platform_metadata, registry)
         with open(REGISTRY_FILE, 'w') as f:
             json.dump(registry, f, indent=4)
@@ -528,7 +540,8 @@ def main():
         print(
             "Registry updated: "
             f"{stats['added']} added, {stats['updated']} updated, "
-            f"{stats['removed']} removed, {stats['metadata_updated']} metadata updated."
+            f"{stats['removed']} removed, {stats['metadata_updated']} metadata updated, "
+            f"{stats['update_times_pruned']} stale update times pruned."
         )
     else:
         print("No changes needed.")

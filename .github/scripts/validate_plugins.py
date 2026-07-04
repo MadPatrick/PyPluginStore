@@ -8,6 +8,7 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 if SCRIPT_DIR not in sys.path:
     sys.path.insert(0, SCRIPT_DIR)
 REGISTRY_FILE_PATH = os.path.join(SCRIPT_DIR, '../../registry.json')
+UPDATE_TIMES_FILE_PATH = os.path.join(SCRIPT_DIR, '../../update_times.json')
 PLATFORM_METADATA_FILE_PATH = os.path.join(SCRIPT_DIR, '../../.github/platform_detection.json')
 DEFAULT_GIT_HOST = "github.com"
 SUPPORTED_GIT_HOSTS = ("github.com", "gitlab.com", "codeberg.org")
@@ -34,6 +35,7 @@ def load_registry():
         registry_data = json.load(f)
 
     validate_platform_metadata(registry_data)
+    validate_update_times(registry_data)
         
     plugin_data = {}
     for key, data in registry_data.items():
@@ -101,6 +103,24 @@ def validate_platform_metadata(registry_data):
             raise ValueError(f"Platform metadata entry '{key}' has invalid confidence.")
         if not isinstance(entry.get("reviewed", False), bool):
             raise ValueError(f"Platform metadata entry '{key}' has invalid reviewed flag.")
+
+
+def validate_update_times(registry_data):
+    if not os.path.isfile(UPDATE_TIMES_FILE_PATH):
+        return
+
+    with open(UPDATE_TIMES_FILE_PATH, 'r') as f:
+        update_times = json.load(f)
+
+    if not isinstance(update_times, dict):
+        raise ValueError("Update-times file must be a JSON object.")
+
+    registry_keys = {key for key in registry_data if key != "Idle"}
+    stale_keys = sorted(key for key in update_times if key not in registry_keys)
+    if stale_keys:
+        joined_keys = ", ".join(stale_keys)
+        raise ValueError(f"Update-times file contains stale entries: {joined_keys}")
+
 
 def validate_registry_entry(key, data):
     if not isinstance(data, list) or len(data) < 4:
