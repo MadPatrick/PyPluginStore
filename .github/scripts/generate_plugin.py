@@ -36,6 +36,12 @@ def generate_plugin():
                 <option label="False" value="Normal" default="true" />
             </options>
         </param>
+        <param field="Mode7" label="Git Ownership Repair" width="175px">
+            <options>
+                <option label="Disabled" value="Disabled" default="true"/>
+                <option label="Enabled" value="Enabled"/>
+            </options>
+        </param>
     </params>
 </plugin>
 """

@@ -104,13 +104,12 @@ def test_git_ownership_failure_message_includes_current_and_expected_owner(plugi
         assert "Expected owner:" not in message
 
 
-def test_run_git_bypasses_dubious_ownership_with_safe_directory(plugin_core_module, tmp_path, monkeypatch):
+def test_run_git_uses_safe_directory_for_managed_repository(plugin_core_module, tmp_path, monkeypatch):
     _, manager_dir = configure_home(plugin_core_module, tmp_path)
     (manager_dir / ".git").mkdir()
     runtime = plugin_core_module.LinuxHostRuntime(plugin_core_module.Parameters)
     repairs = []
     scenario = GitScenario()
-    scenario.expect(["git", "fetch", "--quiet"], stderr=DUBIOUS_OWNERSHIP_ERROR, returncode=128)
     scenario.expect(safe_git_command(manager_dir, ["git", "fetch", "--quiet"]), stdout="ok\n")
 
     monkeypatch.setattr(plugin_core_module.subprocess, "run", scenario.run)
@@ -124,24 +123,21 @@ def test_run_git_bypasses_dubious_ownership_with_safe_directory(plugin_core_modu
 
     assert result.returncode == 0
     assert scenario.calls == [
-        (["git", "fetch", "--quiet"], manager_dir),
         (safe_git_command(manager_dir, ["git", "fetch", "--quiet"]), manager_dir),
     ]
     scenario.assert_complete()
     assert len(repairs) == 0  # No chown repair should have been called!
-    assert any("retrying with safe.directory bypass" in message for message in recorded_messages(plugin_core_module, "Log"))
+    assert not any("retrying with safe.directory bypass" in message for message in recorded_messages(plugin_core_module, "Log"))
     assert not any("ownership does not match the Domoticz user" in message for message in recorded_messages(plugin_core_module, "Error"))
 
 
-def test_run_git_reuses_safe_directory_bypass_for_later_commands(plugin_core_module, tmp_path, monkeypatch):
+def test_run_git_uses_safe_directory_for_each_managed_repository_command(plugin_core_module, tmp_path, monkeypatch):
     _, manager_dir = configure_home(plugin_core_module, tmp_path)
     (manager_dir / ".git").mkdir()
     runtime = plugin_core_module.LinuxHostRuntime(plugin_core_module.Parameters)
     repairs = []
     scenario = GitScenario()
-    scenario.expect(["git", "fetch", "--quiet"], stderr=DUBIOUS_OWNERSHIP_ERROR, returncode=128)
     scenario.expect(safe_git_command(manager_dir, ["git", "fetch", "--quiet"]), stdout="ok\n")
-    scenario.expect(["git", "log", "-1", "--format=%ct", "origin/master"], stderr=DUBIOUS_OWNERSHIP_ERROR, returncode=128)
     scenario.expect(safe_git_command(manager_dir, ["git", "log", "-1", "--format=%ct", "origin/master"]), stdout="ok\n")
 
     monkeypatch.setattr(plugin_core_module.subprocess, "run", scenario.run)
@@ -157,25 +153,66 @@ def test_run_git_reuses_safe_directory_bypass_for_later_commands(plugin_core_mod
     assert fetch_result.returncode == 0
     assert log_result.returncode == 0
     assert scenario.calls == [
-        (["git", "fetch", "--quiet"], manager_dir),
         (safe_git_command(manager_dir, ["git", "fetch", "--quiet"]), manager_dir),
-        (["git", "log", "-1", "--format=%ct", "origin/master"], manager_dir),
         (safe_git_command(manager_dir, ["git", "log", "-1", "--format=%ct", "origin/master"]), manager_dir),
     ]
     scenario.assert_complete()
     assert repairs == []
-    assert len([message for message in recorded_messages(plugin_core_module, "Log") if "safe.directory bypass" in message]) == 1
+    assert len([message for message in recorded_messages(plugin_core_module, "Log") if "safe.directory bypass" in message]) == 0
 
 
-def test_run_git_falls_back_to_repair_when_bypass_fails(plugin_core_module, tmp_path, monkeypatch):
+def test_run_git_does_not_use_safe_directory_for_plugins_root_clone(plugin_core_module, tmp_path, monkeypatch):
+    plugins_dir, _ = configure_home(plugin_core_module, tmp_path)
+    runtime = plugin_core_module.LinuxHostRuntime(plugin_core_module.Parameters)
+    command = ["git", "clone", "https://github.com/owner/repo.git", "Plugin"]
+    scenario = GitScenario()
+    scenario.expect(command, stderr="fatal: repository not found", returncode=128)
+
+    monkeypatch.setattr(plugin_core_module.subprocess, "run", scenario.run)
+
+    result = runtime.run_git(command, plugins_dir)
+
+    assert result.returncode == 128
+    assert scenario.calls == [(command, plugins_dir)]
+    scenario.assert_complete()
+
+
+def test_run_git_skips_ownership_repair_by_default_when_safe_directory_fails(plugin_core_module, tmp_path, monkeypatch):
     _, manager_dir = configure_home(plugin_core_module, tmp_path)
     (manager_dir / ".git").mkdir()
     runtime = plugin_core_module.LinuxHostRuntime(plugin_core_module.Parameters)
     repairs = []
     scenario = GitScenario()
-    scenario.expect(["git", "fetch", "--quiet"], stderr=DUBIOUS_OWNERSHIP_ERROR, returncode=128)
     scenario.expect(safe_git_command(manager_dir, ["git", "fetch", "--quiet"]), stderr=DUBIOUS_OWNERSHIP_ERROR, returncode=128)
-    scenario.expect(["git", "fetch", "--quiet"], stdout="ok\n")
+
+    monkeypatch.setattr(plugin_core_module.subprocess, "run", scenario.run)
+    monkeypatch.setattr(
+        runtime,
+        "repair_git_repository_ownership",
+        lambda cwd: repairs.append(Path(cwd)) or True,
+    )
+
+    result = runtime.run_git(["git", "fetch", "--quiet"], manager_dir)
+
+    assert result.returncode == 128
+    assert scenario.calls == [
+        (safe_git_command(manager_dir, ["git", "fetch", "--quiet"]), manager_dir),
+    ]
+    scenario.assert_complete()
+    assert repairs == []
+    assert any("will not change file ownership automatically" in message for message in recorded_messages(plugin_core_module, "Error"))
+    assert not any("Trying to fix ownership" in message for message in recorded_messages(plugin_core_module, "Error"))
+
+
+def test_run_git_falls_back_to_repair_when_enabled_and_safe_directory_fails(plugin_core_module, tmp_path, monkeypatch):
+    _, manager_dir = configure_home(plugin_core_module, tmp_path)
+    plugin_core_module.Parameters["Mode7"] = "Enabled"
+    (manager_dir / ".git").mkdir()
+    runtime = plugin_core_module.LinuxHostRuntime(plugin_core_module.Parameters)
+    repairs = []
+    scenario = GitScenario()
+    scenario.expect(safe_git_command(manager_dir, ["git", "fetch", "--quiet"]), stderr=DUBIOUS_OWNERSHIP_ERROR, returncode=128)
+    scenario.expect(safe_git_command(manager_dir, ["git", "fetch", "--quiet"]), stdout="ok\n")
 
     monkeypatch.setattr(plugin_core_module.subprocess, "run", scenario.run)
     monkeypatch.setattr(
@@ -188,14 +225,12 @@ def test_run_git_falls_back_to_repair_when_bypass_fails(plugin_core_module, tmp_
 
     assert result.returncode == 0
     assert scenario.calls == [
-        (["git", "fetch", "--quiet"], manager_dir),
         (safe_git_command(manager_dir, ["git", "fetch", "--quiet"]), manager_dir),
-        (["git", "fetch", "--quiet"], manager_dir),
+        (safe_git_command(manager_dir, ["git", "fetch", "--quiet"]), manager_dir),
     ]
     scenario.assert_complete()
-    assert repairs == [manager_dir.resolve()]  # chown repair called on fallback!
-    assert any("retrying with safe.directory bypass" in message for message in recorded_messages(plugin_core_module, "Log"))
-    assert any("ownership does not match the Domoticz user" in message for message in recorded_messages(plugin_core_module, "Error"))
+    assert repairs == [manager_dir.resolve()]
+    assert any("Trying to fix ownership" in message for message in recorded_messages(plugin_core_module, "Error"))
     assert any("Fixed plugin repository ownership" in message for message in recorded_messages(plugin_core_module, "Log"))
 
 
@@ -382,7 +417,7 @@ def test_update_command_uses_detected_repository_folder(plugin_core_module, tmp_
 
     def fake_run(command, cwd=None, **kwargs):
         git_calls.append((command, Path(cwd)))
-        if command == ["git", "remote", "-v"]:
+        if command[-2:] == ["remote", "-v"]:
             class FakeRemoteResult:
                 stdout = "origin\tgit@github.com:Smanar/Domoticz-deCONZ.git (fetch)\n"
                 stderr = ""
@@ -411,10 +446,10 @@ def test_update_command_uses_detected_repository_folder(plugin_core_module, tmp_
     }
     assert all(cwd == plugin_dir for _, cwd in git_calls)
     assert [command for command, _ in git_calls[-4:]] == [
-        ["git", "fetch", "origin"],
-        ["git", "diff", "--quiet", "HEAD...origin/master"],
-        ["git", "checkout", "-B", "master", "origin/master"],
-        ["git", "reset", "--hard", "origin/master"],
+        safe_git_command(plugin_dir, ["git", "fetch", "origin"]),
+        safe_git_command(plugin_dir, ["git", "diff", "--quiet", "HEAD...origin/master"]),
+        safe_git_command(plugin_dir, ["git", "checkout", "-B", "master", "origin/master"]),
+        safe_git_command(plugin_dir, ["git", "reset", "--hard", "origin/master"]),
     ]
     assert status_calls == [("deCONZ", plugin_dir, False)]
 
@@ -523,16 +558,16 @@ def test_self_update_preflight_reports_dubious_ownership(plugin_core_module, tmp
     (manager_dir / ".git").mkdir()
     runtime = plugin_core_module.LinuxHostRuntime(plugin_core_module.Parameters)
     scenario = GitScenario()
-    scenario.expect(["git", "rev-parse", "--is-inside-work-tree"], stderr=DUBIOUS_OWNERSHIP_ERROR, returncode=128)
     scenario.expect(
         safe_git_command(manager_dir, ["git", "rev-parse", "--is-inside-work-tree"]),
         stderr=DUBIOUS_OWNERSHIP_ERROR,
         returncode=128,
     )
+    repairs = []
 
     monkeypatch.setattr(runtime, "command_available", lambda command: command == "git")
     monkeypatch.setattr(runtime, "_run_git_once", scenario.run)
-    monkeypatch.setattr(runtime, "repair_git_repository_ownership", lambda cwd: False)
+    monkeypatch.setattr(runtime, "repair_git_repository_ownership", lambda cwd: repairs.append(Path(cwd)) or False)
 
     success, message, plan = runtime.preflight_self_update(manager_dir)
 
@@ -541,6 +576,7 @@ def test_self_update_preflight_reports_dubious_ownership(plugin_core_module, tmp
     assert "fix the plugin folder ownership manually" in message
     assert "safe.directory" not in message
     assert plan == {}
+    assert repairs == []
     scenario.assert_complete()
 
 

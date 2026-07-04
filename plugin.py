@@ -29,6 +29,12 @@
                 <option label="False" value="Normal" default="true" />
             </options>
         </param>
+        <param field="Mode7" label="Git Ownership Repair" width="175px">
+            <options>
+                <option label="Disabled" value="Disabled" default="true"/>
+                <option label="Enabled" value="Enabled"/>
+            </options>
+        </param>
     </params>
 </plugin>
 """
@@ -218,23 +224,44 @@ class HostRuntime:
             "Trying to fix ownership for " + str(cwd) + "."
         )
 
+    def git_ownership_repair_enabled(self):
+        value = str(self.parameter("Mode7", "Disabled") or "").strip().lower()
+        return value in ("enabled", "true", "yes", "allow")
+
     def git_ownership_failure_message(self, cwd):
         location = " for " + str(cwd) if cwd else ""
         guidance = self.git_ownership_guidance(cwd)
         guidance = " " + guidance if guidance else ""
+        if not self.git_ownership_repair_enabled():
+            return (
+                "Git refused the plugin repository because file ownership does not match the Domoticz user. "
+                "PyPluginStore will not change file ownership automatically" + location + "; "
+                "fix the plugin folder ownership manually if Git still fails."
+                + guidance
+            )
         return (
             "Git refused the plugin repository because file ownership does not match the Domoticz user. "
             "PyPluginStore could not fix ownership" + location + "; fix the plugin folder ownership manually."
             + guidance
         )
 
+    def has_safe_directory_option(self, command):
+        return any(str(part).startswith("safe.directory=") for part in command)
+
     def safe_git_command(self, command, cwd):
         safe_command = list(command)
         repo_dir = os.path.realpath(os.path.abspath(cwd))
-        if len(safe_command) > 0 and safe_command[0] == "git":
+        if len(safe_command) > 0 and safe_command[0] == "git" and not self.has_safe_directory_option(safe_command):
             safe_command.insert(1, "-c")
             safe_command.insert(2, "safe.directory=" + repo_dir)
         return safe_command
+
+    def should_use_safe_git_directory(self, command, cwd):
+        return (
+            len(command) > 0
+            and command[0] == "git"
+            and self.is_managed_plugin_repository(cwd)
+        )
 
     def format_command(self, command):
         return " ".join(str(part) for part in command)
@@ -332,6 +359,11 @@ class HostRuntime:
             return result
 
         self._git_ownership_repair_attempted.add(repo_dir)
+        if not self.git_ownership_repair_enabled():
+            if repo_dir not in self._git_ownership_reported:
+                Domoticz.Error(self.git_ownership_failure_message(repo_dir))
+                self._git_ownership_reported.add(repo_dir)
+            return result
 
         # Fallback to original chown repair if safe.directory fails
         if repo_dir not in self._git_ownership_reported:
@@ -349,9 +381,12 @@ class HostRuntime:
         return retry_result
 
     def run_git(self, command, cwd, timeout=15):
-        result = self._run_git_once(command, cwd, timeout=timeout)
+        actual_command = command
+        if self.should_use_safe_git_directory(command, cwd):
+            actual_command = self.safe_git_command(command, cwd)
+        result = self._run_git_once(actual_command, cwd, timeout=timeout)
         if result is not None and result.returncode != 0 and self.is_git_dubious_ownership(result):
-            return self.handle_git_ownership_failure(result, command, cwd, timeout)
+            return self.handle_git_ownership_failure(result, actual_command, cwd, timeout)
         return result
 
     def make_web_readable(self, path):

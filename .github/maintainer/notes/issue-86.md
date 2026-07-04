@@ -26,12 +26,14 @@ Implemented fix:
 - Preserve existing safe-directory retry and fallback behavior.
 - Centralize Git result logging and user-facing failure messages through `HostRuntime`.
 - Make the detached self-update helper run Git with `-c safe.directory=<repo>`, matching pre-flight behavior.
+- Run managed plugin repository Git commands with per-command `safe.directory` up front instead of waiting for a dubious-ownership failure.
+- Disable recursive ownership repair by default; it now requires the `Git Ownership Repair` setting to be explicitly enabled.
 - Regenerated `plugin.py`.
 
 Verification:
-- Added focused regression coverage for the ownership failure message and self-update helper Git command shape.
-- `pytest tests/test_plugin_update_status.py -q`: 31 passed.
-- `pytest -q`: 170 passed.
+- Added focused regression coverage for the ownership failure message, managed-repo safe-directory command shape, clone behavior, self-update helper Git command shape, and opt-in ownership repair.
+- `pytest tests/test_plugin_update_status.py -q`: 33 passed.
+- `pytest -q`: 172 passed.
 - `python3 -m py_compile plugin_core.py plugin.py`: passed.
 - `git diff --check`: passed.
 
