@@ -228,6 +228,14 @@ class HostRuntime:
             + guidance
         )
 
+    def safe_git_command(self, command, cwd):
+        safe_command = list(command)
+        repo_dir = os.path.realpath(os.path.abspath(cwd))
+        if len(safe_command) > 0 and safe_command[0] == "git":
+            safe_command.insert(1, "-c")
+            safe_command.insert(2, "safe.directory=" + repo_dir)
+        return safe_command
+
     def format_command(self, command):
         return " ".join(str(part) for part in command)
 
@@ -310,12 +318,8 @@ class HostRuntime:
     def handle_git_ownership_failure(self, result, command, cwd, timeout):
         repo_dir = os.path.realpath(os.path.abspath(cwd))
 
-        # Build modified command with safe.directory
-        safe_command = list(command)
-        if len(safe_command) > 0 and safe_command[0] == "git":
-            safe_command.insert(1, "-c")
-            safe_command.insert(2, "safe.directory=" + repo_dir)
-
+        safe_command = self.safe_git_command(command, cwd)
+        if safe_command != list(command):
             if repo_dir not in self._git_ownership_safe_directory_reported:
                 Domoticz.Log("Git refused the plugin repository due to file ownership; retrying with safe.directory bypass.")
                 self._git_ownership_safe_directory_reported.add(repo_dir)
@@ -552,14 +556,24 @@ else:
         output = (result.stderr or result.stdout or "").strip()
         return output or fallback
 
-    def require_git_success(self, plugin_dir, command, timeout=15, fallback=None):
+    def log_git_result(self, label, result):
+        if not label or result is None:
+            return
+        if result.stdout:
+            Domoticz.Debug("Git " + label + " Response:" + result.stdout.strip())
+        if result.stderr and not self.is_git_dubious_ownership(result):
+            Domoticz.Debug("Git " + label + " Error:" + result.stderr.strip())
+
+    def require_git_success(self, plugin_dir, command, timeout=15, fallback=None, log_label=""):
         result = self.run_git(command, plugin_dir, timeout=timeout)
+        self.log_git_result(log_label, result)
+        fallback = fallback or "Git command failed: " + self.format_command(command)
         if result is None:
-            return None, fallback or "Git command failed: " + self.format_command(command)
+            return result, fallback
         if result.returncode != 0:
-            return None, self.git_failure_message(
+            return result, self.git_failure_message(
                 result,
-                fallback or "Git command failed: " + self.format_command(command),
+                fallback,
                 plugin_dir,
             )
         return result, ""
@@ -701,6 +715,7 @@ plugin_dir = __PLUGIN_DIR__
 log_file = __LOG_FILE__
 upstream_ref = __UPSTREAM_REF__
 startup_delay = __STARTUP_DELAY__
+safe_directory = os.path.realpath(os.path.abspath(plugin_dir))
 
 def write_log(message):
     timestamp = datetime.datetime.now().isoformat(timespec="seconds")
@@ -720,6 +735,9 @@ if not os.path.isdir(os.path.join(plugin_dir, ".git")):
 
 env = os.environ.copy()
 env["GIT_TERMINAL_PROMPT"] = "0"
+
+def git_command(*args):
+    return ["git", "-c", "safe.directory=" + safe_directory] + list(args)
 
 def run_command(command, timeout):
     write_log("running: {}".format(subprocess.list2cmdline(command)))
@@ -748,13 +766,13 @@ def run_command(command, timeout):
         write_log(traceback.format_exc().strip())
         raise
 
-status = run_command(["git", "status", "--porcelain", "--untracked-files=no"], 15)
+status = run_command(git_command("status", "--porcelain", "--untracked-files=no"), 15)
 if status.stdout.strip():
     write_log("tracked files changed after pre-flight; self update refused")
     raise SystemExit(1)
 
-run_command(["git", "fetch", "--prune"], 60)
-run_command(["git", "merge", "--ff-only", upstream_ref], 120)
+run_command(git_command("fetch", "--prune"), 60)
+run_command(git_command("merge", "--ff-only", upstream_ref), 120)
 write_log("self update completed")
 """
         return (
@@ -1410,16 +1428,16 @@ class GitInstallUpdateStrategy:
         ]
         Domoticz.Log("Calling: " + " ".join(clone_command))
 
-        result = host.run_git(clone_command, plugins_dir, timeout=120)
-        if result is None:
-            return False, "Git clone failed"
-        if result.stdout:
-            Domoticz.Debug("Git Response: " + result.stdout.strip())
-        if result.stderr:
-            Domoticz.Debug("Git Error: " + result.stderr.strip())
-        if result.returncode != 0:
+        result, clone_message = host.require_git_success(
+            plugins_dir,
+            clone_command,
+            timeout=120,
+            fallback="Git clone failed",
+            log_label="Clone",
+        )
+        if clone_message:
             Domoticz.Error("Git clone failed for plugin " + plugin_key + ".")
-            return False, (result.stderr or result.stdout or "Git clone failed").strip()
+            return False, clone_message
         Domoticz.Log("Plugin " + plugin_key + " installed successfully.")
 
         if not os.path.isdir(plugin_dir):
@@ -1461,62 +1479,61 @@ class GitInstallUpdateStrategy:
         branch = entry.branch or "master"
         fetch_command = ["git", "fetch", "origin"]
         Domoticz.Debug("Calling: " + " ".join(fetch_command) + " on folder " + plugin_dir)
-        fetch_result = host.run_git(fetch_command, plugin_dir, timeout=60)
-        if fetch_result is None:
-            return False, "Git fetch failed"
-        if fetch_result.stdout:
-            Domoticz.Debug("Git Fetch Response:" + fetch_result.stdout)
-        if fetch_result.stderr and not host.is_git_dubious_ownership(fetch_result):
-            Domoticz.Debug("Git Fetch Error:" + fetch_result.stderr.strip())
-        if fetch_result.returncode != 0:
-            if host.is_git_dubious_ownership(fetch_result):
-                return False, host.git_ownership_failure_message(plugin_dir)
-            return False, (fetch_result.stderr or fetch_result.stdout or "Git fetch failed").strip()
+        fetch_result, fetch_message = host.require_git_success(
+            plugin_dir,
+            fetch_command,
+            timeout=60,
+            fallback="Git fetch failed",
+            log_label="Fetch",
+        )
+        if fetch_message:
+            return False, fetch_message
 
         diff_command = ["git", "diff", "--quiet", "HEAD...origin/" + branch]
         Domoticz.Debug("Calling: " + " ".join(diff_command) + " on folder " + plugin_dir)
         diff_result = host.run_git(diff_command, plugin_dir, timeout=15)
+        host.log_git_result("Diff", diff_result)
+        if diff_result is None:
+            return False, "Git diff failed"
+        if diff_result.returncode not in (0, 1):
+            return False, host.git_failure_message(diff_result, "Git diff failed", plugin_dir)
         is_already_current = (diff_result is not None and diff_result.returncode == 0)
 
         checkout_command = ["git", "checkout", "-B", branch, "origin/" + branch]
         Domoticz.Debug("Calling: " + " ".join(checkout_command) + " on folder " + plugin_dir)
-        checkout_result = host.run_git(checkout_command, plugin_dir, timeout=30)
-        if checkout_result is None:
-            return False, "Git checkout failed"
-        if checkout_result.stdout:
-            Domoticz.Debug("Git Checkout Response:" + checkout_result.stdout)
-        if checkout_result.stderr and not host.is_git_dubious_ownership(checkout_result):
-            Domoticz.Debug("Git Checkout Error:" + checkout_result.stderr.strip())
-        if checkout_result.returncode != 0:
-            if host.is_git_dubious_ownership(checkout_result):
-                return False, host.git_ownership_failure_message(plugin_dir)
-            if host.is_locked_file_message(checkout_result.stderr + checkout_result.stdout):
+        checkout_result, checkout_message = host.require_git_success(
+            plugin_dir,
+            checkout_command,
+            timeout=30,
+            fallback="Git checkout failed",
+            log_label="Checkout",
+        )
+        if checkout_message:
+            if checkout_result is not None and host.is_locked_file_message(host.git_result_output(checkout_result)):
                 message = "Plugin files are in use; update queued for the next startup."
                 if queue_on_lock:
                     self.plugin.queuePendingOperation("update", plugin_key)
                 Domoticz.Error(message)
                 return False, message
-            return False, (checkout_result.stderr or checkout_result.stdout or "Git checkout failed").strip()
+            return False, checkout_message
 
         reset_command = ["git", "reset", "--hard", "origin/" + branch]
         Domoticz.Debug("Calling: " + " ".join(reset_command) + " on folder " + plugin_dir)
-        reset_result = host.run_git(reset_command, plugin_dir, timeout=30)
-        if reset_result is None:
-            return False, "Git reset failed"
-        if reset_result.stdout:
-            Domoticz.Debug("Git Reset Response:" + reset_result.stdout)
-        if reset_result.stderr and not host.is_git_dubious_ownership(reset_result):
-            Domoticz.Debug("Git Reset Error:" + reset_result.stderr.strip())
-        if reset_result.returncode != 0:
-            if host.is_git_dubious_ownership(reset_result):
-                return False, host.git_ownership_failure_message(plugin_dir)
-            if host.is_locked_file_message(reset_result.stderr + reset_result.stdout):
+        reset_result, reset_message = host.require_git_success(
+            plugin_dir,
+            reset_command,
+            timeout=30,
+            fallback="Git reset failed",
+            log_label="Reset",
+        )
+        if reset_message:
+            if reset_result is not None and host.is_locked_file_message(host.git_result_output(reset_result)):
                 message = "Plugin files are in use; update queued for the next startup."
                 if queue_on_lock:
                     self.plugin.queuePendingOperation("update", plugin_key)
                 Domoticz.Error(message)
                 return False, message
-            return False, (reset_result.stderr or reset_result.stdout or "Git reset failed").strip()
+            return False, reset_message
 
         if is_already_current:
             Domoticz.Log("Plugin " + plugin_key + " already Up-To-Date")
@@ -2497,10 +2514,7 @@ class BasePlugin:
         result = self.run_git_command(plugin_dir, ["git", "fetch", "--quiet"], timeout=15)
         if result is None:
             return False
-        if result.stdout:
-            Domoticz.Debug("Git Fetch Response:" + result.stdout.strip())
-        if result.stderr and not self.get_host().is_git_dubious_ownership(result):
-            Domoticz.Debug("Git Fetch Error:" + result.stderr.strip())
+        self.get_host().log_git_result("Fetch", result)
         return result.returncode == 0
 
     def get_git_current_branch(self, plugin_dir):

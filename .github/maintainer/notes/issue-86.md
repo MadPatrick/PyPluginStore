@@ -24,10 +24,12 @@ Implemented fix:
   - expected owner, based on the current Domoticz process UID/GID;
   - a note that the expected owner is the Domoticz process user.
 - Preserve existing safe-directory retry and fallback behavior.
+- Centralize Git result logging and user-facing failure messages through `HostRuntime`.
+- Make the detached self-update helper run Git with `-c safe.directory=<repo>`, matching pre-flight behavior.
 - Regenerated `plugin.py`.
 
 Verification:
-- Added focused regression coverage for the ownership failure message.
+- Added focused regression coverage for the ownership failure message and self-update helper Git command shape.
 - `pytest tests/test_plugin_update_status.py -q`: 31 passed.
 - `pytest -q`: 170 passed.
 - `python3 -m py_compile plugin_core.py plugin.py`: passed.

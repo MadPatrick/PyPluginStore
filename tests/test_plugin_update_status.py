@@ -12,6 +12,36 @@ class FakeGitResult:
         self.returncode = returncode
 
 
+class GitScenario:
+    def __init__(self):
+        self.steps = []
+        self.calls = []
+
+    def expect(self, command, stdout="", stderr="", returncode=0):
+        expected_command = list(command)
+        self.steps.append((expected_command, FakeGitResult(stdout, stderr, returncode)))
+        return self
+
+    def run(self, command, cwd=None, **kwargs):
+        actual_command = list(command)
+        actual_cwd = Path(cwd) if cwd is not None else None
+        self.calls.append((actual_command, actual_cwd))
+        if not self.steps:
+            raise AssertionError("unexpected command: " + repr(actual_command))
+
+        expected_command, result = self.steps.pop(0)
+        if actual_command != expected_command:
+            raise AssertionError("expected command " + repr(expected_command) + ", got " + repr(actual_command))
+        return result
+
+    def assert_complete(self):
+        assert self.steps == []
+
+    @property
+    def commands(self):
+        return [command for command, _ in self.calls]
+
+
 DUBIOUS_OWNERSHIP_ERROR = (
     "fatal: detected dubious ownership in repository at '/tmp/Plugin'\n"
     "To add an exception for this directory, call:\n"
@@ -21,6 +51,40 @@ DUBIOUS_OWNERSHIP_ERROR = (
 
 def recorded_messages(plugin_core_module, level):
     return [args[0] for args, _ in plugin_core_module.Domoticz.calls[level] if args]
+
+
+def safe_git_command(repo_dir, command):
+    return ["git", "-c", "safe.directory=" + str(repo_dir.resolve())] + list(command)[1:]
+
+
+def add_self_update_repository_checks(scenario, manager_dir, status_stdout=""):
+    scenario.expect(["git", "rev-parse", "--is-inside-work-tree"], stdout="true\n")
+    scenario.expect(["git", "rev-parse", "--show-toplevel"], stdout=str(manager_dir) + "\n")
+    scenario.expect(["git", "status", "--porcelain", "--untracked-files=no"], stdout=status_stdout)
+    return scenario
+
+
+def add_self_update_comparison_checks(scenario, upstream_ref="origin/master", comparison_stdout="0\t1\n"):
+    scenario.expect(["git", "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"], stdout=upstream_ref + "\n")
+    scenario.expect(["git", "fetch", "--prune"])
+    scenario.expect(["git", "rev-parse", "--verify", upstream_ref], stdout="abc123\n")
+    scenario.expect(["git", "merge-base", "--is-ancestor", "HEAD", upstream_ref])
+    scenario.expect(["git", "rev-list", "--left-right", "--count", "HEAD..." + upstream_ref], stdout=comparison_stdout)
+    return scenario
+
+
+def add_self_update_candidate_checks(
+    scenario,
+    upstream_ref="origin/master",
+    plugin_py="print('plugin')\n",
+    plugin_core_py="print('core')\n",
+):
+    for candidate_path in ("plugin.py", "plugin_core.py", "pypluginstore.html", "registry.json"):
+        scenario.expect(["git", "cat-file", "-e", upstream_ref + ":" + candidate_path])
+    scenario.expect(["git", "show", upstream_ref + ":plugin.py"], stdout=plugin_py)
+    if plugin_core_py is not None:
+        scenario.expect(["git", "show", upstream_ref + ":plugin_core.py"], stdout=plugin_core_py)
+    return scenario
 
 
 def test_git_ownership_failure_message_includes_current_and_expected_owner(plugin_core_module, tmp_path):
@@ -44,16 +108,12 @@ def test_run_git_bypasses_dubious_ownership_with_safe_directory(plugin_core_modu
     _, manager_dir = configure_home(plugin_core_module, tmp_path)
     (manager_dir / ".git").mkdir()
     runtime = plugin_core_module.LinuxHostRuntime(plugin_core_module.Parameters)
-    calls = []
     repairs = []
+    scenario = GitScenario()
+    scenario.expect(["git", "fetch", "--quiet"], stderr=DUBIOUS_OWNERSHIP_ERROR, returncode=128)
+    scenario.expect(safe_git_command(manager_dir, ["git", "fetch", "--quiet"]), stdout="ok\n")
 
-    def fake_run(command, cwd=None, **kwargs):
-        calls.append((command, Path(cwd)))
-        if len(calls) == 1:
-            return FakeGitResult(stderr=DUBIOUS_OWNERSHIP_ERROR, returncode=128)
-        return FakeGitResult(stdout="ok\n", returncode=0)
-
-    monkeypatch.setattr(plugin_core_module.subprocess, "run", fake_run)
+    monkeypatch.setattr(plugin_core_module.subprocess, "run", scenario.run)
     monkeypatch.setattr(
         runtime,
         "repair_git_repository_ownership",
@@ -63,9 +123,11 @@ def test_run_git_bypasses_dubious_ownership_with_safe_directory(plugin_core_modu
     result = runtime.run_git(["git", "fetch", "--quiet"], manager_dir)
 
     assert result.returncode == 0
-    assert len(calls) == 2
-    assert calls[0] == (["git", "fetch", "--quiet"], manager_dir)
-    assert calls[1][0] == ["git", "-c", "safe.directory=" + str(manager_dir.resolve()), "fetch", "--quiet"]
+    assert scenario.calls == [
+        (["git", "fetch", "--quiet"], manager_dir),
+        (safe_git_command(manager_dir, ["git", "fetch", "--quiet"]), manager_dir),
+    ]
+    scenario.assert_complete()
     assert len(repairs) == 0  # No chown repair should have been called!
     assert any("retrying with safe.directory bypass" in message for message in recorded_messages(plugin_core_module, "Log"))
     assert not any("ownership does not match the Domoticz user" in message for message in recorded_messages(plugin_core_module, "Error"))
@@ -75,16 +137,14 @@ def test_run_git_reuses_safe_directory_bypass_for_later_commands(plugin_core_mod
     _, manager_dir = configure_home(plugin_core_module, tmp_path)
     (manager_dir / ".git").mkdir()
     runtime = plugin_core_module.LinuxHostRuntime(plugin_core_module.Parameters)
-    calls = []
     repairs = []
+    scenario = GitScenario()
+    scenario.expect(["git", "fetch", "--quiet"], stderr=DUBIOUS_OWNERSHIP_ERROR, returncode=128)
+    scenario.expect(safe_git_command(manager_dir, ["git", "fetch", "--quiet"]), stdout="ok\n")
+    scenario.expect(["git", "log", "-1", "--format=%ct", "origin/master"], stderr=DUBIOUS_OWNERSHIP_ERROR, returncode=128)
+    scenario.expect(safe_git_command(manager_dir, ["git", "log", "-1", "--format=%ct", "origin/master"]), stdout="ok\n")
 
-    def fake_run(command, cwd=None, **kwargs):
-        calls.append((command, Path(cwd)))
-        if "-c" in command and any(str(part).startswith("safe.directory=") for part in command):
-            return FakeGitResult(stdout="ok\n", returncode=0)
-        return FakeGitResult(stderr=DUBIOUS_OWNERSHIP_ERROR, returncode=128)
-
-    monkeypatch.setattr(plugin_core_module.subprocess, "run", fake_run)
+    monkeypatch.setattr(plugin_core_module.subprocess, "run", scenario.run)
     monkeypatch.setattr(
         runtime,
         "repair_git_repository_ownership",
@@ -96,15 +156,13 @@ def test_run_git_reuses_safe_directory_bypass_for_later_commands(plugin_core_mod
 
     assert fetch_result.returncode == 0
     assert log_result.returncode == 0
-    assert calls == [
+    assert scenario.calls == [
         (["git", "fetch", "--quiet"], manager_dir),
-        (["git", "-c", "safe.directory=" + str(manager_dir.resolve()), "fetch", "--quiet"], manager_dir),
+        (safe_git_command(manager_dir, ["git", "fetch", "--quiet"]), manager_dir),
         (["git", "log", "-1", "--format=%ct", "origin/master"], manager_dir),
-        (
-            ["git", "-c", "safe.directory=" + str(manager_dir.resolve()), "log", "-1", "--format=%ct", "origin/master"],
-            manager_dir,
-        ),
+        (safe_git_command(manager_dir, ["git", "log", "-1", "--format=%ct", "origin/master"]), manager_dir),
     ]
+    scenario.assert_complete()
     assert repairs == []
     assert len([message for message in recorded_messages(plugin_core_module, "Log") if "safe.directory bypass" in message]) == 1
 
@@ -113,16 +171,13 @@ def test_run_git_falls_back_to_repair_when_bypass_fails(plugin_core_module, tmp_
     _, manager_dir = configure_home(plugin_core_module, tmp_path)
     (manager_dir / ".git").mkdir()
     runtime = plugin_core_module.LinuxHostRuntime(plugin_core_module.Parameters)
-    calls = []
     repairs = []
+    scenario = GitScenario()
+    scenario.expect(["git", "fetch", "--quiet"], stderr=DUBIOUS_OWNERSHIP_ERROR, returncode=128)
+    scenario.expect(safe_git_command(manager_dir, ["git", "fetch", "--quiet"]), stderr=DUBIOUS_OWNERSHIP_ERROR, returncode=128)
+    scenario.expect(["git", "fetch", "--quiet"], stdout="ok\n")
 
-    def fake_run(command, cwd=None, **kwargs):
-        calls.append((command, Path(cwd)))
-        if len(calls) <= 2:
-            return FakeGitResult(stderr=DUBIOUS_OWNERSHIP_ERROR, returncode=128)
-        return FakeGitResult(stdout="ok\n", returncode=0)
-
-    monkeypatch.setattr(plugin_core_module.subprocess, "run", fake_run)
+    monkeypatch.setattr(plugin_core_module.subprocess, "run", scenario.run)
     monkeypatch.setattr(
         runtime,
         "repair_git_repository_ownership",
@@ -132,10 +187,12 @@ def test_run_git_falls_back_to_repair_when_bypass_fails(plugin_core_module, tmp_
     result = runtime.run_git(["git", "fetch", "--quiet"], manager_dir)
 
     assert result.returncode == 0
-    assert len(calls) == 3
-    assert calls[0] == (["git", "fetch", "--quiet"], manager_dir)
-    assert calls[1][0] == ["git", "-c", "safe.directory=" + str(manager_dir.resolve()), "fetch", "--quiet"]
-    assert calls[2] == (["git", "fetch", "--quiet"], manager_dir)
+    assert scenario.calls == [
+        (["git", "fetch", "--quiet"], manager_dir),
+        (safe_git_command(manager_dir, ["git", "fetch", "--quiet"]), manager_dir),
+        (["git", "fetch", "--quiet"], manager_dir),
+    ]
+    scenario.assert_complete()
     assert repairs == [manager_dir.resolve()]  # chown repair called on fallback!
     assert any("retrying with safe.directory bypass" in message for message in recorded_messages(plugin_core_module, "Log"))
     assert any("ownership does not match the Domoticz user" in message for message in recorded_messages(plugin_core_module, "Error"))
@@ -407,8 +464,10 @@ def test_self_update_command_schedules_detached_helper(plugin_core_module, tmp_p
     command = popen_calls[0][0][0]
     helper = command[2]
     assert command[:2] == [plugin_core_module.sys.executable, "-c"]
-    assert '["git", "status", "--porcelain", "--untracked-files=no"]' in helper
-    assert '["git", "merge", "--ff-only", upstream_ref]' in helper
+    assert 'git_command("status", "--porcelain", "--untracked-files=no")' in helper
+    assert 'git_command("fetch", "--prune")' in helper
+    assert 'git_command("merge", "--ff-only", upstream_ref)' in helper
+    assert "safe.directory=" in helper
     assert '["git", "reset", "--hard", "HEAD"]' not in helper
     assert '["git", "pull", "--force"]' not in helper
 
@@ -445,37 +504,34 @@ def test_self_update_preflight_rejects_dirty_tracked_files(plugin_core_module, t
     _, manager_dir = configure_home(plugin_core_module, tmp_path)
     (manager_dir / ".git").mkdir()
     runtime = plugin_core_module.LinuxHostRuntime(plugin_core_module.Parameters)
-
-    def fake_run_git(command, cwd, timeout=15):
-        if command == ["git", "rev-parse", "--is-inside-work-tree"]:
-            return FakeGitResult("true\n")
-        if command == ["git", "rev-parse", "--show-toplevel"]:
-            return FakeGitResult(str(manager_dir) + "\n")
-        if command == ["git", "status", "--porcelain", "--untracked-files=no"]:
-            return FakeGitResult(" M plugin.py\n")
-        raise AssertionError("unexpected command: " + repr(command))
+    scenario = GitScenario()
+    add_self_update_repository_checks(scenario, manager_dir, status_stdout=" M plugin.py\n")
 
     monkeypatch.setattr(runtime, "command_available", lambda command: command == "git")
-    monkeypatch.setattr(runtime, "run_git", fake_run_git)
+    monkeypatch.setattr(runtime, "run_git", scenario.run)
 
     success, message, plan = runtime.preflight_self_update(manager_dir)
 
     assert success is False
     assert message == "PyPluginStore has local tracked file changes; self-update refused."
     assert plan == {}
+    scenario.assert_complete()
 
 
 def test_self_update_preflight_reports_dubious_ownership(plugin_core_module, tmp_path, monkeypatch):
     _, manager_dir = configure_home(plugin_core_module, tmp_path)
     (manager_dir / ".git").mkdir()
     runtime = plugin_core_module.LinuxHostRuntime(plugin_core_module.Parameters)
+    scenario = GitScenario()
+    scenario.expect(["git", "rev-parse", "--is-inside-work-tree"], stderr=DUBIOUS_OWNERSHIP_ERROR, returncode=128)
+    scenario.expect(
+        safe_git_command(manager_dir, ["git", "rev-parse", "--is-inside-work-tree"]),
+        stderr=DUBIOUS_OWNERSHIP_ERROR,
+        returncode=128,
+    )
 
     monkeypatch.setattr(runtime, "command_available", lambda command: command == "git")
-    monkeypatch.setattr(
-        runtime,
-        "_run_git_once",
-        lambda command, cwd, timeout=15: FakeGitResult(stderr=DUBIOUS_OWNERSHIP_ERROR, returncode=128),
-    )
+    monkeypatch.setattr(runtime, "_run_git_once", scenario.run)
     monkeypatch.setattr(runtime, "repair_git_repository_ownership", lambda cwd: False)
 
     success, message, plan = runtime.preflight_self_update(manager_dir)
@@ -485,118 +541,66 @@ def test_self_update_preflight_reports_dubious_ownership(plugin_core_module, tmp
     assert "fix the plugin folder ownership manually" in message
     assert "safe.directory" not in message
     assert plan == {}
+    scenario.assert_complete()
 
 
 def test_self_update_preflight_rejects_invalid_target_python(plugin_core_module, tmp_path, monkeypatch):
     _, manager_dir = configure_home(plugin_core_module, tmp_path)
     (manager_dir / ".git").mkdir()
     runtime = plugin_core_module.LinuxHostRuntime(plugin_core_module.Parameters)
-
-    def fake_run_git(command, cwd, timeout=15):
-        if command == ["git", "rev-parse", "--is-inside-work-tree"]:
-            return FakeGitResult("true\n")
-        if command == ["git", "rev-parse", "--show-toplevel"]:
-            return FakeGitResult(str(manager_dir) + "\n")
-        if command == ["git", "status", "--porcelain", "--untracked-files=no"]:
-            return FakeGitResult("")
-        if command == ["git", "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"]:
-            return FakeGitResult("origin/master\n")
-        if command == ["git", "fetch", "--prune"]:
-            return FakeGitResult("")
-        if command == ["git", "rev-parse", "--verify", "origin/master"]:
-            return FakeGitResult("abc123\n")
-        if command == ["git", "merge-base", "--is-ancestor", "HEAD", "origin/master"]:
-            return FakeGitResult("")
-        if command == ["git", "rev-list", "--left-right", "--count", "HEAD...origin/master"]:
-            return FakeGitResult("0\t1\n")
-        if command[:3] == ["git", "cat-file", "-e"]:
-            return FakeGitResult("")
-        if command == ["git", "show", "origin/master:plugin.py"]:
-            return FakeGitResult("def broken(:\n")
-        raise AssertionError("unexpected command: " + repr(command))
+    scenario = GitScenario()
+    add_self_update_repository_checks(scenario, manager_dir)
+    add_self_update_comparison_checks(scenario)
+    add_self_update_candidate_checks(scenario, plugin_py="def broken(:\n", plugin_core_py=None)
 
     monkeypatch.setattr(runtime, "command_available", lambda command: command == "git")
-    monkeypatch.setattr(runtime, "run_git", fake_run_git)
+    monkeypatch.setattr(runtime, "run_git", scenario.run)
 
     success, message, plan = runtime.preflight_self_update(manager_dir)
 
     assert success is False
     assert "invalid Python syntax in plugin.py" in message
     assert plan == {}
+    scenario.assert_complete()
 
 
 def test_self_update_preflight_allows_fast_forward_candidate(plugin_core_module, tmp_path, monkeypatch):
     _, manager_dir = configure_home(plugin_core_module, tmp_path)
     (manager_dir / ".git").mkdir()
     runtime = plugin_core_module.LinuxHostRuntime(plugin_core_module.Parameters)
-
-    def fake_run_git(command, cwd, timeout=15):
-        if command == ["git", "rev-parse", "--is-inside-work-tree"]:
-            return FakeGitResult("true\n")
-        if command == ["git", "rev-parse", "--show-toplevel"]:
-            return FakeGitResult(str(manager_dir) + "\n")
-        if command == ["git", "status", "--porcelain", "--untracked-files=no"]:
-            return FakeGitResult("")
-        if command == ["git", "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"]:
-            return FakeGitResult("origin/master\n")
-        if command == ["git", "fetch", "--prune"]:
-            return FakeGitResult("")
-        if command == ["git", "rev-parse", "--verify", "origin/master"]:
-            return FakeGitResult("abc123\n")
-        if command == ["git", "merge-base", "--is-ancestor", "HEAD", "origin/master"]:
-            return FakeGitResult("")
-        if command == ["git", "rev-list", "--left-right", "--count", "HEAD...origin/master"]:
-            return FakeGitResult("0\t1\n")
-        if command[:3] == ["git", "cat-file", "-e"]:
-            return FakeGitResult("")
-        if command == ["git", "show", "origin/master:plugin.py"]:
-            return FakeGitResult("print('plugin')\n")
-        if command == ["git", "show", "origin/master:plugin_core.py"]:
-            return FakeGitResult("print('core')\n")
-        raise AssertionError("unexpected command: " + repr(command))
+    scenario = GitScenario()
+    add_self_update_repository_checks(scenario, manager_dir)
+    add_self_update_comparison_checks(scenario)
+    add_self_update_candidate_checks(scenario)
 
     monkeypatch.setattr(runtime, "command_available", lambda command: command == "git")
-    monkeypatch.setattr(runtime, "run_git", fake_run_git)
+    monkeypatch.setattr(runtime, "run_git", scenario.run)
 
     success, message, plan = runtime.preflight_self_update(manager_dir)
 
     assert success is True
     assert message == "Self update pre-flight checks passed."
     assert plan == {"already_current": False, "upstream_ref": "origin/master"}
+    scenario.assert_complete()
 
 
 def test_self_update_preflight_reports_already_current(plugin_core_module, tmp_path, monkeypatch):
     _, manager_dir = configure_home(plugin_core_module, tmp_path)
     (manager_dir / ".git").mkdir()
     runtime = plugin_core_module.LinuxHostRuntime(plugin_core_module.Parameters)
-
-    def fake_run_git(command, cwd, timeout=15):
-        if command == ["git", "rev-parse", "--is-inside-work-tree"]:
-            return FakeGitResult("true\n")
-        if command == ["git", "rev-parse", "--show-toplevel"]:
-            return FakeGitResult(str(manager_dir) + "\n")
-        if command == ["git", "status", "--porcelain", "--untracked-files=no"]:
-            return FakeGitResult("")
-        if command == ["git", "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"]:
-            return FakeGitResult("origin/master\n")
-        if command == ["git", "fetch", "--prune"]:
-            return FakeGitResult("")
-        if command == ["git", "rev-parse", "--verify", "origin/master"]:
-            return FakeGitResult("abc123\n")
-        if command == ["git", "merge-base", "--is-ancestor", "HEAD", "origin/master"]:
-            return FakeGitResult("")
-        if command == ["git", "rev-list", "--left-right", "--count", "HEAD...origin/master"]:
-            return FakeGitResult("0\t0\n")
-        raise AssertionError("unexpected command: " + repr(command))
+    scenario = GitScenario()
+    add_self_update_repository_checks(scenario, manager_dir)
+    add_self_update_comparison_checks(scenario, comparison_stdout="0\t0\n")
 
     monkeypatch.setattr(runtime, "command_available", lambda command: command == "git")
-    monkeypatch.setattr(runtime, "run_git", fake_run_git)
+    monkeypatch.setattr(runtime, "run_git", scenario.run)
 
     success, message, plan = runtime.preflight_self_update(manager_dir)
 
     assert success is True
     assert message == "PyPluginStore is already up-to-date."
     assert plan == {"already_current": True, "upstream_ref": "origin/master"}
+    scenario.assert_complete()
 
 
 def test_refresh_update_status_command_runs_serial_refresh(plugin_core_module, tmp_path, monkeypatch):
