@@ -32,9 +32,12 @@ def test_git_ownership_failure_message_includes_current_and_expected_owner(plugi
 
     assert "Current owner:" in message
     assert str(path_owner.st_uid) + ":" + str(path_owner.st_gid) in message
-    assert "Expected owner:" in message
-    assert str(os.geteuid()) + ":" + str(os.getegid()) in message
-    assert "the Domoticz process user" in message
+    if hasattr(os, "geteuid"):
+        assert "Expected owner:" in message
+        assert str(os.geteuid()) + ":" + str(os.getegid()) in message
+        assert "the Domoticz process user" in message
+    else:
+        assert "Expected owner:" not in message
 
 
 def test_run_git_bypasses_dubious_ownership_with_safe_directory(plugin_core_module, tmp_path, monkeypatch):
