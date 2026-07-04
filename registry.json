@@ -531,6 +531,17 @@
             "windows"
         ]
     ],
+    "myenergi": [
+        "Rouzax",
+        "myenergi-domoticz-plugin",
+        "myenergi zappi and harvi: solar, EV charging, home and grid energy with kWh counters, plus opt-in charger control",
+        "dist",
+        "",
+        [
+            "linux",
+            "windows"
+        ]
+    ],
     "domoticz-tailscale-plugin": [
         "mirkg",
         "domoticz-tailscale-plugin",
