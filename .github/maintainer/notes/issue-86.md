@@ -1,6 +1,6 @@
 # ISSUE:86 - ownership ??
 
-Status: open; diagnostic fix prepared locally.
+Status: open; diagnostic fix pushed to `master`.
 
 Reporter:
 - `Eddie-BS` reported on 2026-07-04 that Docker-based Domoticz build 18070 still logs Git ownership failures around self-update.
@@ -34,5 +34,5 @@ Verification:
 - `git diff --check`: passed.
 
 Recommended next step:
-- Push the diagnostic fix.
 - After approval, comment on `ISSUE:86` explaining that the next build will log both current and expected ownership, and ask the reporter to retry from that build if the problem continues.
+- Release PR #85 includes this fix for 2.15.1.
