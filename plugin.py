@@ -60,6 +60,7 @@ import Domoticz
 
 
 API_PAYLOAD_MAX_LENGTH = 2000
+SELF_UPDATE_STARTUP_DELAY_SECONDS = 5
 DEFAULT_GIT_HOST = "github.com"
 SUPPORTED_GIT_HOSTS = ("github.com", "gitlab.com", "codeberg.org")
 REPOSITORY_PATH_STOP_PARTS = {
@@ -738,7 +739,7 @@ else:
             "upstream_ref": upstream_ref,
         }
 
-    def build_self_update_helper(self, plugin_dir, log_file, upstream_ref, startup_delay=1):
+    def build_self_update_helper(self, plugin_dir, log_file, upstream_ref, startup_delay=SELF_UPDATE_STARTUP_DELAY_SECONDS):
         helper = """
 import datetime
 import os
@@ -3315,9 +3316,9 @@ class BasePlugin:
                 if install_success:
                     self.sendApiResponse({"status": "success", "action": action, "plugin_key": plugin_key})
                 else:
-                    self.sendApiResponse({"status": "error", "message": install_message or "Plugin install failed"})
+                    self.sendApiResponse({"status": "error", "action": action, "plugin_key": plugin_key, "message": install_message or "Plugin install failed"})
             else:
-                self.sendApiResponse({"status": "error", "message": "Plugin not found"})
+                self.sendApiResponse({"status": "error", "action": action, "plugin_key": plugin_key, "message": "Plugin not found"})
         elif action == "update":
             plugin_key = payload.get("plugin_key")
             entry = self.get_registry_entry(plugin_key)
@@ -3329,9 +3330,9 @@ class BasePlugin:
                         response["message"] = update_message
                     self.sendApiResponse(response)
                 else:
-                    self.sendApiResponse({"status": "error", "message": update_message or "Plugin update failed"})
+                    self.sendApiResponse({"status": "error", "action": action, "plugin_key": plugin_key, "message": update_message or "Plugin update failed"})
             else:
-                self.sendApiResponse({"status": "error", "message": "Plugin not found"})
+                self.sendApiResponse({"status": "error", "action": action, "plugin_key": plugin_key, "message": "Plugin not found"})
         elif action == "restart_domoticz":
             restart_success, restart_message = self.restartDomoticz()
             if restart_success:
@@ -3341,16 +3342,16 @@ class BasePlugin:
                     "message": restart_message
                 })
             else:
-                self.sendApiResponse({"status": "error", "message": restart_message})
+                self.sendApiResponse({"status": "error", "action": action, "message": restart_message})
         elif action == "remove":
             plugin_key = payload.get("plugin_key", "")
             remove_success, remove_message = self.removePlugin(plugin_key)
             if remove_success:
                 self.sendApiResponse({"status": "success", "action": action, "plugin_key": plugin_key})
             else:
-                self.sendApiResponse({"status": "error", "message": remove_message})
+                self.sendApiResponse({"status": "error", "action": action, "plugin_key": plugin_key, "message": remove_message})
         else:
-            self.sendApiResponse({"status": "error", "message": f"Unknown action: {action}"})
+            self.sendApiResponse({"status": "error", "action": action, "message": f"Unknown action: {action}"})
 
     def getInstalledUpdateStatuses(self, installed_plugins, plugins_dir):
         return self.refreshInstalledUpdateStatuses(installed_plugins, plugins_dir)
@@ -3358,7 +3359,21 @@ class BasePlugin:
     def getGitUpdateStatus(self, plugin_dir, plugin_key=None, fetch_first=True):
         return self.update_status_service.get_git_update_status(plugin_dir, plugin_key, fetch_first)
 
+    def logApiErrorResponse(self, response_dict):
+        if not isinstance(response_dict, dict) or response_dict.get("status") != "error":
+            return
+
+        action = str(response_dict.get("action") or "").strip()
+        plugin_key = str(response_dict.get("plugin_key") or "").strip()
+        message = str(response_dict.get("message") or "Unknown error")
+
+        context = "API " + action if action else "API request"
+        if plugin_key:
+            context += " for " + plugin_key
+        Domoticz.Error(context + " failed: " + message)
+
     def sendApiResponse(self, response_dict):
+        self.logApiErrorResponse(response_dict)
         if 1 in Devices:
             try:
                 if hasattr(self, 'tx_id') and self.tx_id:

@@ -246,6 +246,61 @@ def test_api_bridge_payload_is_cleared_around_commands():
     assert "Could not clear API bridge payload" in script
 
 
+def test_api_bridge_accepts_error_response_without_action():
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("node is not installed")
+
+    poll_response_source = extract_js_function(load_inline_script(), "pollResponse")
+    node_script = f"""
+const payloadIdx = 1;
+let clearCalls = 0;
+const setTimeout = (resolve, delay) => resolve();
+const fetch = async () => ({{
+    json: async () => ({{
+        result: [{{
+            Data: JSON.stringify({{
+                status: 'error',
+                tx_id: 'tx-123',
+                message: 'preflight failed'
+            }})
+        }}]
+    }})
+}});
+async function clearApiBridgePayload() {{
+    clearCalls += 1;
+}}
+
+{poll_response_source}
+
+(async () => {{
+    const response = await pollResponse('update', 'tx-123', 1);
+    if (response.status !== 'error' || response.message !== 'preflight failed') {{
+        throw new Error('missing-action error response was not returned');
+    }}
+    if (clearCalls !== 1) {{
+        throw new Error(`expected clearApiBridgePayload once, got ${{clearCalls}}`);
+    }}
+}})().catch(error => {{
+    console.error(error);
+    process.exit(1);
+}});
+"""
+
+    with tempfile.NamedTemporaryFile(suffix=".js", mode="w", delete=False) as f:
+        f.write(node_script)
+        temp_path = f.name
+    try:
+        result = subprocess.run(
+            [node, temp_path],
+            capture_output=True,
+            text=True,
+        )
+    finally:
+        os.remove(temp_path)
+    assert result.returncode == 0, result.stderr
+
+
 def test_self_update_does_not_reload_plugin_list_immediately():
     script = load_inline_script()
 
@@ -360,6 +415,10 @@ def load_inline_script():
 
 def extract_js_function(script, function_name):
     start = script.index(f"function {function_name}")
+    async_prefix = "async "
+    prefix_start = start - len(async_prefix)
+    if prefix_start >= 0 and script[prefix_start:start] == async_prefix:
+        start = prefix_start
     brace_start = script.index("{", start)
     depth = 0
     for index in range(brace_start, len(script)):

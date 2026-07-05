@@ -490,6 +490,45 @@ def test_on_command_rejects_large_api_request(plugin_core_module, monkeypatch):
     assert any("API Payload exceeds length limit." in args[0] for args, _ in plugin_core_module.Domoticz.calls["Error"])
 
 
+def test_send_api_response_logs_error_payload_with_context(plugin_core_module):
+    plugin = plugin_core_module.BasePlugin()
+    plugin_core_module.Devices = {1: FakeTextDevice("")}
+
+    plugin.sendApiResponse({
+        "status": "error",
+        "action": "update",
+        "plugin_key": "00-PP-MANAGER",
+        "message": "preflight failed",
+    })
+
+    assert plugin_core_module.Devices[1].sValue == json.dumps({
+        "status": "error",
+        "action": "update",
+        "plugin_key": "00-PP-MANAGER",
+        "message": "preflight failed",
+    })
+    assert any(
+        "API update for 00-PP-MANAGER failed: preflight failed" in args[0]
+        for args, _ in plugin_core_module.Domoticz.calls["Error"]
+    )
+
+
+def test_send_api_response_logs_error_even_without_payload_device(plugin_core_module):
+    plugin = plugin_core_module.BasePlugin()
+    plugin_core_module.Devices = {}
+
+    plugin.sendApiResponse({
+        "status": "error",
+        "action": "restart_domoticz",
+        "message": "restart not configured",
+    })
+
+    assert any(
+        "API restart_domoticz failed: restart not configured" in args[0]
+        for args, _ in plugin_core_module.Domoticz.calls["Error"]
+    )
+
+
 class FakeTextDevice:
     def __init__(self, s_value):
         self.sValue = s_value

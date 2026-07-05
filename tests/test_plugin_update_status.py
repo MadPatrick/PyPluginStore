@@ -502,6 +502,7 @@ def test_self_update_command_schedules_detached_helper(plugin_core_module, tmp_p
     assert 'git_command("status", "--porcelain", "--untracked-files=no")' in helper
     assert 'git_command("fetch", "--prune")' in helper
     assert 'git_command("merge", "--ff-only", upstream_ref)' in helper
+    assert "startup_delay = 5" in helper
     assert "safe.directory=" in helper
     assert '["git", "reset", "--hard", "HEAD"]' not in helper
     assert '["git", "pull", "--force"]' not in helper
@@ -531,6 +532,8 @@ def test_self_update_command_reports_preflight_failure(plugin_core_module, tmp_p
 
     assert responses[0] == {
         "status": "error",
+        "action": "update",
+        "plugin_key": "00-PyPluginStore",
         "message": "PyPluginStore has local tracked file changes; self-update refused.",
     }
 

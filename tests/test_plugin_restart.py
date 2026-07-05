@@ -25,7 +25,11 @@ def test_restart_command_reports_scheduling_failure(plugin_core_module, tmp_path
 
     plugin.handleApiCommand({"action": "restart_domoticz"})
 
-    assert responses[0] == {"status": "error", "message": "restart not configured"}
+    assert responses[0] == {
+        "status": "error",
+        "action": "restart_domoticz",
+        "message": "restart not configured",
+    }
 
 
 def test_host_runtime_factory_selects_windows(plugin_core_module, monkeypatch):
