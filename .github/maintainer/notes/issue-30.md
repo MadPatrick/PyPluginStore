@@ -1,6 +1,6 @@
 # ISSUE:30 - Future ideas
 
-Status: open.
+Status: closed.
 
 Intent:
 - Discuss future product direction rather than report a concrete bug.
@@ -13,3 +13,7 @@ Assessment:
 Recommended next step:
 - Leave open as an ideas/discussion issue unless a concrete user workflow emerges.
 - If responding publicly, ask for specific pain caused by long folder names before committing to path-mangling behavior.
+
+Resolution:
+- Split the theme management idea into a new issue: #87.
+- Added a public response and closed issue #30 in favor of #87 on July 4, 2026.
