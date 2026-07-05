@@ -359,6 +359,11 @@ def test_scanner_checks_root_plugin_py_on_supported_hosts(scan_plugins_module, m
     monkeypatch.setattr(scan_plugins_module.urllib.request, "urlopen", fake_urlopen)
 
     assert scan_plugins_module.has_root_plugin_py({
+        "owner": {"login": "owner"},
+        "name": "repo",
+        "default_branch": "main",
+    }) is True
+    assert scan_plugins_module.has_root_plugin_py({
         "host": "codeberg.org",
         "owner": {"login": "Hoog"},
         "name": "Domoticz-Stromer-plugin",
@@ -371,9 +376,61 @@ def test_scanner_checks_root_plugin_py_on_supported_hosts(scan_plugins_module, m
         "default_branch": "master",
     }) is True
     assert fetched_urls == [
+        "https://raw.githubusercontent.com/owner/repo/main/plugin.py",
         "https://codeberg.org/Hoog/Domoticz-Stromer-plugin/raw/branch/main/plugin.py",
         "https://gitlab.com/r.boeters/DomoticzSabNZBDPlugin/-/raw/master/plugin.py",
     ]
+
+
+def test_scanner_filters_github_search_results_without_root_plugin_py(scan_plugins_module, monkeypatch):
+    fetched_plugin_urls = []
+    good_repo = {
+        "full_name": "owner/good-plugin",
+        "owner": {"login": "owner"},
+        "name": "good-plugin",
+        "default_branch": "main",
+    }
+    bad_repo = {
+        "full_name": "owner/wiki",
+        "owner": {"login": "owner"},
+        "name": "wiki",
+        "default_branch": "main",
+    }
+
+    class FakeResponse:
+        def __init__(self, content):
+            self.content = content
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc_value, traceback):
+            return False
+
+        def read(self, size=-1):
+            return self.content
+
+    def fake_urlopen(request, timeout=0):
+        url = request.full_url
+        if url.startswith("https://api.github.com/search/repositories"):
+            return FakeResponse(json.dumps({"items": [good_repo, bad_repo]}).encode())
+        fetched_plugin_urls.append(url)
+        if url.endswith("/good-plugin/main/plugin.py"):
+            return FakeResponse(b"import Domoticz\n")
+        if url.endswith("/wiki/main/plugin.py"):
+            raise urllib.error.HTTPError(url, 404, "Not Found", {}, None)
+        raise AssertionError(f"Unexpected URL: {url}")
+
+    monkeypatch.setattr(scan_plugins_module.urllib.request, "urlopen", fake_urlopen)
+
+    results = scan_plugins_module.search_github()
+    assert len(results) == 1
+    assert results[0]["full_name"] == good_repo["full_name"]
+    assert fetched_plugin_urls == [
+        "https://raw.githubusercontent.com/owner/good-plugin/main/plugin.py",
+        "https://raw.githubusercontent.com/owner/wiki/main/plugin.py",
+    ]
+    assert results[0][scan_plugins_module.ROOT_PLUGIN_CHECKED_FIELD] is True
 
 
 def test_cleanup_registry_builds_raw_plugin_urls_for_supported_hosts(cleanup_registry_module):
@@ -909,6 +966,7 @@ def test_scanner_adds_platforms_for_new_plugins(scan_plugins_module, tmp_path, m
     monkeypatch.setattr(scan_plugins_module, "search_github", lambda: [repo_info])
     monkeypatch.setattr(scan_plugins_module, "search_gitlab", lambda: [])
     monkeypatch.setattr(scan_plugins_module, "search_codeberg", lambda: [])
+    monkeypatch.setattr(scan_plugins_module, "has_root_plugin_py", lambda repo: True)
     monkeypatch.setattr(
         scan_plugins_module,
         "detect_platforms_for_repo",
@@ -948,6 +1006,7 @@ def test_scanner_keeps_low_confidence_new_plugin_platforms_unknown(scan_plugins_
     monkeypatch.setattr(scan_plugins_module, "search_github", lambda: [repo_info])
     monkeypatch.setattr(scan_plugins_module, "search_gitlab", lambda: [])
     monkeypatch.setattr(scan_plugins_module, "search_codeberg", lambda: [])
+    monkeypatch.setattr(scan_plugins_module, "has_root_plugin_py", lambda repo: True)
     monkeypatch.setattr(
         scan_plugins_module,
         "detect_platforms_for_repo",
@@ -968,6 +1027,46 @@ def test_scanner_keeps_low_confidence_new_plugin_platforms_unknown(scan_plugins_
     assert metadata["entries"]["repo"]["registry_platforms"] == []
     assert metadata["entries"]["repo"]["last_detection"]["platforms"] == ["linux", "windows"]
     assert metadata["entries"]["repo"]["policy_action"] == "kept_low_confidence_new"
+
+
+def test_scanner_skips_new_candidates_without_root_plugin_py(scan_plugins_module, tmp_path, monkeypatch):
+    registry_file = tmp_path / "registry.json"
+    update_times_file = tmp_path / "update_times.json"
+    metadata_file = tmp_path / "platform_detection.json"
+    registry = {
+        "Idle": ["Idle", "Idle", "Idle", "master"],
+    }
+    registry_file.write_text(json.dumps(registry))
+    update_times_file.write_text(json.dumps({}))
+
+    repo_info = {
+        "archived": False,
+        "disabled": False,
+        "size": 100,
+        "full_name": "owner/wiki",
+        "owner": {"login": "owner"},
+        "name": "wiki",
+        "description": "Wiki part of a Domoticz plugin",
+        "default_branch": "main",
+        "pushed_at": "2026-06-14T15:10:03Z",
+    }
+
+    def fail_detect_platforms(*args, **kwargs):
+        pytest.fail("repositories without a root plugin.py should not reach platform detection")
+
+    patch_scanner_paths(scan_plugins_module, monkeypatch, registry_file, update_times_file, metadata_file)
+    monkeypatch.setattr(scan_plugins_module, "search_github", lambda: [repo_info])
+    monkeypatch.setattr(scan_plugins_module, "search_gitlab", lambda: [])
+    monkeypatch.setattr(scan_plugins_module, "search_codeberg", lambda: [])
+    monkeypatch.setattr(scan_plugins_module, "has_root_plugin_py", lambda repo: False)
+    monkeypatch.setattr(scan_plugins_module, "detect_platforms_for_repo", fail_detect_platforms)
+    monkeypatch.setenv("GITHUB_TOKEN", "test-token")
+
+    scan_plugins_module.main()
+
+    assert json.loads(registry_file.read_text()) == registry
+    assert json.loads(update_times_file.read_text()) == {}
+    assert not metadata_file.exists()
 
 
 def test_scanner_blocks_medium_confidence_existing_platform_downgrade(scan_plugins_module, tmp_path, monkeypatch):
@@ -1155,6 +1254,7 @@ def test_scanner_adds_codeberg_and_gitlab_plugins(scan_plugins_module, tmp_path,
     monkeypatch.setattr(scan_plugins_module, "search_github", lambda: [])
     monkeypatch.setattr(scan_plugins_module, "search_codeberg", lambda: [codeberg_repo])
     monkeypatch.setattr(scan_plugins_module, "search_gitlab", lambda: [gitlab_repo])
+    monkeypatch.setattr(scan_plugins_module, "has_root_plugin_py", lambda repo: True)
     monkeypatch.setattr(
         scan_plugins_module,
         "detect_platforms_for_repo",

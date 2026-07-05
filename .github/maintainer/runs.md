@@ -1,5 +1,30 @@
 # Maintainer Runs
 
+## 2026-07-05 - PR:88 scan hardening and rerun
+
+Scope:
+- Reviewed `PR:88`, the automated weekly registry scan PR.
+- Identified that GitHub discovery did not require a root-level `plugin.py`, while GitLab and Codeberg discovery already did.
+- Closed `PR:88` after confirming it added non-plugin repositories such as `domoticz-mcp`, `wiki`, and `ha-domoticz-sync`.
+
+Prepared local changes:
+- Updated `.github/scripts/scan_github_plugins.py` so all discovery paths use the same root `plugin.py` gate.
+- Added a defensive add-path check so future discovery sources cannot add a candidate without a root `plugin.py`.
+- Added JSON request timeouts for scanner API calls.
+- Reran the weekly scan with the improved logic.
+
+Scan result:
+- Added `Domoticz-Indevolt-plugin`.
+- Updated five existing registry entries/metadata records.
+- Skipped `domoticz-mcp`, `wiki`, `ha-domoticz-sync`, and similar repositories because they lack a root `plugin.py`.
+
+Verification:
+- `pytest -q`: 174 passed.
+- `python .github/scripts/validate_plugins.py`: passed for 254 plugins.
+
+Notes:
+- Installed open-source-maintainer reference files are still missing on disk, so this run used the main skill contract, repo maintainer context, direct `gh`, and local repository analysis.
+
 ## 2026-07-01 - Git indicators and robust branch-aware updates
 
 Scope:

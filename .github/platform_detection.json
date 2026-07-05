@@ -1889,7 +1889,25 @@
             "source": "legacy_detected",
             "confidence": "unknown",
             "evidence_class": "legacy",
-            "reviewed": false
+            "reviewed": false,
+            "last_detection": {
+                "platforms": [
+                    "linux"
+                ],
+                "confidence": "medium",
+                "evidence_class": "linux_evidence",
+                "scores": {
+                    "linux": 8,
+                    "windows": 0,
+                    "both": 0
+                },
+                "reasons": [
+                    "README.md: uses sudo",
+                    "README.md: uses systemd",
+                    "README.md: uses shell commands"
+                ]
+            },
+            "policy_action": "kept_existing_requires_high_confidence"
         },
         "Domoticz-FranceFuelPrice-Plugin": {
             "identity": "github.com/cth35/domoticz-francefuelprice-plugin@main",
@@ -3476,6 +3494,65 @@
             "identity": "codeberg.org/hoog/domoticz-shelly-plugin@main",
             "owner": "codeberg.org/Hoog",
             "repository": "Domoticz-Shelly-plugin",
+            "branch": "main",
+            "registry_platforms": [],
+            "source": "unknown",
+            "confidence": "unknown",
+            "evidence_class": "legacy",
+            "reviewed": false,
+            "last_detection": {
+                "platforms": [
+                    "linux",
+                    "windows"
+                ],
+                "confidence": "low",
+                "evidence_class": "generic_python",
+                "scores": {
+                    "linux": 0,
+                    "windows": 0,
+                    "both": 0
+                },
+                "reasons": [
+                    "generic: no Linux-only or Windows-only evidence found"
+                ]
+            },
+            "policy_action": "kept_low_confidence_new"
+        },
+        "myenergi": {
+            "identity": "github.com/rouzax/myenergi-domoticz-plugin@dist",
+            "owner": "Rouzax",
+            "repository": "myenergi-domoticz-plugin",
+            "branch": "dist",
+            "registry_platforms": [
+                "linux",
+                "windows"
+            ],
+            "source": "reviewed",
+            "confidence": "unknown",
+            "evidence_class": "manual_registry_edit",
+            "reviewed": true,
+            "last_detection": {
+                "platforms": [
+                    "linux",
+                    "windows"
+                ],
+                "confidence": "low",
+                "evidence_class": "generic_python",
+                "scores": {
+                    "linux": 2,
+                    "windows": 0,
+                    "both": 0
+                },
+                "reasons": [
+                    "README.md: uses shell commands"
+                ]
+            },
+            "policy_action": "kept_reviewed"
+        },
+        "Domoticz-Indevolt-plugin": {
+            "identity": "github.com/marceldbo/domoticz-indevolt-plugin@main",
+            "owner": "marceldbo",
+            "repository": "Domoticz-Indevolt-plugin",
             "branch": "main",
             "registry_platforms": [],
             "source": "unknown",

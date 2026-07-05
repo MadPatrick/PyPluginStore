@@ -30,6 +30,8 @@ UPDATE_TIMES_FILE = os.path.join(SCRIPT_DIR, '../../update_times.json')
 PLATFORM_METADATA_FILE = os.path.join(SCRIPT_DIR, '../../.github/platform_detection.json')
 DEFAULT_GIT_HOST = "github.com"
 SUPPORTED_GIT_HOSTS = ("github.com", "gitlab.com", "codeberg.org")
+ROOT_PLUGIN_CHECKED_FIELD = "_pypluginstore_root_plugin_py_checked"
+REQUEST_TIMEOUT_SECONDS = 20
 
 # Repositories that should never be added to or kept in the registry.
 REPO_BLOCKLIST = {
@@ -138,7 +140,7 @@ def generic_headers():
 def fetch_json(url, headers=None):
     req = urllib.request.Request(url, headers=headers or generic_headers())
     try:
-        with urllib.request.urlopen(req) as response:
+        with urllib.request.urlopen(req, timeout=REQUEST_TIMEOUT_SECONDS) as response:
             return json.loads(response.read().decode())
     except HTTPError as e:
         if e.code == 404:
@@ -203,15 +205,48 @@ def raw_plugin_url_for_repo(repo):
     return f"https://raw.githubusercontent.com/{path}/{branch}/plugin.py"
 
 
+def raw_plugin_headers_for_repo(repo):
+    headers = {'User-Agent': 'Domoticz-Plugin-Scanner', 'Accept': 'text/plain,*/*'}
+    host = repo.get('host', DEFAULT_GIT_HOST)
+    if host == "gitlab.com":
+        token = os.environ.get('GITLAB_TOKEN')
+        if token:
+            headers['PRIVATE-TOKEN'] = token
+    elif host == DEFAULT_GIT_HOST:
+        token = os.environ.get('GITHUB_TOKEN')
+        if token:
+            headers['Authorization'] = f'token {token}'
+    return headers
+
+
 def has_root_plugin_py(repo):
     url = raw_plugin_url_for_repo(repo)
-    headers = gitlab_headers() if repo.get('host') == "gitlab.com" else generic_headers()
+    headers = raw_plugin_headers_for_repo(repo)
     try:
         req = urllib.request.Request(url, headers=headers)
-        with urllib.request.urlopen(req, timeout=10) as response:
+        with urllib.request.urlopen(req, timeout=REQUEST_TIMEOUT_SECONDS) as response:
             return response.read(4096).strip() != b""
     except Exception:
         return False
+
+
+def add_discovered_plugin_repo(all_items, seen_full_names, repo):
+    full_name = repo.get('full_name')
+    if not full_name or full_name in seen_full_names:
+        return False
+
+    seen_full_names.add(full_name)
+    if not has_root_plugin_py(repo):
+        print(f"[-] Skipping {full_name} (missing root plugin.py)")
+        return False
+
+    repo[ROOT_PLUGIN_CHECKED_FIELD] = True
+    all_items.append(repo)
+    return True
+
+
+def discovered_repo_has_root_plugin_py(repo):
+    return bool(repo.get(ROOT_PLUGIN_CHECKED_FIELD)) or has_root_plugin_py(repo)
 
 
 def get_github_repo_info(owner, repo):
@@ -268,9 +303,7 @@ def search_github():
                 data = json.loads(response.read().decode())
                 items = data.get('items', [])
                 for item in items:
-                    if item['full_name'] not in seen_full_names:
-                        all_items.append(item)
-                        seen_full_names.add(item['full_name'])
+                    add_discovered_plugin_repo(all_items, seen_full_names, item)
         except HTTPError as e:
             print(f"Error searching GitHub for '{query}': {e}")
 
@@ -297,9 +330,8 @@ def search_gitlab():
             continue
         for item in data:
             repo = normalize_gitlab_project(item)
-            if repo and repo['full_name'] not in seen_full_names and has_root_plugin_py(repo):
-                all_items.append(repo)
-                seen_full_names.add(repo['full_name'])
+            if repo:
+                add_discovered_plugin_repo(all_items, seen_full_names, repo)
 
     return all_items
 
@@ -320,9 +352,8 @@ def search_codeberg():
         items = data.get('data', []) if isinstance(data, dict) else []
         for item in items:
             repo = normalize_codeberg_repo(item)
-            if repo and repo['full_name'] not in seen_full_names and has_root_plugin_py(repo):
-                all_items.append(repo)
-                seen_full_names.add(repo['full_name'])
+            if repo:
+                add_discovered_plugin_repo(all_items, seen_full_names, repo)
 
     return all_items
 
@@ -473,6 +504,10 @@ def main():
 
             if not is_valid_plugin_repo(repo_name):
                 print(f"[-] Skipping {repo['full_name']} (Invalid plugin repository name)")
+                continue
+
+            if not discovered_repo_has_root_plugin_py(repo):
+                print(f"[-] Skipping {repo['full_name']} (missing root plugin.py)")
                 continue
 
             description = repo['description'] or f"{repo_name} plugin for Domoticz"

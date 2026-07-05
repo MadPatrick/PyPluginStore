@@ -534,7 +534,7 @@
     "myenergi": [
         "Rouzax",
         "myenergi-domoticz-plugin",
-        "myenergi zappi and harvi: solar, EV charging, home and grid energy with kWh counters, plus opt-in charger control",
+        "Domoticz plugin for myenergi (zappi + harvi): real solar, EV, home, grid, and per-inverter energy counters, plus opt-in charger control.",
         "dist",
         "",
         [
@@ -2681,6 +2681,12 @@
         "codeberg.org/Hoog",
         "Domoticz-Shelly-plugin",
         "Domoticz plugin for integrating Shelly Gen2+ devices with Switch, PM1 or EM1 components.",
+        "main"
+    ],
+    "Domoticz-Indevolt-plugin": [
+        "marceldbo",
+        "Domoticz-Indevolt-plugin",
+        "A plugin for the Indevolt Solid and Powerflex home batteries",
         "main"
     ]
 }

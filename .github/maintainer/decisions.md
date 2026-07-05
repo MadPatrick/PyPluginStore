@@ -1,5 +1,27 @@
 # Maintainer Decisions
 
+## 2026-07-05 - Require root plugin.py for weekly discovery
+
+Decision: weekly registry discovery must only add repositories that expose a non-empty root-level `plugin.py` on the registered branch.
+
+Rationale:
+- `PR:88` showed the GitHub discovery path adding repositories such as `domoticz-mcp`, `wiki`, and `ha-domoticz-sync` that mention Domoticz but are not installable Domoticz Python plugins.
+- GitLab and Codeberg discovery already checked for a root `plugin.py`; GitHub discovery should use the same gate.
+- The add path should defensively re-check candidates so future discovery sources cannot bypass the plugin-file requirement.
+
+Implementation notes:
+- Added a shared discovery helper that filters GitHub, GitLab, and Codeberg candidates through the root `plugin.py` check.
+- Added a defensive root `plugin.py` gate before writing any newly discovered registry entry.
+- Added timeouts to scanner JSON fetches so weekly runs do not hang indefinitely on a slow API response.
+- Reran the weekly scan; it added only `Domoticz-Indevolt-plugin` and skipped the non-plugin repositories from `PR:88`.
+
+Verification:
+- `pytest -q`: 174 passed.
+- `python .github/scripts/validate_plugins.py`: passed for 254 plugins.
+
+Public action:
+- Closed `PR:88` with a short explanation.
+
 ## 2026-07-01 - Non-Git UI Badges and Branch-Aware Pulls
 
 Decision: Provide clear non-Git visual indicators in the custom web UI and implement branch-aware checkouts/pulls during updates.

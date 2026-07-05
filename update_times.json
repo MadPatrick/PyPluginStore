@@ -82,7 +82,7 @@
     "MarstekCT": "2025-08-03T17:11:36Z",
     "Krakinou-FrisquetConnectDomoticz": "2026-03-18T22:09:07Z",
     "SessyBattery": "2026-06-03T20:18:42Z",
-    "Domoticz-Huawei-Inverter": "2026-06-07T22:27:42Z",
+    "Domoticz-Huawei-Inverter": "2026-07-04T21:27:22Z",
     "domoticz-github": "2026-05-06T17:52:10Z",
     "Domoticz-TeslaFi-Plugin": "2026-03-07T19:31:21Z",
     "Domoticz-OpenDTU-Plugin": "2026-03-07T19:15:56Z",
@@ -133,7 +133,7 @@
     "domoticz-mqtt-sync-plugin": "2025-07-14T15:36:06Z",
     "domoticz-tuya-heatpump": "2025-07-13T17:31:16Z",
     "Domoticz-ZonneDimmer-Plugin": "2026-06-02T14:21:43Z",
-    "domoticz-kpn-experia-v10": "2026-05-13T12:45:28Z",
+    "domoticz-kpn-experia-v10": "2026-07-05T05:46:24Z",
     "Domoticz-FranceFuelPrice-Plugin": "2026-05-31T12:48:06Z",
     "domoticz-logmonitor-plugin": "2026-05-25T07:09:13Z",
     "TVUHDOrange": "2026-06-10T22:11:50Z",
@@ -233,7 +233,7 @@
     "FullyKiosk": "2026-06-14T06:38:13Z",
     "Toon_Thermostat": "2026-06-12T13:45:23Z",
     "Lyrion": "2026-06-12T13:42:10Z",
-    "HP_iLo": "2026-06-14T15:10:04Z",
+    "HP_iLo": "2026-07-04T06:50:23Z",
     "domoticz-HomeConnectDishwasher": "2026-06-08T12:06:48Z",
     "solarFlow2400AC": "2026-06-25T14:17:35Z",
     "Domoticz-GPSD-plugin": "2026-06-18T13:38:15Z",
@@ -250,5 +250,7 @@
     "Domoticz-TPLinkRouter": "2026-06-25T10:44:14Z",
     "Domoticz-Home-Connect-Plugin": "2022-01-11T13:10:18Z",
     "domoticz-ewpe-smart-direct": "2026-06-30T20:35:03Z",
-    "Domoticz-Shelly-plugin": "2026-07-02T12:11:09+02:00"
+    "Domoticz-Shelly-plugin": "2026-07-02T19:18:35+02:00",
+    "myenergi": "2026-07-05T14:34:03Z",
+    "Domoticz-Indevolt-plugin": "2026-07-04T19:52:28Z"
 }
