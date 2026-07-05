@@ -1,5 +1,18 @@
 # Changelog
 
+## [2.15.2](https://github.com/adrighem/PyPluginStore/compare/v2.15.1...v2.15.2) (2026-07-05)
+
+
+### Bug Fixes
+
+* harden weekly plugin discovery ([24a63df](https://github.com/adrighem/PyPluginStore/commit/24a63df202e0b83668e97d98106a1765076929d4)), closes [#88](https://github.com/adrighem/PyPluginStore/issues/88)
+* stabilize API error responses ([87a8bd8](https://github.com/adrighem/PyPluginStore/commit/87a8bd8aab8b13c03c27a2b0ed0e47bd1918da6a))
+
+
+### Documentation
+
+* record theme management maintainer notes ([2b07ef5](https://github.com/adrighem/PyPluginStore/commit/2b07ef59989d49d2a3fd278fad86a1f18ad9c64d)), closes [#30](https://github.com/adrighem/PyPluginStore/issues/30) [#87](https://github.com/adrighem/PyPluginStore/issues/87)
+
 ## [2.15.1](https://github.com/adrighem/PyPluginStore/compare/v2.15.0...v2.15.1) (2026-07-04)
 
 
