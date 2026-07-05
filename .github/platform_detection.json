@@ -1883,7 +1883,8 @@
             "repository": "domoticz-kpn-experia-v10",
             "branch": "main",
             "registry_platforms": [
-                "linux"
+                "linux",
+                "windows"
             ],
             "source": "legacy_detected",
             "confidence": "unknown",

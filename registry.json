@@ -1473,7 +1473,8 @@
         "main",
         "",
         [
-            "linux"
+            "linux",
+            "windows"
         ]
     ],
     "Domoticz-FranceFuelPrice-Plugin": [
