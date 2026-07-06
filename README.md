@@ -144,7 +144,7 @@ Use `registry_local.json` when you want your Domoticz installation to track a di
 
 Create `registry_local.json` in the installed PyPluginStore folder. Local entries are loaded after the public registry, override matching public entries, and show a **Local** badge in the Plugin Store UI.
 
-See the [`registry_local.json` how-to](docs/registry_local.md) for object-style examples covering branch overrides, GitHub, GitLab, Codeberg, and local repositories.
+See the [`registry_local.json` how-to](docs/registry_local.md) for object-style examples covering branch overrides, GitHub, GitLab, Codeberg, and local repositories. If a plugin card shows **Repo mismatch**, see the [Repo Mismatch warning](docs/registry_local.md#repo-mismatch-warning).
 
 ### Restart Button
 

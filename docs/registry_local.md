@@ -127,6 +127,12 @@ Use the same key as the public entry. PyPluginStore keeps the public registry av
 }
 ```
 
+### Repo Mismatch Warning
+
+**Repo mismatch** means an installed plugin's Git checkout does not match the configured registry entry for that plugin key. PyPluginStore does not update it automatically, because it may be a fork or branch you chose on purpose.
+
+If the installed repo is the one you want, add a matching `registry_local.json` entry with the same owner, repository, and branch. If it is not intentional, remove the local override or reinstall the plugin from the registry entry you want.
+
 ### Test a Feature Branch
 
 Point a local entry at a branch before you publish or submit it to the public registry.
