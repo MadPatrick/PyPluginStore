@@ -138,6 +138,14 @@ Domoticz only shows the **Custom** menu when custom pages exist and the menu is 
     *   **None:** Disables auto-updating.
 *   **Debug:** Set to True for detailed logging.
 
+### Local Registry Overrides
+
+Use `registry_local.json` when you want your Domoticz installation to track a different branch of a public plugin, or when you want to add a plugin that is not in the public registry yet.
+
+Create `registry_local.json` in the installed PyPluginStore folder. Local entries are loaded after the public registry, override matching public entries, and show a **Local** badge in the Plugin Store UI.
+
+See the [`registry_local.json` how-to](docs/registry_local.md) for object-style examples covering branch overrides, GitHub, GitLab, Codeberg, and local repositories.
+
 ### Restart Button
 
 The **Restart Domoticz** button asks the host OS to restart Domoticz. This is not handled by a Domoticz JSON API endpoint.
@@ -244,9 +252,7 @@ To add your plugin to the manager, simply submit a Pull Request to update `regis
 
 When a Pull Request modifying `registry.json` is merged, a GitHub Action automatically updates the registry metadata including the latest repository push timestamps.
 
-For private plugins, local forks, or test branches, create `registry_local.json` in the installed PyPluginStore folder. See the [`registry_local.json` how-to](docs/registry_local.md) for object-style examples covering GitHub, GitLab, Codeberg, local repositories, and public-entry overrides.
-
-Registry entries can include platform metadata with `["linux"]`, `["windows"]`, or `["linux", "windows"]`. Plugins without platform metadata are shown as unknown rather than blocked.
+Public registry entries can include platform metadata with `["linux"]`, `["windows"]`, or `["linux", "windows"]`. Plugins without platform metadata are shown as unknown rather than blocked.
 
 CI validation checks that every public registry entry points to an existing root-level `plugin.py`. Maintainer tooling and generated-file workflow notes are documented in [CONTRIBUTING.md](CONTRIBUTING.md).
 
