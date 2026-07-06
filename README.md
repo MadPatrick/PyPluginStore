@@ -21,7 +21,7 @@ A robust and modern plugin manager for Domoticz that allows you to install and a
 *   **Restart Domoticz:** Request a Domoticz service restart from the Plugin Store UI after installs or updates.
 *   **Dependency Management:** Install plugin dependencies with `uv` (recommended) or `pip`, or manage them manually.
 *   **PEP 668 Compliant Isolation:** Dependencies are installed into `.shared_deps` without requiring `sudo` or global `pip` access.
-*   **Remote and Local Registries:** Fetches the public `registry.json`, falls back to the bundled copy, and supports private/local overrides in `registry_local.json`.
+*   **Remote and Local Registries:** Fetches the public `registry.json`, falls back to the bundled copy, and supports private/local overrides in [`registry_local.json`](docs/registry_local.md).
 *   **Security Scanning:** Uses AST-based scanning to flag risky plugin code before it is installed.
 
 ![PyPluginStore dashboard screenshot](store-screenshot.png)
@@ -238,51 +238,17 @@ To install dependencies for a specific plugin manually:
 
 ---
 
-## 📚 For Plugin Developers (Adding to the Registry)
+## 📚 For Plugin Developers
 
 To add your plugin to the manager, simply submit a Pull Request to update `registry.json` in this repository.
 
 When a Pull Request modifying `registry.json` is merged, a GitHub Action automatically updates the registry metadata including the latest repository push timestamps.
 
-### Local private registry
+For private plugins, local forks, or test branches, create `registry_local.json` in the installed PyPluginStore folder. See the [`registry_local.json` how-to](docs/registry_local.md) for object-style examples covering GitHub, GitLab, Codeberg, local repositories, and public-entry overrides.
 
-Private or local-only plugins can be added to `registry_local.json` in the PyPluginStore plugin folder. This file uses the same format as `registry.json`, is loaded after the public registry, and is ignored by git so it stays local to your Domoticz installation.
+Registry entries can include platform metadata with `["linux"]`, `["windows"]`, or `["linux", "windows"]`. Plugins without platform metadata are shown as unknown rather than blocked.
 
-```json
-{
-    "MyPrivatePlugin": [
-        "github-user-or-org",
-        "private-repository-name",
-        "Description shown in PyPluginStore",
-        "main"
-    ]
-}
-```
-
-Entries in `registry_local.json` override public entries with the same key and show a **Local** badge in the Plugin Store UI. Installing or updating private repositories still requires the Domoticz host to have working git access to those repositories.
-
-The first two values are normally the GitHub owner and repository name. A full Git clone URL is also accepted as the first value for private/local entries; in that case the repository-name value is ignored for cloning.
-
-Registry entries can optionally include platform metadata. Existing list-style entries remain valid; PyPluginStore also accepts object-style entries with a `platforms` field such as `["linux", "windows"]`. Plugins without platform metadata are shown as unknown rather than blocked.
-
-Maintainers can infer and add platform metadata with:
-
-```bash
-GITHUB_TOKEN="$(gh auth token)" python .github/scripts/detect_plugin_platforms.py --missing-only
-```
-
-The detector uses GitHub repository metadata, README/install text, selected source files, platform-specific imports, scripts, paths, and command usage. Generic Python plugins with no Linux-only or Windows-only evidence are classified as likely supporting both platforms.
-
-Maintainers can audit the public registry for entries whose configured branch no longer contains a root-level `plugin.py` with:
-
-```bash
-python .github/scripts/cleanup_registry.py
-python .github/scripts/cleanup_registry.py --apply
-```
-
-The cleanup script supports GitHub, Codeberg, and GitLab entries. Dry-run is the default; `--apply` removes missing entries from `registry.json`, `update_times.json`, and `.github/platform_detection.json`.
-
-CI validation also checks that every public registry entry points to an existing root-level `plugin.py`.
+CI validation checks that every public registry entry points to an existing root-level `plugin.py`. Maintainer tooling and generated-file workflow notes are documented in [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ---
 

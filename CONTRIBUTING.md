@@ -1,5 +1,24 @@
 To add your plugin, please make a pull request with your lines added.
 
+## Registry maintenance
+
+Public registry entries live in `registry.json`. Private plugins, local forks, and test branches should use `registry_local.json` instead; see [docs/registry_local.md](docs/registry_local.md).
+
+Maintainers can infer and add platform metadata with:
+
+```bash
+GITHUB_TOKEN="$(gh auth token)" python .github/scripts/detect_plugin_platforms.py --missing-only
+```
+
+Maintainers can audit the public registry for entries whose configured branch no longer contains a root-level `plugin.py` with:
+
+```bash
+python .github/scripts/cleanup_registry.py
+python .github/scripts/cleanup_registry.py --apply
+```
+
+The cleanup script supports GitHub, Codeberg, and GitLab entries. Dry-run is the default; `--apply` removes missing entries from `registry.json`, `update_times.json`, and `.github/platform_detection.json`.
+
 ## Generated plugin.py
 
 `plugin.py` is generated from `plugin_core.py` plus the Domoticz XML header. If you edit `plugin_core.py`, run:
