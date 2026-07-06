@@ -1,5 +1,30 @@
 # Maintainer Runs
 
+## 2026-07-06 - API bridge error response CI fix
+
+Scope:
+- Reviewed current GitHub state for `adrighem/PyPluginStore`.
+- Active public items:
+  - Open issues: `ISSUE:64`, `ISSUE:87`.
+  - Open pull requests: `PR:90` Release Please for `v2.16.0`.
+- `gh-helper` found no unread inbox, no Dependabot alerts, and no code scanning alerts.
+- Investigated failing `Validate Plugins` workflow on `master`; the only failing test was `tests/test_ui_smoke.py::test_api_bridge_accepts_error_response_without_action` on Linux and Windows.
+
+Prepared local changes:
+- Updated `pollResponse()` in `pypluginstore.html` to accept same-transaction backend error responses that omit the `action` field.
+- Preserved strict action matching for normal responses and stale-response cleanup through `clearApiBridgePayload()`.
+
+Verification:
+- `pytest tests/test_ui_smoke.py::test_api_bridge_accepts_error_response_without_action -q`: passed.
+- `pytest -q`: 177 passed.
+- `python .github/scripts/validate_plugins.py`: passed for 254 plugins.
+- `git diff --check`: passed.
+
+Notes:
+- Installed open-source-maintainer reference files and triage script are still missing on disk, so this run used `gh-helper`, direct `gh`, local tests, and repository analysis.
+- No public GitHub actions were taken.
+- Recommended next action is to commit and push the CI fix, then rerun/watch `Validate Plugins` before merging `PR:90`.
+
 ## 2026-07-05 - PR:88 scan hardening and rerun
 
 Scope:

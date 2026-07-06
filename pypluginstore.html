@@ -637,7 +637,9 @@
                     const dataStr = resp.result[0].Data;
                     try {
                         const data = JSON.parse(dataStr);
-                        if (data.action === action && data.tx_id === txId) {
+                        const isExpectedActionResponse = data.action === action && data.tx_id === txId;
+                        const isExpectedErrorResponse = data.status === 'error' && !data.action && data.tx_id === txId;
+                        if (isExpectedActionResponse || isExpectedErrorResponse) {
                             console.log("Received response:", data);
                             await clearApiBridgePayload();
                             return data;

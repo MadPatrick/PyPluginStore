@@ -1,5 +1,22 @@
 # Maintainer Decisions
 
+## 2026-07-06 - Accept action-less API error responses by transaction ID
+
+Decision: the custom UI bridge should accept backend error responses with a matching `tx_id` even when the response omits `action`.
+
+Rationale:
+- Some backend pre-flight and command failures return a valid error payload before an action-specific response can be built.
+- The browser command bridge already uses a unique `tx_id`, so matching `status: "error"` plus the same transaction ID is specific enough to avoid consuming unrelated stale responses.
+- Requiring `data.action === action` for every response caused valid backend errors to time out in the UI and broke the CI smoke test.
+
+Implementation notes:
+- `pollResponse()` now distinguishes normal action responses from same-transaction action-less error responses.
+- Both accepted paths clear the API bridge payload after consuming the response.
+
+Verification:
+- `pytest -q`: 177 passed.
+- `python .github/scripts/validate_plugins.py`: passed for 254 plugins.
+
 ## 2026-07-05 - Require root plugin.py for weekly discovery
 
 Decision: weekly registry discovery must only add repositories that expose a non-empty root-level `plugin.py` on the registered branch.
