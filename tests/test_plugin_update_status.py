@@ -316,6 +316,24 @@ def test_get_git_update_status_uses_registry_branch_ref(plugin_core_module, tmp_
     assert plugin.plugin_data["Plugin"][4] == "2023-07-22T14:21:45Z"
 
 
+def test_get_git_update_status_reports_registry_mismatch(plugin_core_module, tmp_path, monkeypatch):
+    configure_home(plugin_core_module, tmp_path)
+    plugin_dir = tmp_path / "Plugin"
+    (plugin_dir / ".git").mkdir(parents=True)
+    plugin = plugin_core_module.BasePlugin()
+    plugin.plugin_data = {
+        "Plugin": ["owner", "repo", "description", "main", "2026-01-01T00:00:00Z"],
+    }
+    plugin.installed_plugin_match_details = {
+        "Plugin": {"registry_mismatch": True},
+    }
+
+    monkeypatch.setattr(plugin, "fetch_git_repo", lambda actual_dir: (_ for _ in ()).throw(AssertionError("unexpected fetch")))
+
+    assert plugin.getGitUpdateStatus(plugin_dir, "Plugin") == "mismatch"
+    assert plugin.plugin_data["Plugin"][4] == "2026-01-01T00:00:00Z"
+
+
 def test_local_override_update_time_can_be_older_than_public_time(plugin_core_module, tmp_path, monkeypatch):
     configure_home(plugin_core_module, tmp_path)
     plugin_dir = tmp_path / "Plugin"
@@ -505,6 +523,57 @@ def test_update_command_uses_detected_repository_folder(plugin_core_module, tmp_
         safe_git_command(plugin_dir, ["git", "reset", "--hard", "origin/master"]),
     ]
     assert status_calls == [("deCONZ", plugin_dir, False)]
+
+
+def test_update_command_refuses_registry_mismatch(plugin_core_module, tmp_path, monkeypatch):
+    plugins_dir, _ = configure_home(plugin_core_module, tmp_path)
+    plugin_dir = plugins_dir / "domoticz-solaredge-modbustcp-plugin"
+    (plugin_dir / ".git").mkdir(parents=True)
+    write_plugin_py(
+        plugin_dir,
+        key="SolarEdge_ModbusTCP",
+        name="SolarEdge ModbusTCP",
+        externallink="https://github.com/jvanderzande/domoticz-solaredge-modbustcp-plugin",
+    )
+    plugin = plugin_core_module.BasePlugin()
+    plugin.plugin_data = {
+        "domoticz-solaredge-modbustcp-plugin": [
+            "addiejanssen",
+            "domoticz-solaredge-modbustcp-plugin",
+            "description",
+            "meters",
+            "",
+        ],
+    }
+    responses = []
+    git_calls = []
+
+    def command_endswith(command, suffix):
+        return command[-len(suffix):] == suffix
+
+    def fake_run(command, cwd=None, **kwargs):
+        git_calls.append(command)
+        if command_endswith(command, ["remote", "-v"]):
+            return FakeGitResult(
+                stdout="origin\thttps://github.com/jvanderzande/domoticz-solaredge-modbustcp-plugin.git (fetch)\n"
+            )
+        if command_endswith(command, ["rev-parse", "--abbrev-ref", "HEAD"]):
+            return FakeGitResult(stdout="MetersDev\n")
+        if command_endswith(command, ["config", "--get", "branch.MetersDev.remote"]):
+            return FakeGitResult(stdout="origin\n")
+        if command_endswith(command, ["remote", "get-url", "origin"]):
+            return FakeGitResult(stdout="https://github.com/jvanderzande/domoticz-solaredge-modbustcp-plugin.git\n")
+        return FakeGitResult()
+
+    monkeypatch.setattr(plugin_core_module.subprocess, "run", fake_run)
+    monkeypatch.setattr(plugin, "sendApiResponse", responses.append)
+
+    plugin.handleApiCommand({"action": "update", "plugin_key": "domoticz-solaredge-modbustcp-plugin"})
+
+    assert responses[0]["status"] == "error"
+    assert "registry_local.json" in responses[0]["message"]
+    assert plugin.update_status["domoticz-solaredge-modbustcp-plugin"] == "mismatch"
+    assert not any(command_endswith(command, ["fetch", "origin"]) for command in git_calls)
 
 
 def test_self_update_command_schedules_detached_helper(plugin_core_module, tmp_path, monkeypatch):

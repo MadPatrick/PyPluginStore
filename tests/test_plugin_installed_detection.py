@@ -314,6 +314,63 @@ def test_unmatched_git_remote_allows_exact_folder_match(plugin_core_module, tmp_
     assert plugin.installed_plugin_folders["deCONZ"] == "deCONZ"
 
 
+def test_installed_fork_branch_reports_registry_mismatch(plugin_core_module, tmp_path):
+    plugins_dir, _ = configure_home(plugin_core_module, tmp_path)
+    plugin_dir = plugins_dir / "domoticz-solaredge-modbustcp-plugin"
+    (plugin_dir / ".git").mkdir(parents=True)
+    write_plugin_py(
+        plugin_dir,
+        key="SolarEdge_ModbusTCP",
+        name="SolarEdge ModbusTCP",
+        externallink="https://github.com/jvanderzande/domoticz-solaredge-modbustcp-plugin",
+    )
+    plugin = plugin_core_module.BasePlugin()
+    plugin.plugin_data = {
+        "domoticz-solaredge-modbustcp-plugin": [
+            "addiejanssen",
+            "domoticz-solaredge-modbustcp-plugin",
+            "description",
+            "meters",
+            "",
+        ],
+    }
+
+    class FakeGitResult:
+        stderr = ""
+        returncode = 0
+
+        def __init__(self, stdout):
+            self.stdout = stdout
+
+    def fake_git(plugin_dir_arg, command, timeout=15):
+        if command == ["git", "remote", "-v"]:
+            return FakeGitResult(
+                "origin\thttps://github.com/jvanderzande/domoticz-solaredge-modbustcp-plugin.git (fetch)\n"
+            )
+        if command == ["git", "rev-parse", "--abbrev-ref", "HEAD"]:
+            return FakeGitResult("MetersDev\n")
+        if command == ["git", "config", "--get", "branch.MetersDev.remote"]:
+            return FakeGitResult("origin\n")
+        if command == ["git", "remote", "get-url", "origin"]:
+            return FakeGitResult("https://github.com/jvanderzande/domoticz-solaredge-modbustcp-plugin.git\n")
+        raise AssertionError("unexpected git command: " + repr(command))
+
+    plugin.run_git_command = fake_git
+
+    installed = plugin.getInstalledPlugins(plugins_dir)
+
+    assert "domoticz-solaredge-modbustcp-plugin" in installed
+    details = plugin.installed_plugin_match_details["domoticz-solaredge-modbustcp-plugin"]
+    assert details["registry_mismatch"] is True
+    assert details["repo_mismatch"] is True
+    assert details["branch_mismatch"] is True
+    assert details["configured_repo"] == "github.com/addiejanssen/domoticz-solaredge-modbustcp-plugin"
+    assert details["configured_branch"] == "meters"
+    assert details["installed_repo"] == "github.com/jvanderzande/domoticz-solaredge-modbustcp-plugin"
+    assert details["installed_branch"] == "MetersDev"
+    assert plugin.getCachedUpdateStatuses(installed)["domoticz-solaredge-modbustcp-plugin"] == "mismatch"
+
+
 def test_unmatched_git_remote_allows_repository_folder_match(plugin_core_module, tmp_path):
     plugins_dir, _ = configure_home(plugin_core_module, tmp_path)
     plugin_dir = plugins_dir / "Domoticz-deCONZ"

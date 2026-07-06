@@ -1359,6 +1359,9 @@ class UpdateStatusService:
             return "unknown"
 
         try:
+            if plugin_key and self.plugin.installed_registry_mismatch(plugin_key, plugin_dir):
+                return "mismatch"
+
             if fetch_first and not self.plugin.fetch_git_repo(plugin_dir):
                 return "unknown"
 
@@ -1461,6 +1464,10 @@ class GitInstallUpdateStrategy:
         if entry.description in self.plugin.exception_list:
             Domoticz.Log("Plugin:" + entry.description + " excluded by Exclusion file (exclusion.txt). Skipping!!!")
             return True, "Excluded by exception list"
+
+        if self.plugin.installed_registry_mismatch(plugin_key, plugin_dir):
+            self.plugin.update_status[plugin_key] = "mismatch"
+            return False, "Installed Git checkout does not match the configured registry entry. Add a matching registry_local.json override before updating."
 
         if is_self_update:
             Domoticz.Log("Self update requested for PyPluginStore.")
@@ -2052,6 +2059,69 @@ class BasePlugin:
             "detail": match.get("detail", ""),
         }
 
+    def registry_target_details(self, plugin_key):
+        entry = self.get_registry_entry(plugin_key)
+        if entry is None:
+            return None
+
+        clone_url = self.build_git_clone_url(entry.author, entry.repository)
+        return {
+            "repo": self.normalize_git_repo_identity(clone_url),
+            "branch": entry.branch or "",
+        }
+
+    def installed_git_target_details(self, plugin_dir):
+        current_branch = self.get_git_current_branch(plugin_dir)
+        remote_name = self.get_git_remote_name(plugin_dir, current_branch)
+        remote_url = self.get_git_remote_url(plugin_dir, remote_name)
+        if not remote_url:
+            remote_urls = self.get_git_remote_urls(plugin_dir)
+            remote_url = remote_urls[0] if remote_urls else ""
+
+        return {
+            "repo": self.normalize_git_repo_identity(remote_url),
+            "branch": current_branch,
+        }
+
+    def detect_installed_registry_mismatch(self, plugin_key, plugin_dir):
+        if not plugin_key or not os.path.isdir(os.path.join(plugin_dir, ".git")):
+            return {}
+
+        configured = self.registry_target_details(plugin_key)
+        if configured is None:
+            return {}
+
+        installed = self.installed_git_target_details(plugin_dir)
+        configured_repo = configured.get("repo", "")
+        installed_repo = installed.get("repo", "")
+        configured_branch = configured.get("branch", "")
+        installed_branch = installed.get("branch", "")
+
+        repo_mismatch = bool(configured_repo and installed_repo and configured_repo != installed_repo)
+        branch_mismatch = bool(configured_branch and installed_branch and configured_branch != installed_branch)
+        if not repo_mismatch and not branch_mismatch:
+            return {}
+
+        return {
+            "registry_mismatch": True,
+            "repo_mismatch": repo_mismatch,
+            "branch_mismatch": branch_mismatch,
+            "configured_repo": configured_repo,
+            "configured_branch": configured_branch,
+            "installed_repo": installed_repo,
+            "installed_branch": installed_branch,
+        }
+
+    def installed_registry_mismatch(self, plugin_key, plugin_dir=None):
+        details = self.installed_plugin_match_details.get(plugin_key, {})
+        if details.get("registry_mismatch"):
+            return True
+        if details and "registry_mismatch" in details:
+            return False
+        if plugin_dir is None:
+            return False
+        return bool(self.detect_installed_registry_mismatch(plugin_key, plugin_dir).get("registry_mismatch"))
+
     def log_installed_plugin_match(self, plugin_folder, match):
         Domoticz.Debug(
             "Detected installed plugin "
@@ -2634,6 +2704,8 @@ class BasePlugin:
     def refresh_git_update_time(self, plugin_key, plugin_dir, update_times=None, remote_ref=""):
         if not plugin_key or not os.path.isdir(os.path.join(plugin_dir, ".git")):
             return False
+        if self.installed_registry_mismatch(plugin_key, plugin_dir):
+            return False
 
         if not remote_ref:
             remote_ref = self.get_configured_git_remote_ref(plugin_key, plugin_dir) or self.get_git_remote_ref(plugin_dir)
@@ -2707,6 +2779,10 @@ class BasePlugin:
                 installed_plugin_folders[matched_key] = plugin_folder
                 detail = self.match_detail_for_response(plugin_folder, match)
                 detail["is_git"] = is_git_repo
+                if is_git_repo:
+                    mismatch = self.detect_installed_registry_mismatch(matched_key, plugin_path)
+                    if mismatch:
+                        detail.update(mismatch)
                 installed_plugin_match_details[matched_key] = detail
                 if plugin_folder not in self.plugin_data:
                     self.add_installed_plugin(installed_plugins, plugin_folder)
@@ -2761,6 +2837,9 @@ class BasePlugin:
         for plugin_key in installed_plugins:
             if plugin_key not in self.plugin_data:
                 update_status[plugin_key] = "unknown"
+                continue
+            if self.installed_registry_mismatch(plugin_key):
+                update_status[plugin_key] = "mismatch"
                 continue
             update_status[plugin_key] = self.update_status.get(plugin_key, "unknown")
         return update_status

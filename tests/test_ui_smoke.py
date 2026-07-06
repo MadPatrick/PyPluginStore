@@ -262,6 +262,18 @@ def test_update_buttons_keep_shared_and_state_specific_classes():
     assert "btn-update btn-update-current" in html
 
 
+def test_plugin_cards_render_repo_mismatch_warning():
+    html = (REPO_ROOT / "pypluginstore.html").read_text()
+    script = load_inline_script()
+
+    assert ".repo-mismatch-badge" in html
+    assert ".repo-mismatch-detail" in html
+    assert "Repo mismatch" in script
+    assert "Installed checkout: " in script
+    assert "updateStatus === 'mismatch'" in script
+    assert "Add a matching registry_local.json override before updating this checkout" in script
+
+
 def test_refresh_status_button_is_wired_to_backend_command():
     html = (REPO_ROOT / "pypluginstore.html").read_text()
     script = load_inline_script()

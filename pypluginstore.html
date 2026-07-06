@@ -439,6 +439,23 @@
         letter-spacing: 0.03em;
     }
 
+    .repo-mismatch-badge {
+        display: inline-block;
+        background: var(--pps-warning);
+        color: #fff;
+        border: 1px solid var(--pps-warning);
+        padding: 2px 8px;
+        border-radius: 10px;
+        font-size: 0.7em;
+        font-weight: 600;
+        letter-spacing: 0.03em;
+    }
+
+    .repo-mismatch-detail {
+        color: var(--pps-warning);
+        font-weight: 600;
+    }
+
     #pypluginstore-container .btn-update-disabled {
         background: rgba(107, 130, 160, 0.08) !important;
         color: #5d6d7e !important;
@@ -911,6 +928,7 @@
             const displayName = formatPluginDisplayName(key);
             const matchDetails = installedMatchDetailsCache[key] || {};
             const isGit = matchDetails.is_git !== false;
+            const hasRepoMismatch = Boolean(matchDetails.registry_mismatch || matchDetails.repo_mismatch || matchDetails.branch_mismatch || updateStatus === 'mismatch');
 
             let timeStr = "";
             if (updatedAt) {
@@ -947,6 +965,14 @@
                     nonGitBadge.textContent = 'Non-Git';
                     nonGitBadge.title = 'This plugin was not installed using Git/GitHub. Updates through PyPluginStore are not available.';
                     headerLeft.appendChild(nonGitBadge);
+                }
+
+                if (hasRepoMismatch) {
+                    const mismatchBadge = document.createElement('span');
+                    mismatchBadge.className = 'repo-mismatch-badge';
+                    mismatchBadge.textContent = 'Repo mismatch';
+                    mismatchBadge.title = 'The installed Git checkout does not match the configured registry repo or branch.';
+                    headerLeft.appendChild(mismatchBadge);
                 }
             }
 
@@ -995,6 +1021,17 @@
                 }
             }
 
+            if (isInstalled && hasRepoMismatch) {
+                const installedRepo = String(matchDetails.installed_repo || 'unknown repo');
+                const installedBranch = String(matchDetails.installed_branch || '');
+                const mismatchDetail = document.createElement('span');
+                mismatchDetail.className = 'repo-mismatch-detail';
+                mismatchDetail.textContent = 'Installed checkout: ' + installedRepo + (installedBranch ? ' (' + installedBranch + ')' : '');
+                mismatchDetail.title = 'Add a matching registry_local.json entry to manage updates for this repo and branch.';
+                meta.appendChild(document.createElement('br'));
+                meta.appendChild(mismatchDetail);
+            }
+
             const actions = document.createElement('div');
             actions.className = 'actions';
 
@@ -1011,6 +1048,10 @@
                 if (isGit === false) {
                     updateButton.className = 'btn-update btn-update-disabled';
                     updateButton.title = 'Cannot update non-Git plugins';
+                    updateButton.disabled = true;
+                } else if (hasRepoMismatch) {
+                    updateButton.className = 'btn-update btn-update-disabled';
+                    updateButton.title = 'Add a matching registry_local.json override before updating this checkout';
                     updateButton.disabled = true;
                 } else {
                     const updateClass = updateStatus === 'available' ? 'btn-update btn-update-available' : 'btn-update btn-update-current';
