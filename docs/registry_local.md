@@ -131,7 +131,10 @@ Use the same key as the public entry. PyPluginStore keeps the public registry av
 
 **Repo mismatch** means an installed plugin's Git checkout does not match the configured registry entry for that plugin key. PyPluginStore does not update it automatically, because it may be a fork or branch you chose on purpose.
 
-If the installed repo is the one you want, add a matching `registry_local.json` entry with the same owner, repository, and branch. If it is not intentional, remove the local override or reinstall the plugin from the registry entry you want.
+You have two good options:
+
+- If the installed repo is the one you want, add a matching `registry_local.json` entry with the same owner, repository, and branch.
+- If you want the managed registry repo instead, remove the mismatched plugin folder, install the registry entry, and restart Domoticz. This works as long as the `plugin.py` metadata keeps the same `<plugin key="...">`, because Domoticz uses that key to match the existing hardware entry.
 
 ### Test a Feature Branch
 
