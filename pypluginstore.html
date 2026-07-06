@@ -1,31 +1,71 @@
 <style>
-    :root {
-        --bg-color: transparent;
-        --panel-bg: #1e2d45;
-        --card-bg: #162035;
-        --card-bg-hover: #1c2a42;
-        --border-color: rgba(255,255,255,0.18);
-        --text-color: #c8d6e8;
-        --text-muted: #6b82a0;
-        --text-heading: #e0eaf5;
-        --primary: #4a9eda;
-        --primary-hover: #5baee8;
-        --danger: #e05c6a;
-        --danger-hover: #f06878;
-        --success: #3abf7e;
-        --success-hover: #4acf8e;
-        --accent: #4a9eda;
-        --input-bg: #152032;
-        --select-bg: #152032;
-    }
-
     #pypluginstore-container {
+        --pps-bg: var(--dz-pps-bg, transparent);
+        --pps-panel-bg: var(--dz-pps-panel-bg, var(--dz-panel-bg, #11213d));
+        --pps-card-bg: var(--dz-pps-card-bg, var(--dz-panel-bg, #11213d));
+        --pps-card-hover-tint: var(--dz-pps-card-hover-tint, rgba(74, 158, 218, 0.14));
+        --pps-card-bg-hover: var(--dz-pps-card-bg-hover, linear-gradient(var(--pps-card-hover-tint), var(--pps-card-hover-tint)), var(--pps-card-bg));
+        --pps-border: var(--dz-pps-border, rgba(74, 158, 218, 0.28));
+        --pps-border-hover: var(--dz-pps-border-hover, rgba(74, 158, 218, 0.62));
+        --pps-text: var(--dz-pps-text, var(--dz-panel-text, var(--dz-body-text, #c8d6e8)));
+        --pps-text-muted: var(--dz-pps-text-muted, #8ea8c0);
+        --pps-text-heading: var(--dz-pps-text-heading, var(--dz-modal-text, var(--dz-panel-text, var(--dz-body-text, #e0eaf5))));
+        --pps-primary: var(--dz-pps-primary, var(--dz-btn-primary-bg, var(--dz-accent-color, #4a9eda)));
+        --pps-primary-hover: var(--dz-pps-primary-hover, #5baee8);
+        --pps-primary-text: var(--dz-pps-primary-text, var(--dz-btn-primary-text, #fff));
+        --pps-primary-tint: var(--dz-pps-primary-tint, rgba(74, 158, 218, 0.25));
+        --pps-primary-tint-hover: var(--dz-pps-primary-tint-hover, rgba(74, 158, 218, 0.35));
+        --pps-primary-border: var(--dz-pps-primary-border, rgba(74, 158, 218, 0.65));
+        --pps-danger: var(--dz-pps-danger, var(--dz-btn-danger-bg, #e05c6a));
+        --pps-danger-hover: var(--dz-pps-danger-hover, var(--dz-btn-danger-bg-alpha, #f06878));
+        --pps-danger-tint: var(--dz-pps-danger-tint, rgba(224, 92, 106, 0.15));
+        --pps-danger-tint-hover: var(--dz-pps-danger-tint-hover, rgba(224, 92, 106, 0.28));
+        --pps-danger-border: var(--dz-pps-danger-border, rgba(224, 92, 106, 0.65));
+        --pps-success: var(--dz-pps-success, var(--dz-btn-success-bg, #3abf7e));
+        --pps-success-hover: var(--dz-pps-success-hover, #4acf8e);
+        --pps-success-tint: var(--dz-pps-success-tint, rgba(58, 191, 126, 0.15));
+        --pps-success-tint-hover: var(--dz-pps-success-tint-hover, rgba(58, 191, 126, 0.28));
+        --pps-success-border: var(--dz-pps-success-border, rgba(58, 191, 126, 0.65));
+        --pps-warning: var(--dz-pps-warning, var(--dz-btn-warning-bg, #e67e22));
+        --pps-input-bg: var(--dz-pps-input-bg, var(--dz-input-bg, #152032));
+        --pps-input-text: var(--dz-pps-input-text, var(--dz-input-text, var(--pps-text)));
+        --pps-button-bg: var(--dz-pps-button-bg, rgba(107, 130, 160, 0.15));
+        --pps-button-text: var(--dz-pps-button-text, var(--dz-btn-text, var(--pps-text)));
+        --pps-button-hover-bg: var(--dz-pps-button-hover-bg, rgba(107, 130, 160, 0.28));
+        --pps-radius: var(--dz-pps-radius, var(--dz-widget-border-radius, 8px));
+        --pps-shadow: var(--dz-pps-shadow, 0 4px 16px rgba(0,0,0,0.25));
+        --pps-shadow-hover: var(--dz-pps-shadow-hover, 0 6px 24px rgba(0,0,0,0.35));
+        --pps-focus-ring: var(--dz-pps-focus-ring, rgba(74, 158, 218, 0.15));
+        --pps-badge-installed-bg: var(--dz-pps-badge-installed-bg, rgba(58, 191, 126, 0.18));
+        --pps-badge-installed-border: var(--dz-pps-badge-installed-border, rgba(58, 191, 126, 0.4));
+        --pps-badge-local-bg: var(--dz-pps-badge-local-bg, rgba(74, 158, 218, 0.18));
+        --pps-badge-local-border: var(--dz-pps-badge-local-border, rgba(74, 158, 218, 0.4));
+        --pps-badge-muted-bg: var(--dz-pps-badge-muted-bg, rgba(107, 130, 160, 0.15));
+        --pps-badge-muted-border: var(--dz-pps-badge-muted-border, rgba(107, 130, 160, 0.5));
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-        color: var(--text-color);
+        color: var(--pps-text);
         padding: 20px;
-        background: var(--bg-color);
+        background: var(--pps-bg);
         min-height: 100%;
         box-sizing: border-box;
+    }
+
+    @supports (color: color-mix(in srgb, white 50%, transparent)) {
+        #pypluginstore-container {
+            --pps-card-hover-tint: var(--dz-pps-card-hover-tint, color-mix(in srgb, var(--pps-primary) 16%, transparent));
+            --pps-border: var(--dz-pps-border, color-mix(in srgb, var(--pps-primary) 28%, transparent));
+            --pps-border-hover: var(--dz-pps-border-hover, color-mix(in srgb, var(--pps-primary) 62%, transparent));
+            --pps-focus-ring: var(--dz-pps-focus-ring, color-mix(in srgb, var(--pps-primary) 16%, transparent));
+            --pps-primary-tint: var(--dz-pps-primary-tint, color-mix(in srgb, var(--pps-primary) 22%, transparent));
+            --pps-primary-tint-hover: var(--dz-pps-primary-tint-hover, color-mix(in srgb, var(--pps-primary) 34%, transparent));
+            --pps-primary-border: var(--dz-pps-primary-border, color-mix(in srgb, var(--pps-primary) 62%, transparent));
+            --pps-danger-tint: var(--dz-pps-danger-tint, color-mix(in srgb, var(--pps-danger) 18%, transparent));
+            --pps-danger-tint-hover: var(--dz-pps-danger-tint-hover, color-mix(in srgb, var(--pps-danger) 30%, transparent));
+            --pps-danger-border: var(--dz-pps-danger-border, color-mix(in srgb, var(--pps-danger) 68%, transparent));
+            --pps-success-tint: var(--dz-pps-success-tint, color-mix(in srgb, var(--pps-success) 18%, transparent));
+            --pps-success-tint-hover: var(--dz-pps-success-tint-hover, color-mix(in srgb, var(--pps-success) 30%, transparent));
+            --pps-success-border: var(--dz-pps-success-border, color-mix(in srgb, var(--pps-success) 68%, transparent));
+        }
     }
 
     #pypluginstore-container .header {
@@ -34,7 +74,7 @@
         align-items: center;
         margin-bottom: 24px;
         padding-bottom: 16px;
-        border-bottom: 1px solid var(--border-color);
+        border-bottom: 1px solid var(--pps-border);
     }
 
     #pypluginstore-container .header-title {
@@ -55,18 +95,18 @@
         margin: 0;
         font-size: 1.4em;
         font-weight: 600;
-        color: var(--text-heading);
+        color: var(--pps-text-heading);
         letter-spacing: 0.02em;
     }
 
     #pypluginstore-status {
         font-weight: 500;
         font-size: 0.85em;
-        color: var(--text-muted);
-        background: rgba(74, 158, 218, 0.1);
-        border: 1px solid rgba(74, 158, 218, 0.2);
+        color: var(--pps-text);
+        background: var(--pps-panel-bg);
+        border: 1px solid var(--pps-border);
         padding: 5px 12px;
-        border-radius: 20px;
+        border-radius: var(--pps-radius);
     }
 
     #pypluginstore-container .header-actions {
@@ -82,34 +122,34 @@
         gap: 14px;
         margin-bottom: 20px;
         align-items: center;
-        background: var(--panel-bg);
+        background: var(--pps-panel-bg);
         padding: 14px 18px;
-        border-radius: 10px;
-        border: 1px solid var(--border-color);
+        border-radius: var(--pps-radius);
+        border: 1px solid var(--pps-border);
         flex-wrap: wrap;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+        box-shadow: var(--pps-shadow);
     }
 
     #pypluginstore-container .filters input[type="text"] {
         flex-grow: 1;
         padding: 8px 14px;
-        border: 1px solid rgba(255,255,255,0.1);
+        border: 1px solid var(--pps-border);
         border-radius: 6px;
         font-size: 0.9em;
         min-width: 200px;
-        background: var(--input-bg);
-        color: var(--text-color);
+        background: var(--pps-input-bg);
+        color: var(--pps-input-text);
         outline: none;
         transition: border-color 0.2s;
     }
 
     #pypluginstore-container .filters input[type="text"]:focus {
-        border-color: var(--primary);
-        box-shadow: 0 0 0 3px rgba(74, 158, 218, 0.15);
+        border-color: var(--pps-border-hover);
+        box-shadow: 0 0 0 3px var(--pps-focus-ring);
     }
 
     #pypluginstore-container .filters input[type="text"]::placeholder {
-        color: var(--text-muted);
+        color: var(--pps-text-muted);
     }
 
     #pypluginstore-container .filters label {
@@ -120,7 +160,7 @@
         font-size: 0.9em;
         cursor: pointer;
         user-select: none;
-        color: var(--text-color);
+        color: var(--pps-text);
     }
 
     #pypluginstore-container .sort-controls {
@@ -133,23 +173,23 @@
         margin: 0;
         font-weight: normal;
         font-size: 0.85em;
-        color: var(--text-muted);
+        color: var(--pps-text-muted);
     }
 
     #pypluginstore-container .sort-controls select {
         padding: 8px 12px;
-        border: 1px solid rgba(255,255,255,0.1);
+        border: 1px solid var(--pps-border);
         border-radius: 6px;
         font-size: 0.88em;
-        background: var(--select-bg);
-        color: var(--text-color);
+        background: var(--pps-input-bg);
+        color: var(--pps-input-text);
         cursor: pointer;
         outline: none;
         transition: border-color 0.2s;
     }
 
     #pypluginstore-container .sort-controls select:focus {
-        border-color: var(--primary);
+        border-color: var(--pps-border-hover);
     }
 
     .switch {
@@ -192,12 +232,12 @@
 
     input:checked + .slider {
         background-color: rgba(58, 191, 126, 0.3);
-        border-color: var(--success);
+        border-color: var(--pps-success);
     }
 
     input:checked + .slider:before {
         transform: translateX(24px);
-        background-color: var(--success);
+        background-color: var(--pps-success);
     }
 
     #pypluginstore-container .grid {
@@ -207,27 +247,27 @@
     }
 
     #pypluginstore-container .card {
-        background: var(--card-bg);
-        border: 1px solid var(--border-color);
-        border-radius: 10px;
+        background: var(--pps-card-bg);
+        border: 1px solid var(--pps-border);
+        border-radius: var(--pps-radius);
         padding: 18px;
-        box-shadow: 0 4px 16px rgba(0,0,0,0.25);
+        box-shadow: var(--pps-shadow);
         display: flex;
         flex-direction: column;
         transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
     }
 
     #pypluginstore-container .card:hover {
-        border-color: rgba(74, 158, 218, 0.65);
-        background: var(--card-bg-hover);
-        box-shadow: 0 6px 24px rgba(0,0,0,0.35);
+        border-color: var(--pps-border-hover);
+        background: var(--pps-card-bg-hover);
+        box-shadow: var(--pps-shadow-hover);
     }
 
     #pypluginstore-container .card-header {
         font-size: 1em;
         font-weight: 600;
         margin-bottom: 10px;
-        color: var(--text-heading);
+        color: var(--pps-text-heading);
         display: flex;
         align-items: center;
         justify-content: space-between;
@@ -244,7 +284,7 @@
 
     #pypluginstore-container .card-desc {
         font-size: 0.85em;
-        color: var(--text-muted);
+        color: var(--pps-text-muted);
         margin-bottom: 14px;
         flex-grow: 1;
         line-height: 1.5;
@@ -252,11 +292,11 @@
 
     #pypluginstore-container .card-meta {
         font-size: 0.78em;
-        color: var(--text-muted);
+        color: var(--pps-text-muted);
         margin-bottom: 14px;
         line-height: 1.7;
         padding-top: 10px;
-        border-top: 1px solid var(--border-color);
+        border-top: 1px solid var(--pps-border);
     }
 
     #pypluginstore-container .actions {
@@ -285,11 +325,11 @@
         letter-spacing: 0.02em;
     }
 
-    #pypluginstore-container .btn-install { background: rgba(74, 158, 218, 0.25) !important; color: var(--primary) !important; border: 1px solid rgba(74, 158, 218, 0.65) !important; }
-    #pypluginstore-container .btn-install:hover { background: rgba(74, 158, 218, 0.28) !important; }
+    #pypluginstore-container .btn-install { background: var(--pps-primary-tint) !important; color: var(--pps-primary) !important; border: 1px solid var(--pps-primary-border) !important; }
+    #pypluginstore-container .btn-install:hover { background: var(--pps-primary-tint-hover) !important; }
 
-    #pypluginstore-container .btn-remove { background: rgba(224, 92, 106, 0.15) !important; color: var(--danger) !important; border: 1px solid rgba(224, 92, 106, 0.65) !important; }
-    #pypluginstore-container .btn-remove:hover { background: rgba(224, 92, 106, 0.28) !important; }
+    #pypluginstore-container .btn-remove { background: var(--pps-danger-tint) !important; color: var(--pps-danger) !important; border: 1px solid var(--pps-danger-border) !important; }
+    #pypluginstore-container .btn-remove:hover { background: var(--pps-danger-tint-hover) !important; }
 
     #pypluginstore-container .btn-update { border: 1px solid transparent !important; }
 
@@ -299,44 +339,44 @@
         100% { box-shadow: 0 0 4px 1px rgba(58, 191, 126, 0.35); }
     }
 
-    #pypluginstore-container .btn-update-available { background: rgba(58, 191, 126, 0.15) !important; color: var(--success) !important; border-color: rgba(58, 191, 126, 0.65) !important; animation: glow-pulse 3.5s ease-in-out infinite; }
-    #pypluginstore-container .btn-update-available:hover { background: rgba(58, 191, 126, 0.28) !important; }
+    #pypluginstore-container .btn-update-available { background: var(--pps-success-tint) !important; color: var(--pps-success) !important; border-color: var(--pps-success-border) !important; animation: glow-pulse 3.5s ease-in-out infinite; }
+    #pypluginstore-container .btn-update-available:hover { background: var(--pps-success-tint-hover) !important; }
 
-    #pypluginstore-container .btn-update-current { background: rgba(107, 130, 160, 0.15) !important; color: #8ea8c0 !important; border-color: rgba(107, 130, 160, 0.65) !important; }
-    #pypluginstore-container .btn-update-current:hover { background: rgba(107, 130, 160, 0.28) !important; }
+    #pypluginstore-container .btn-update-current { background: var(--pps-button-bg) !important; color: var(--pps-button-text) !important; border-color: var(--pps-border) !important; }
+    #pypluginstore-container .btn-update-current:hover { background: var(--pps-button-hover-bg) !important; }
 
-    #pypluginstore-container .btn-info { background: rgba(107, 130, 160, 0.15) !important; color: #8ea8c0 !important; border: 1px solid rgba(107,130,160,0.65) !important; text-decoration: none !important; }
-    #pypluginstore-container .btn-info:hover { background: rgba(107, 130, 160, 0.28) !important; }
+    #pypluginstore-container .btn-info { background: var(--pps-button-bg) !important; color: var(--pps-button-text) !important; border: 1px solid var(--pps-border) !important; text-decoration: none !important; }
+    #pypluginstore-container .btn-info:hover { background: var(--pps-button-hover-bg) !important; }
 
     #pypluginstore-container .btn-restart {
-        background: #343a40;
-        color: white;
-        border: 1px solid rgba(255,255,255,0.22) !important;
+        background: var(--pps-button-bg);
+        color: var(--pps-button-text);
+        border: 1px solid var(--pps-border) !important;
         flex: 0 0 auto !important;
     }
 
     #pypluginstore-container .btn-restart:hover {
-        background: #23272b;
-        border-color: rgba(255,255,255,0.35) !important;
+        background: var(--pps-button-hover-bg);
+        border-color: var(--pps-border-hover) !important;
     }
 
     #pypluginstore-container .btn-refresh {
-        background: rgba(74, 158, 218, 0.25);
-        color: var(--primary);
-        border: 1px solid rgba(74, 158, 218, 0.65) !important;
+        background: var(--pps-primary-tint);
+        color: var(--pps-primary);
+        border: 1px solid var(--pps-primary-border) !important;
         flex: 0 0 auto !important;
     }
 
     #pypluginstore-container .btn-refresh:hover {
-        background: rgba(74, 158, 218, 0.35);
-        border-color: rgba(74, 158, 218, 0.85) !important;
+        background: var(--pps-primary-tint-hover);
+        border-color: var(--pps-primary-border) !important;
     }
 
     .installed-badge {
         display: inline-block;
-        background: rgba(58, 191, 126, 0.18);
-        color: var(--success);
-        border: 1px solid rgba(58, 191, 126, 0.4);
+        background: var(--pps-badge-installed-bg);
+        color: var(--pps-success);
+        border: 1px solid var(--pps-badge-installed-border);
         padding: 2px 8px;
         border-radius: 10px;
         font-size: 0.7em;
@@ -346,9 +386,9 @@
 
     .local-badge {
         display: inline-block;
-        background: rgba(74, 158, 218, 0.18);
-        color: var(--primary);
-        border: 1px solid rgba(74, 158, 218, 0.4);
+        background: var(--pps-badge-local-bg);
+        color: var(--pps-primary);
+        border: 1px solid var(--pps-badge-local-border);
         padding: 2px 8px;
         border-radius: 10px;
         font-size: 0.7em;
@@ -365,9 +405,9 @@
 
     .platform-badge {
         display: inline-block;
-        background: rgba(107, 130, 160, 0.15);
-        color: #8ea8c0;
-        border: 1px solid rgba(107, 130, 160, 0.5);
+        background: var(--pps-badge-muted-bg);
+        color: var(--pps-text-muted);
+        border: 1px solid var(--pps-badge-muted-border);
         padding: 2px 7px;
         border-radius: 10px;
         font-size: 0.68em;
@@ -377,21 +417,21 @@
 
     .platform-badge-linux {
         background: rgba(58, 191, 126, 0.14);
-        color: var(--success);
+        color: var(--pps-success);
         border-color: rgba(58, 191, 126, 0.42);
     }
 
     .platform-badge-windows {
         background: rgba(74, 158, 218, 0.16);
-        color: var(--primary);
+        color: var(--pps-primary);
         border-color: rgba(74, 158, 218, 0.45);
     }
 
     .non-git-badge {
         display: inline-block;
-        background: rgba(230, 126, 34, 0.18);
-        color: #e67e22;
-        border: 1px solid rgba(230, 126, 34, 0.4);
+        background: var(--pps-warning);
+        color: #fff;
+        border: 1px solid var(--pps-warning);
         padding: 2px 8px;
         border-radius: 10px;
         font-size: 0.7em;
@@ -597,7 +637,7 @@
                     const dataStr = resp.result[0].Data;
                     try {
                         const data = JSON.parse(dataStr);
-                        if (data.tx_id === txId && (!data.action || data.action === action)) {
+                        if (data.action === action && data.tx_id === txId) {
                             console.log("Received response:", data);
                             await clearApiBridgePayload();
                             return data;
