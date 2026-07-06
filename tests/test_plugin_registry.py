@@ -129,7 +129,7 @@ def test_load_update_times_keeps_newer_cached_timestamp(plugin_core_module, tmp_
 def test_fetch_registry_merges_remote_registry_with_local_overlay(plugin_core_module, tmp_path, monkeypatch):
     _, manager_dir = configure_home(plugin_core_module, tmp_path)
     (manager_dir / "registry_local.json").write_text(json.dumps({
-        "LocalPlugin": ["git@github.com:owner/private-plugin.git", "", "local description", "main"],
+        "LocalPlugin": ["git@github.com:owner/private-plugin.git", "", "local description", "main", "2030-01-01T00:00:00Z"],
         "PublicPlugin": ["local-owner", "public-plugin", "local override", "main"],
     }))
     plugin = plugin_core_module.BasePlugin()
@@ -152,6 +152,7 @@ def test_fetch_registry_merges_remote_registry_with_local_overlay(plugin_core_mo
     monkeypatch.setattr(plugin_core_module.urllib.request, "urlopen", lambda *args, **kwargs: FakeResponse())
     monkeypatch.setattr(plugin, "load_update_times", lambda: {
         "LocalPlugin": "2026-06-16T18:42:59Z",
+        "PublicPlugin": "2026-06-17T18:42:59Z",
         "RemoteOnly": "2026-06-14T15:10:03Z",
     })
 
@@ -162,14 +163,12 @@ def test_fetch_registry_merges_remote_registry_with_local_overlay(plugin_core_mo
         "public-plugin",
         "local override",
         "main",
-        "",
     ]
     assert plugin.plugin_data["LocalPlugin"] == [
         "git@github.com:owner/private-plugin.git",
         "",
         "local description",
         "main",
-        "2026-06-16T18:42:59Z",
     ]
     assert plugin.plugin_data["RemoteOnly"] == [
         "remote-owner",
@@ -365,6 +364,61 @@ def test_get_plugin_versions_fetches_raw_plugin_py_for_supported_hosts(plugin_co
     assert versions == {
         "Stromer": {"installed": "1.0.0", "available": "2.0.0"},
         "SabNZBD": {"installed": "0.0.1", "available": "2.0.0"},
+    }
+
+
+def test_get_plugin_versions_uses_local_override_branch(plugin_core_module, tmp_path, monkeypatch):
+    plugins_dir, _ = configure_home(plugin_core_module, tmp_path)
+    plugin_dir = plugins_dir / "SolarEdge"
+    plugin_dir.mkdir()
+    (plugin_dir / "plugin.py").write_text(
+        '"""\n<plugin key="SolarEdge_ModbusTCP" name="SolarEdge ModbusTCP" version="2.0.5.5">\n</plugin>\n"""\n'
+    )
+    plugin = plugin_core_module.BasePlugin()
+    plugin.plugin_data = {
+        "domoticz-solaredge-modbustcp-plugin": [
+            "addiejanssen",
+            "domoticz-solaredge-modbustcp-plugin",
+            "description",
+            "meters",
+            "",
+        ],
+    }
+    plugin.installed_plugin_folders = {
+        "domoticz-solaredge-modbustcp-plugin": "SolarEdge",
+    }
+    fetched_urls = []
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc_value, traceback):
+            return False
+
+        def read(self):
+            return b'"""\n<plugin key="SolarEdge_ModbusTCP" name="SolarEdge ModbusTCP" version="2.0.4">\n</plugin>\n"""\n'
+
+    def fake_urlopen(request, timeout=0):
+        fetched_urls.append(request.full_url)
+        return FakeResponse()
+
+    monkeypatch.setattr(plugin_core_module.urllib.request, "urlopen", fake_urlopen)
+
+    versions = plugin.get_plugin_versions(
+        ["domoticz-solaredge-modbustcp-plugin"],
+        {"domoticz-solaredge-modbustcp-plugin": "available"},
+        str(plugins_dir),
+    )
+
+    assert fetched_urls == [
+        "https://raw.githubusercontent.com/addiejanssen/domoticz-solaredge-modbustcp-plugin/meters/plugin.py",
+    ]
+    assert versions == {
+        "domoticz-solaredge-modbustcp-plugin": {
+            "installed": "2.0.5.5",
+            "available": "2.0.4",
+        },
     }
 
 

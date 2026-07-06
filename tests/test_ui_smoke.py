@@ -119,6 +119,7 @@ def test_repo_url_builder_supports_codeberg_and_gitlab_hosts():
     function_source = "\n".join([
         extract_js_function(script, "stripRepoUrl"),
         extract_js_function(script, "encodeRepoPath"),
+        extract_js_function(script, "encodeBranchPath"),
         extract_js_function(script, "parseRepoReference"),
         extract_js_function(script, "buildRepoUrl"),
     ])
@@ -132,15 +133,56 @@ def test_repo_url_builder_supports_codeberg_and_gitlab_hosts():
         ["git@example.org:Team/DomoticzPlugin.git", "", "https://example.org/Team/DomoticzPlugin"],
         ["https://codeberg.org/Hoog/Domoticz-Stromer-plugin/src/branch/main", "", "https://codeberg.org/Hoog/Domoticz-Stromer-plugin"],
         ["https://gitlab.com/r.boeters/DomoticzSabNZBDPlugin/-/tree/master", "", "https://gitlab.com/r.boeters/DomoticzSabNZBDPlugin"],
+        ["owner", "repo", "https://github.com/owner/repo/tree/feature/meters", "feature/meters"],
+        ["codeberg.org/Hoog", "Domoticz-Stromer-plugin", "https://codeberg.org/Hoog/Domoticz-Stromer-plugin/src/branch/main", "main"],
+        ["gitlab.com/r.boeters", "DomoticzSabNZBDPlugin", "https://gitlab.com/r.boeters/DomoticzSabNZBDPlugin/-/tree/release/2.0", "release/2.0"],
+        ["example.org/Team", "DomoticzPlugin", "https://example.org/Team/DomoticzPlugin", "main"],
     ]
     node_script = f"""
 {function_source}
 const cases = {json.dumps(cases)};
-for (const [author, repo, expected] of cases) {{
-    const actual = buildRepoUrl(author, repo);
+for (const [author, repo, expected, branch] of cases) {{
+    const actual = buildRepoUrl(author, repo, branch);
     if (actual !== expected) {{
         throw new Error(`${{author}}/${{repo}}: expected "${{expected}}", got "${{actual}}"`);
     }}
+}}
+"""
+
+    with tempfile.NamedTemporaryFile(suffix=".js", mode="w", delete=False) as f:
+        f.write(node_script)
+        temp_path = f.name
+    try:
+        result = subprocess.run(
+            [node, temp_path],
+            capture_output=True,
+            text=True,
+        )
+    finally:
+        os.remove(temp_path)
+    assert result.returncode == 0, result.stderr
+
+
+def test_version_status_uses_remote_label_when_installed_is_newer():
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("node is not installed")
+
+    script = load_inline_script()
+    function_source = "\n".join([
+        extract_js_function(script, "parseVersionParts"),
+        extract_js_function(script, "compareVersions"),
+        extract_js_function(script, "formatVersionStatus"),
+    ])
+    node_script = f"""
+{function_source}
+const olderRemote = formatVersionStatus({{installed: '2.0.5.5', available: '2.0.4'}}, 'available');
+if (olderRemote !== 'Installed: v2.0.5.5 | Remote: v2.0.4 (installed is newer)') {{
+    throw new Error(`Unexpected older remote status: ${{olderRemote}}`);
+}}
+const newerRemote = formatVersionStatus({{installed: '1.0.0', available: '2.0.0'}}, 'available');
+if (newerRemote !== 'Installed: v1.0.0 | Available: v2.0.0') {{
+    throw new Error(`Unexpected newer remote status: ${{newerRemote}}`);
 }}
 """
 

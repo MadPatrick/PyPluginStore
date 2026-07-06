@@ -761,6 +761,10 @@
         return pathParts.map(part => encodeURIComponent(part)).join('/');
     }
 
+    function encodeBranchPath(branch) {
+        return String(branch || '').split('/').filter(Boolean).map(part => encodeURIComponent(part)).join('/');
+    }
+
     function parseRepoReference(author, repo) {
         const cleanAuthor = String(author || '').trim();
         const cleanRepo = String(repo || '').trim().replace(/\.git$/, '');
@@ -799,12 +803,67 @@
         return { host: fallbackHost, pathParts: [cleanAuthor, cleanRepo].filter(Boolean) };
     }
 
-    function buildRepoUrl(author, repo) {
+    function buildRepoUrl(author, repo, branch) {
         const repoReference = parseRepoReference(author, repo);
         if (!repoReference.host || repoReference.pathParts.length === 0) {
             return '';
         }
-        return stripRepoUrl('https://' + repoReference.host + '/' + encodeRepoPath(repoReference.pathParts));
+        const repoUrl = stripRepoUrl('https://' + repoReference.host + '/' + encodeRepoPath(repoReference.pathParts));
+        const encodedBranch = encodeBranchPath(branch);
+        if (!encodedBranch) {
+            return repoUrl;
+        }
+        if (repoReference.host === 'github.com') {
+            return repoUrl + '/tree/' + encodedBranch;
+        }
+        if (repoReference.host === 'gitlab.com') {
+            return repoUrl + '/-/tree/' + encodedBranch;
+        }
+        if (repoReference.host === 'codeberg.org') {
+            return repoUrl + '/src/branch/' + encodedBranch;
+        }
+        return repoUrl;
+    }
+
+    function parseVersionParts(version) {
+        const cleanVersion = String(version || '').trim().replace(/^v/i, '');
+        if (!cleanVersion) return [];
+        return cleanVersion.split(/[.+_-]/).map(part => {
+            if (/^\d+$/.test(part)) return { type: 'number', value: Number(part) };
+            return { type: 'text', value: part.toLowerCase() };
+        });
+    }
+
+    function compareVersions(leftVersion, rightVersion) {
+        const left = parseVersionParts(leftVersion);
+        const right = parseVersionParts(rightVersion);
+        const maxLength = Math.max(left.length, right.length);
+        for (let index = 0; index < maxLength; index++) {
+            const leftPart = left[index] || { type: 'number', value: 0 };
+            const rightPart = right[index] || { type: 'number', value: 0 };
+            if (leftPart.type === 'number' && rightPart.type === 'number') {
+                if (leftPart.value !== rightPart.value) return leftPart.value > rightPart.value ? 1 : -1;
+                continue;
+            }
+            const leftValue = String(leftPart.value);
+            const rightValue = String(rightPart.value);
+            if (leftValue !== rightValue) return leftValue > rightValue ? 1 : -1;
+        }
+        return 0;
+    }
+
+    function formatVersionStatus(verInfo, updateStatus) {
+        const versionParts = [];
+        const installedVersion = verInfo && verInfo.installed ? String(verInfo.installed).replace(/^v/i, '') : '';
+        const remoteVersion = verInfo && verInfo.available ? String(verInfo.available).replace(/^v/i, '') : '';
+        if (installedVersion) versionParts.push('Installed: v' + installedVersion);
+        if (remoteVersion && updateStatus === 'available') {
+            const comparison = installedVersion ? compareVersions(remoteVersion, installedVersion) : 0;
+            const remoteLabel = comparison > 0 ? 'Available' : 'Remote';
+            const remoteText = remoteLabel + ': v' + remoteVersion + (comparison < 0 ? ' (installed is newer)' : '');
+            versionParts.push(remoteText);
+        }
+        return versionParts.join(' | ');
     }
 
     function formatAuthorDisplay(author, repo) {
@@ -932,10 +991,7 @@
                 const verInfo = versionsCache[key];
                 if (verInfo.installed || verInfo.available) {
                     meta.appendChild(document.createElement('br'));
-                    let vText = [];
-                    if (verInfo.installed) vText.push('Installed: v' + verInfo.installed.replace(/^v/, ''));
-                    if (verInfo.available && updateStatus === 'available') vText.push('Available: v' + verInfo.available.replace(/^v/, ''));
-                    meta.appendChild(document.createTextNode(vText.join(' | ')));
+                    meta.appendChild(document.createTextNode(formatVersionStatus(verInfo, updateStatus)));
                 }
             }
 
@@ -944,7 +1000,7 @@
 
             const repoLink = document.createElement('a');
             repoLink.className = 'btn-info btn-link';
-            repoLink.href = buildRepoUrl(author, repo);
+            repoLink.href = buildRepoUrl(author, repo, branch);
             repoLink.target = '_blank';
             repoLink.rel = 'noopener noreferrer';
             repoLink.textContent = 'Repo';
@@ -958,8 +1014,13 @@
                     updateButton.disabled = true;
                 } else {
                     const updateClass = updateStatus === 'available' ? 'btn-update btn-update-available' : 'btn-update btn-update-current';
-                    const updateTitle = updateStatus === 'available' ? 'Update available' :
-                        (updateStatus === 'current' ? 'Already up-to-date' : 'Update status unknown');
+                    const verInfo = versionsCache && versionsCache[key] ? versionsCache[key] : {};
+                    const installedVersion = verInfo.installed || '';
+                    const remoteVersion = verInfo.available || '';
+                    const installedIsNewer = updateStatus === 'available' && installedVersion && remoteVersion && compareVersions(remoteVersion, installedVersion) < 0;
+                    const updateTitle = installedIsNewer ? 'Update resets this plugin to the configured branch' :
+                        (updateStatus === 'available' ? 'Update available' :
+                        (updateStatus === 'current' ? 'Already up-to-date' : 'Update status unknown'));
                     updateButton.className = updateClass;
                     updateButton.title = updateTitle;
                 }

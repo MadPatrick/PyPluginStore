@@ -1252,7 +1252,7 @@ class RegistryService:
             repository = data.get("repository", data.get("repo", ""))
             description = data.get("description", "")
             branch = data.get("branch", "master")
-            updated_at = data.get("updated_at", "")
+            updated_at = "" if local else data.get("updated_at", "")
             platforms = self.plugin.normalize_platforms(data.get("platforms", data.get("platform", None)))
             entry = RegistryEntry(
                 key,
@@ -1274,7 +1274,7 @@ class RegistryService:
             if len(raw_entry) < 4:
                 Domoticz.Error("Plugin '" + str(key) + "' registry entry must contain owner, repository, description and branch.")
                 return None, ["unknown"]
-            updated_at = raw_entry[4] if len(raw_entry) >= 5 else ""
+            updated_at = "" if local else (raw_entry[4] if len(raw_entry) >= 5 else "")
             entry = RegistryEntry(
                 key,
                 raw_entry[0],
@@ -1283,7 +1283,7 @@ class RegistryService:
                 raw_entry[3],
                 updated_at,
                 platforms,
-                len(raw_entry) >= 5,
+                False if local else len(raw_entry) >= 5,
                 local,
             )
         else:
@@ -1362,12 +1362,12 @@ class UpdateStatusService:
             if fetch_first and not self.plugin.fetch_git_repo(plugin_dir):
                 return "unknown"
 
-            remote_ref = self.plugin.get_git_remote_ref(plugin_dir) or "@{u}"
+            remote_ref = self.plugin.get_configured_git_remote_ref(plugin_key, plugin_dir) or self.plugin.get_git_remote_ref(plugin_dir) or "@{u}"
             if plugin_key:
                 update_times = dict(self.plugin.update_times) if self.plugin.update_times else self.plugin.load_cached_update_times()
                 if self.plugin.refresh_git_update_time(plugin_key, plugin_dir, update_times, remote_ref):
                     self.plugin.save_update_times_cache(update_times)
-                    self.plugin.apply_update_times(update_times)
+                    self.plugin.apply_update_times(update_times, include_local=True)
 
             ahead_behind = self.plugin.get_git_ahead_behind(plugin_dir, remote_ref)
             if ahead_behind is None:
@@ -2431,10 +2431,12 @@ class BasePlugin:
             self.save_update_times_cache(update_times)
         return update_times
 
-    def apply_update_times(self, update_times):
+    def apply_update_times(self, update_times, include_local=False):
         self.update_times = update_times
         for key, data in self.plugin_data.items():
             if key == "Idle":
+                continue
+            if key in self.local_plugin_keys and not include_local:
                 continue
 
             updated_at = update_times.get(key, "")
@@ -2481,8 +2483,16 @@ class BasePlugin:
             update_times = self.update_times
 
         current_updated_at = update_times.get(plugin_key, "")
-        if not self.is_better_update_time(updated_at, current_updated_at):
+        is_local = plugin_key in self.local_plugin_keys
+        if not is_local and not self.is_better_update_time(updated_at, current_updated_at):
             return False
+        if is_local and current_updated_at == updated_at:
+            entry = self.get_registry_entry(plugin_key)
+            data = self.plugin_data.get(plugin_key)
+            data_updated_at = data[4] if isinstance(data, list) and len(data) >= 5 else ""
+            entry_updated_at = entry.updated_at if entry is not None else ""
+            if data_updated_at == updated_at and entry_updated_at == updated_at:
+                return False
 
         update_times[plugin_key] = updated_at
 
@@ -2567,6 +2577,17 @@ class BasePlugin:
 
         return ""
 
+    def get_configured_git_remote_ref(self, plugin_key, plugin_dir):
+        entry = self.get_registry_entry(plugin_key)
+        if entry is None or not entry.branch:
+            return ""
+
+        remote_name = self.get_git_remote_name(plugin_dir, entry.branch)
+        branch_ref = remote_name + "/" + entry.branch
+        if self.git_ref_exists(plugin_dir, branch_ref):
+            return branch_ref
+        return ""
+
     def get_git_remote_commit_date(self, plugin_dir, remote_ref):
         if not remote_ref:
             return ""
@@ -2615,7 +2636,7 @@ class BasePlugin:
             return False
 
         if not remote_ref:
-            remote_ref = self.get_git_remote_ref(plugin_dir)
+            remote_ref = self.get_configured_git_remote_ref(plugin_key, plugin_dir) or self.get_git_remote_ref(plugin_dir)
 
         updated_at = self.get_git_remote_commit_date(plugin_dir, remote_ref)
         if not updated_at:
@@ -2636,7 +2657,7 @@ class BasePlugin:
         changed = self.refresh_git_update_time(plugin_key, plugin_dir, update_times)
         if changed:
             self.save_update_times_cache(update_times)
-            self.apply_update_times(update_times)
+            self.apply_update_times(update_times, include_local=True)
         return changed
 
     def add_installed_plugin(self, installed_plugins, plugin_key):
@@ -2881,7 +2902,7 @@ class BasePlugin:
             Domoticz.Error("No plugin registry found. Plugins cannot be managed.")
 
         update_times = self.load_update_times()
-        self.apply_update_times(update_times)
+        self.apply_update_times(update_times, include_local=False)
         self.add_self_to_registry()
 
     def sendDomoticzNotification(self, subject, message):

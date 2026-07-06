@@ -240,6 +240,7 @@ def test_get_git_update_status_reports_available(plugin_core_module, tmp_path, m
     plugin = plugin_core_module.BasePlugin()
 
     monkeypatch.setattr(plugin, "fetch_git_repo", lambda actual_dir: True)
+    monkeypatch.setattr(plugin, "get_configured_git_remote_ref", lambda plugin_key, actual_dir: "origin/main")
     monkeypatch.setattr(plugin, "get_git_remote_ref", lambda actual_dir: "origin/main")
     monkeypatch.setattr(plugin, "get_git_ahead_behind", lambda actual_dir, ref: (0, 2))
 
@@ -276,6 +277,7 @@ def test_get_git_update_status_refreshes_local_update_time(plugin_core_module, t
     saved_update_times = []
 
     monkeypatch.setattr(plugin, "fetch_git_repo", lambda actual_dir: True)
+    monkeypatch.setattr(plugin, "get_configured_git_remote_ref", lambda plugin_key, actual_dir: "origin/main")
     monkeypatch.setattr(plugin, "get_git_remote_ref", lambda actual_dir: "origin/main")
     monkeypatch.setattr(plugin, "get_git_remote_commit_date", lambda actual_dir, ref: "2026-06-14T15:10:03Z")
     monkeypatch.setattr(plugin, "get_git_remote_url", lambda actual_dir, remote: "https://github.com/owner/repo.git")
@@ -285,6 +287,57 @@ def test_get_git_update_status_refreshes_local_update_time(plugin_core_module, t
     assert plugin.getGitUpdateStatus(plugin_dir, "Plugin") == "available"
     assert plugin.plugin_data["Plugin"][4] == "2026-06-14T15:10:03Z"
     assert saved_update_times == [{"Plugin": "2026-06-14T15:10:03Z"}]
+
+
+def test_get_git_update_status_uses_registry_branch_ref(plugin_core_module, tmp_path, monkeypatch):
+    configure_home(plugin_core_module, tmp_path)
+    plugin_dir = tmp_path / "Plugin"
+    (plugin_dir / ".git").mkdir(parents=True)
+    plugin = plugin_core_module.BasePlugin()
+    plugin.plugin_data = {
+        "Plugin": ["owner", "repo", "description", "meters", ""],
+    }
+    checked_refs = []
+
+    monkeypatch.setattr(plugin, "fetch_git_repo", lambda actual_dir: True)
+    monkeypatch.setattr(plugin, "get_configured_git_remote_ref", lambda plugin_key, actual_dir: "origin/meters")
+    monkeypatch.setattr(plugin, "get_git_remote_commit_date", lambda actual_dir, ref: "2023-07-22T14:21:45Z")
+    monkeypatch.setattr(plugin, "get_git_remote_url", lambda actual_dir, remote: "https://github.com/owner/repo.git")
+    monkeypatch.setattr(plugin, "save_update_times_cache", lambda update_times: True)
+
+    def fake_ahead_behind(actual_dir, ref):
+        checked_refs.append(ref)
+        return (0, 1)
+
+    monkeypatch.setattr(plugin, "get_git_ahead_behind", fake_ahead_behind)
+
+    assert plugin.getGitUpdateStatus(plugin_dir, "Plugin") == "available"
+    assert checked_refs == ["origin/meters"]
+    assert plugin.plugin_data["Plugin"][4] == "2023-07-22T14:21:45Z"
+
+
+def test_local_override_update_time_can_be_older_than_public_time(plugin_core_module, tmp_path, monkeypatch):
+    configure_home(plugin_core_module, tmp_path)
+    plugin_dir = tmp_path / "Plugin"
+    (plugin_dir / ".git").mkdir(parents=True)
+    plugin = plugin_core_module.BasePlugin()
+    plugin.plugin_data = {
+        "Plugin": ["owner", "repo", "description", "meters", ""],
+    }
+    plugin.local_plugin_keys = ["Plugin"]
+    plugin.update_times = {"Plugin": "2025-12-23T17:17:13Z"}
+    saved_update_times = []
+
+    monkeypatch.setattr(plugin, "fetch_git_repo", lambda actual_dir: True)
+    monkeypatch.setattr(plugin, "get_configured_git_remote_ref", lambda plugin_key, actual_dir: "origin/meters")
+    monkeypatch.setattr(plugin, "get_git_remote_commit_date", lambda actual_dir, ref: "2023-07-22T14:21:45Z")
+    monkeypatch.setattr(plugin, "get_git_remote_url", lambda actual_dir, remote: "https://github.com/owner/repo.git")
+    monkeypatch.setattr(plugin, "get_git_ahead_behind", lambda actual_dir, ref: (0, 0))
+    monkeypatch.setattr(plugin, "save_update_times_cache", lambda update_times: saved_update_times.append(dict(update_times)) or True)
+
+    assert plugin.getGitUpdateStatus(plugin_dir, "Plugin") == "current"
+    assert plugin.plugin_data["Plugin"][4] == "2023-07-22T14:21:45Z"
+    assert saved_update_times == [{"Plugin": "2023-07-22T14:21:45Z"}]
 
 
 def test_get_installed_update_status_skips_unmanaged_plugins(plugin_core_module, tmp_path, monkeypatch):
