@@ -509,9 +509,8 @@
         font-family: var(--pps-card-title-font-family);
         line-height: var(--pps-card-title-line-height);
         display: flex;
-        align-items: center;
-        justify-content: space-between;
-        flex-wrap: wrap;
+        flex-direction: column;
+        align-items: stretch;
         gap: 6px;
         box-sizing: border-box;
         overflow: visible;
@@ -522,13 +521,23 @@
         text-indent: 0 !important;
     }
 
-    #pypluginstore-container .pps-card-header-left {
+    #pypluginstore-container .pps-card-header-main {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 8px;
+        inline-size: 100%;
+    }
+
+    #pypluginstore-container .pps-card-header-platforms,
+    #pypluginstore-container .pps-card-header-status {
         display: flex;
         align-items: center;
-        gap: 6px;
+        justify-content: flex-start;
+        gap: 5px;
         flex-wrap: wrap;
+        inline-size: 100%;
         min-width: 0;
-        flex: 1 1 auto;
     }
 
     #pypluginstore-container .pps-plugin-title {
@@ -539,9 +548,8 @@
         white-space: nowrap;
     }
 
-    #pypluginstore-container .pps-card-header > .local-badge,
-    #pypluginstore-container .pps-card-header > .platform-badges {
-        flex: 0 0 auto;
+    #pypluginstore-container .pps-card-header-main > .installed-badge {
+        justify-self: end;
     }
 
     #pypluginstore-container .pps-card-desc {
@@ -2452,27 +2460,30 @@
             const header = document.createElement('div');
             header.className = 'pps-card-header';
 
-            const headerLeft = document.createElement('div');
-            headerLeft.className = 'pps-card-header-left';
+            const headerMain = document.createElement('div');
+            headerMain.className = 'pps-card-header-main';
 
             const pluginTitle = document.createElement('span');
             pluginTitle.className = 'pps-plugin-title';
             pluginTitle.textContent = displayName;
             pluginTitle.title = displayName;
-            headerLeft.appendChild(pluginTitle);
+            headerMain.appendChild(pluginTitle);
+
+            const statusBadges = document.createElement('div');
+            statusBadges.className = 'pps-card-header-status';
 
             if (isInstalled) {
                 const badge = document.createElement('span');
                 badge.className = 'installed-badge';
                 badge.textContent = 'Installed';
-                headerLeft.appendChild(badge);
+                headerMain.appendChild(badge);
 
                 if (isGit === false) {
                     const nonGitBadge = document.createElement('span');
                     nonGitBadge.className = 'non-git-badge';
                     nonGitBadge.textContent = 'Non-Git';
                     nonGitBadge.title = 'This plugin was not installed using Git/GitHub. Updates through PyPluginStore are not available.';
-                    headerLeft.appendChild(nonGitBadge);
+                    statusBadges.appendChild(nonGitBadge);
                 }
 
                 if (hasRepoMismatch) {
@@ -2480,23 +2491,23 @@
                     mismatchBadge.className = 'repo-mismatch-badge';
                     mismatchBadge.textContent = 'Repo mismatch';
                     mismatchBadge.title = 'The installed Git checkout does not match the configured registry repo or branch.';
-                    headerLeft.appendChild(mismatchBadge);
+                    statusBadges.appendChild(mismatchBadge);
                 }
             }
 
-            header.appendChild(headerLeft);
+            header.appendChild(headerMain);
 
             if (isLocal) {
                 const localBadge = document.createElement('span');
                 localBadge.className = 'local-badge';
                 localBadge.textContent = 'Local';
-                header.appendChild(localBadge);
+                statusBadges.appendChild(localBadge);
             }
 
             const knownPlatforms = platforms.filter(platformName => platformName === 'linux' || platformName === 'windows');
             if (knownPlatforms.length > 0) {
                 const platformBadges = document.createElement('div');
-                platformBadges.className = 'platform-badges';
+                platformBadges.className = 'pps-card-header-platforms platform-badges';
                 knownPlatforms.forEach(platformName => {
                     const platformBadge = document.createElement('span');
                     platformBadge.className = 'platform-badge platform-badge-' + platformName;
@@ -2504,6 +2515,10 @@
                     platformBadges.appendChild(platformBadge);
                 });
                 header.appendChild(platformBadges);
+            }
+
+            if (statusBadges.childNodes.length > 0) {
+                header.appendChild(statusBadges);
             }
 
             const desc = document.createElement('div');

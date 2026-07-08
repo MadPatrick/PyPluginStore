@@ -656,6 +656,34 @@ def test_platform_badges_are_wired_to_backend_response():
     assert "platform-badge platform-badge-" in script
 
 
+def test_card_header_badges_use_multiline_rows():
+    html = (REPO_ROOT / "pypluginstore.html").read_text()
+    script = load_inline_script()
+
+    header_rule = extract_css_rule(html, "#pypluginstore-container .pps-card-header")
+    assert "flex-direction: column" in header_rule
+    assert "align-items: stretch" in header_rule
+    assert "justify-content: space-between" not in header_rule
+
+    main_rule = extract_css_rule(html, "#pypluginstore-container .pps-card-header-main")
+    assert "display: grid" in main_rule
+    assert "grid-template-columns: minmax(0, 1fr) auto" in main_rule
+
+    row_rule = extract_css_rule(html, "#pypluginstore-container .pps-card-header-platforms,")
+    assert "justify-content: flex-start" in row_rule
+    assert "flex-wrap: wrap" in row_rule
+
+    assert ".pps-card-header-left" not in html
+    assert "headerMain.className = 'pps-card-header-main'" in script
+    assert "statusBadges.className = 'pps-card-header-status'" in script
+    assert "headerMain.appendChild(badge)" in script
+    assert "statusBadges.appendChild(nonGitBadge)" in script
+    assert "statusBadges.appendChild(mismatchBadge)" in script
+    assert "statusBadges.appendChild(localBadge)" in script
+    assert "platformBadges.className = 'pps-card-header-platforms platform-badges'" in script
+    assert "if (statusBadges.childNodes.length > 0)" in script
+
+
 def test_custom_ui_references_existing_icon_asset():
     html = (REPO_ROOT / "pypluginstore.html").read_text()
 
