@@ -1,5 +1,30 @@
 # Changelog
 
+## [2.16.0](https://github.com/adrighem/PyPluginStore/compare/v2.15.2...v2.16.0) (2026-07-08)
+
+
+### Features
+
+* native theme support, version 1 ([21387b0](https://github.com/adrighem/PyPluginStore/commit/21387b0261280143976c730346fab089857e4495))
+
+
+### Bug Fixes
+
+* accept API bridge error responses ([7be417c](https://github.com/adrighem/PyPluginStore/commit/7be417c6bf3d33e9c6eb02ead43cc8b63fd0d9d0))
+* align local override branch metadata ([fbeb52c](https://github.com/adrighem/PyPluginStore/commit/fbeb52ce8143de6e67a4ccc405d9dcc8dc714259)), closes [#73](https://github.com/adrighem/PyPluginStore/issues/73)
+* align plugin card badges ([e7b12ad](https://github.com/adrighem/PyPluginStore/commit/e7b12ad67883ec6ca167df4487e4ca6d387fdfea)), closes [#92](https://github.com/adrighem/PyPluginStore/issues/92)
+* default plugin store to Domoticz theme layout ([865cd79](https://github.com/adrighem/PyPluginStore/commit/865cd79b02aa92c31924f918a145a2b9fb6a013d)), closes [#91](https://github.com/adrighem/PyPluginStore/issues/91)
+* fine-tune Domoticz theme support ([ed365ae](https://github.com/adrighem/PyPluginStore/commit/ed365ae3813811026e877f8298bd0982bd274764)), closes [#91](https://github.com/adrighem/PyPluginStore/issues/91)
+* warn on installed registry mismatches ([1e0e4e2](https://github.com/adrighem/PyPluginStore/commit/1e0e4e2270c5528e9982c268b874c3cc55b0d837)), closes [#73](https://github.com/adrighem/PyPluginStore/issues/73)
+
+
+### Documentation
+
+* add registry_local how-to ([434922b](https://github.com/adrighem/PyPluginStore/commit/434922bdd5f6c18ccf9872e4e976a438163f0bf4))
+* clarify repo mismatch recovery ([d1a9b49](https://github.com/adrighem/PyPluginStore/commit/d1a9b496116645d3e3626d8c142407c9c99c7243)), closes [#73](https://github.com/adrighem/PyPluginStore/issues/73)
+* document repo mismatch warning ([03e3c71](https://github.com/adrighem/PyPluginStore/commit/03e3c713e3c2bb360c0758435a14652487c01c0a)), closes [#73](https://github.com/adrighem/PyPluginStore/issues/73)
+* move local registry guidance to configuration ([0d3bade](https://github.com/adrighem/PyPluginStore/commit/0d3bade345bef80f2578bb11d023d8296ba8229f))
+
 ## [2.15.2](https://github.com/adrighem/PyPluginStore/compare/v2.15.1...v2.15.2) (2026-07-05)
 
 
