@@ -41,6 +41,30 @@ def test_on_start_installs_custom_ui_and_icon_image(plugin_core_module, tmp_path
     assert not (domoticz_dir / "www" / "templates" / "pypluginstore-icon.png").exists()
 
 
+def test_on_start_creates_payload_device_without_enabling_it(plugin_core_module, tmp_path, monkeypatch):
+    configure_home(plugin_core_module, tmp_path)
+    plugin_core_module.Devices = {}
+    created_devices = []
+
+    class FakeDevice:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+
+        def Create(self):
+            created_devices.append(self.kwargs)
+
+    monkeypatch.setattr(plugin_core_module.Domoticz, "Device", FakeDevice, raising=False)
+    monkeypatch.setattr(plugin_core_module.BasePlugin, "fetch_registry", lambda self: None)
+
+    plugin_core_module.BasePlugin().onStart()
+
+    payload_device = next(device for device in created_devices if device["DeviceID"] == "PPM_API_PAYLOAD")
+    trigger_device = next(device for device in created_devices if device["DeviceID"] == "PPM_API_TRIGGER")
+
+    assert "Used" not in payload_device
+    assert trigger_device["Used"] == 1
+
+
 def test_on_start_setup_warning_skips_missing_notification_api(plugin_core_module, tmp_path, monkeypatch):
     plugins_dir = tmp_path / "domoticz" / "plugins"
     manager_dir = plugins_dir / "PyPluginStore"

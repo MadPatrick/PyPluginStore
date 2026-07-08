@@ -3125,7 +3125,7 @@ class BasePlugin:
             Domoticz.Debug(f"Check permissions for: {templates_dir}")
 
         if 1 not in Devices:
-            Domoticz.Device(Name="API Payload", Unit=1, TypeName="Text", DeviceID="PPM_API_PAYLOAD", Used=1).Create()
+            Domoticz.Device(Name="API Payload", Unit=1, TypeName="Text", DeviceID="PPM_API_PAYLOAD").Create()
         if 2 not in Devices:
             Domoticz.Device(Name="API Trigger", Unit=2, Type=244, Subtype=73, Switchtype=9, DeviceID="PPM_API_TRIGGER", Used=1).Create()
             
