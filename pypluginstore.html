@@ -1,14 +1,33 @@
 <style>
     #pypluginstore-container {
         --pps-bg: var(--dz-pps-bg, transparent);
-        --pps-panel-bg: var(--dz-pps-panel-bg, var(--dz-panel-bg, #11213d));
-        --pps-card-bg: var(--dz-pps-card-bg, var(--dz-panel-bg, #11213d));
+        --pps-panel-bg: var(--dz-pps-panel-bg, var(--dz-panel-bg, var(--dz-widget-bg, #11213d)));
+        --pps-card-bg: var(--dz-pps-card-bg, var(--dz-widget-bg, var(--dz-panel-bg, #11213d)));
         --pps-card-hover-tint: var(--dz-pps-card-hover-tint, rgba(74, 158, 218, 0.14));
-        --pps-card-bg-hover: var(--dz-pps-card-bg-hover, linear-gradient(var(--pps-card-hover-tint), var(--pps-card-hover-tint)), var(--pps-card-bg));
+        --pps-card-bg-hover: var(--dz-pps-card-bg-hover, var(--dz-widget-hover-bg, linear-gradient(var(--pps-card-hover-tint), var(--pps-card-hover-tint)), var(--pps-card-bg)));
+        --pps-grid-gap: var(--dz-pps-grid-gap, 16px);
+        --pps-card-border: var(--dz-pps-card-border, var(--dz-widget-border, 1px solid var(--pps-border)));
+        --pps-card-padding: var(--dz-pps-card-padding, 5px);
+        --pps-card-body-padding: var(--dz-pps-card-body-padding, 4px 5px 8px 5px);
+        --pps-card-font-family: var(--dz-pps-card-font-family, Arial, Helvetica, sans-serif);
+        --pps-card-title-bg: var(--dz-pps-card-title-bg, var(--dz-widget-name-bg, var(--pps-panel-bg)));
+        --pps-card-title-bg-hover: var(--dz-pps-card-title-bg-hover, var(--dz-widget-hover-name-bg, var(--pps-card-title-bg)));
+        --pps-card-title-text: var(--dz-pps-card-title-text, var(--dz-widget-name-text, var(--dz-modal-text, var(--dz-panel-text, var(--dz-body-text, #e0eaf5)))));
+        --pps-card-title-text-hover: var(--dz-pps-card-title-text-hover, var(--dz-widget-text, var(--pps-card-title-text)));
+        --pps-card-title-border: var(--dz-pps-card-title-border, 1px solid var(--dz-widget-name-border, var(--pps-border)));
+        --pps-card-title-border-hover: var(--dz-pps-card-title-border-hover, var(--dz-widget-hover-name-border, var(--pps-border-hover)));
+        --pps-card-title-radius: var(--dz-pps-card-title-radius, var(--pps-radius));
+        --pps-card-title-padding: var(--dz-pps-card-title-padding, 0 .5em 0 .5em);
+        --pps-card-title-margin: var(--dz-pps-card-title-margin, 0 0 5px 0);
+        --pps-card-title-height: var(--dz-pps-card-title-height, 1.2em);
+        --pps-card-title-font-family: var(--dz-pps-card-title-font-family, var(--pps-card-font-family));
+        --pps-card-title-font-size: var(--dz-pps-card-title-font-size, var(--dz-widget-name-font-size, 1em));
+        --pps-card-title-font-weight: var(--dz-pps-card-title-font-weight, 600);
+        --pps-card-title-line-height: var(--dz-pps-card-title-line-height, normal);
         --pps-border: var(--dz-pps-border, rgba(74, 158, 218, 0.28));
         --pps-border-hover: var(--dz-pps-border-hover, rgba(74, 158, 218, 0.62));
-        --pps-text: var(--dz-pps-text, var(--dz-panel-text, var(--dz-body-text, #c8d6e8)));
-        --pps-text-muted: var(--dz-pps-text-muted, #8ea8c0);
+        --pps-text: var(--dz-pps-text, var(--dz-widget-text, var(--dz-panel-text, var(--dz-body-text, #c8d6e8))));
+        --pps-text-muted: var(--dz-pps-text-muted, var(--dz-widget-text, #8ea8c0));
         --pps-text-heading: var(--dz-pps-text-heading, var(--dz-modal-text, var(--dz-panel-text, var(--dz-body-text, #e0eaf5))));
         --pps-primary: var(--dz-pps-primary, var(--dz-btn-primary-bg, var(--dz-accent-color, #4a9eda)));
         --pps-primary-hover: var(--dz-pps-primary-hover, #5baee8);
@@ -29,12 +48,23 @@
         --pps-warning: var(--dz-pps-warning, var(--dz-btn-warning-bg, #e67e22));
         --pps-input-bg: var(--dz-pps-input-bg, var(--dz-input-bg, #152032));
         --pps-input-text: var(--dz-pps-input-text, var(--dz-input-text, var(--pps-text)));
+        --pps-input-placeholder: var(--dz-pps-input-placeholder, var(--pps-text-muted));
+        --pps-input-border: var(--dz-pps-input-border, 1px solid var(--dz-input-border, var(--pps-border)));
         --pps-button-bg: var(--dz-pps-button-bg, rgba(107, 130, 160, 0.15));
         --pps-button-text: var(--dz-pps-button-text, var(--dz-btn-text, var(--pps-text)));
         --pps-button-hover-bg: var(--dz-pps-button-hover-bg, rgba(107, 130, 160, 0.28));
+        --pps-button-border: var(--dz-pps-button-border, 1px solid var(--dz-btn-border, var(--pps-border)));
+        --pps-button-radius: var(--dz-pps-button-radius, 5px);
+        --pps-button-padding: var(--dz-pps-button-padding, 0 1.25em 0 1.25em);
+        --pps-button-line-height: var(--dz-pps-button-line-height, 2em);
+        --pps-button-font-family: var(--dz-pps-button-font-family, inherit);
+        --pps-button-font-weight: var(--dz-pps-button-font-weight, 600);
+        --pps-button-primary-bg: var(--dz-pps-button-primary-bg, var(--pps-button-bg));
+        --pps-button-primary-text: var(--dz-pps-button-primary-text, var(--pps-button-text));
+        --pps-button-primary-border: var(--dz-pps-button-primary-border, var(--pps-button-border));
         --pps-radius: var(--dz-pps-radius, var(--dz-widget-border-radius, 8px));
-        --pps-shadow: var(--dz-pps-shadow, 0 4px 16px rgba(0,0,0,0.25));
-        --pps-shadow-hover: var(--dz-pps-shadow-hover, 0 6px 24px rgba(0,0,0,0.35));
+        --pps-shadow: var(--dz-pps-shadow, var(--dz-widget-shadow, 0 4px 16px rgba(0,0,0,0.25)));
+        --pps-shadow-hover: var(--dz-pps-shadow-hover, var(--dz-widget-hover-shadow, var(--dz-widget-shadow, 0 6px 24px rgba(0,0,0,0.35))));
         --pps-focus-ring: var(--dz-pps-focus-ring, rgba(74, 158, 218, 0.15));
         --pps-badge-installed-bg: var(--dz-pps-badge-installed-bg, rgba(58, 191, 126, 0.18));
         --pps-badge-installed-border: var(--dz-pps-badge-installed-border, rgba(58, 191, 126, 0.4));
@@ -66,6 +96,167 @@
             --pps-success-tint-hover: var(--dz-pps-success-tint-hover, color-mix(in srgb, var(--pps-success) 30%, transparent));
             --pps-success-border: var(--dz-pps-success-border, color-mix(in srgb, var(--pps-success) 68%, transparent));
         }
+    }
+
+    #pypluginstore-container[data-layout="pyplugin"] {
+        --pps-bg: #1b1d25;
+        --pps-panel-bg: #23252f;
+        --pps-card-bg: #23252f;
+        --pps-card-hover-tint: rgba(74, 158, 218, 0.14);
+        --pps-card-bg-hover: linear-gradient(var(--pps-card-hover-tint), var(--pps-card-hover-tint)), var(--pps-card-bg);
+        --pps-grid-gap: 16px;
+        --pps-card-border: 1px solid rgba(74, 158, 218, 0.28);
+        --pps-card-padding: 18px;
+        --pps-card-body-padding: 0;
+        --pps-card-font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        --pps-card-title-bg: transparent;
+        --pps-card-title-bg-hover: transparent;
+        --pps-card-title-text: #e0eaf5;
+        --pps-card-title-text-hover: #e0eaf5;
+        --pps-card-title-border: none;
+        --pps-card-title-border-hover: transparent;
+        --pps-card-title-radius: 0;
+        --pps-card-title-padding: 0;
+        --pps-card-title-margin: 0 0 10px 0;
+        --pps-card-title-height: auto;
+        --pps-card-title-font-family: inherit;
+        --pps-card-title-font-size: 1em;
+        --pps-card-title-font-weight: 600;
+        --pps-card-title-line-height: normal;
+        --pps-border: rgba(74, 158, 218, 0.28);
+        --pps-border-hover: rgba(74, 158, 218, 0.62);
+        --pps-text: #c8d6e8;
+        --pps-text-muted: #8ea8c0;
+        --pps-text-heading: #e0eaf5;
+        --pps-primary: #4a9eda;
+        --pps-primary-hover: #5baee8;
+        --pps-primary-text: #fff;
+        --pps-primary-tint: rgba(74, 158, 218, 0.25);
+        --pps-primary-tint-hover: rgba(74, 158, 218, 0.35);
+        --pps-primary-border: rgba(74, 158, 218, 0.65);
+        --pps-danger: #e05c6a;
+        --pps-danger-hover: #f06878;
+        --pps-danger-tint: rgba(224, 92, 106, 0.15);
+        --pps-danger-tint-hover: rgba(224, 92, 106, 0.28);
+        --pps-danger-border: rgba(224, 92, 106, 0.65);
+        --pps-success: #3abf7e;
+        --pps-success-hover: #4acf8e;
+        --pps-success-tint: rgba(58, 191, 126, 0.15);
+        --pps-success-tint-hover: rgba(58, 191, 126, 0.28);
+        --pps-success-border: rgba(58, 191, 126, 0.65);
+        --pps-warning: #e67e22;
+        --pps-input-bg: #23252f;
+        --pps-input-text: #c8d6e8;
+        --pps-input-placeholder: #8ea8c0;
+        --pps-input-border: 1px solid rgba(74, 158, 218, 0.28);
+        --pps-button-bg: rgba(107, 130, 160, 0.15);
+        --pps-button-text: #c8d6e8;
+        --pps-button-hover-bg: rgba(107, 130, 160, 0.28);
+        --pps-button-border: 1px solid rgba(74, 158, 218, 0.28);
+        --pps-button-radius: 6px;
+        --pps-button-padding: 7px 12px;
+        --pps-button-line-height: normal;
+        --pps-button-font-family: inherit;
+        --pps-button-font-weight: 600;
+        --pps-button-primary-bg: rgba(74, 158, 218, 0.25);
+        --pps-button-primary-text: #4a9eda;
+        --pps-button-primary-border: 1px solid rgba(74, 158, 218, 0.65);
+        --pps-radius: 8px;
+        --pps-shadow: 0 4px 16px rgba(0,0,0,0.25);
+        --pps-shadow-hover: 0 6px 24px rgba(0,0,0,0.35);
+        --pps-focus-ring: rgba(74, 158, 218, 0.15);
+        --pps-badge-installed-bg: rgba(58, 191, 126, 0.18);
+        --pps-badge-installed-border: rgba(58, 191, 126, 0.4);
+        --pps-badge-local-bg: rgba(74, 158, 218, 0.18);
+        --pps-badge-local-border: rgba(74, 158, 218, 0.4);
+        --pps-badge-muted-bg: rgba(107, 130, 160, 0.15);
+        --pps-badge-muted-border: rgba(107, 130, 160, 0.5);
+    }
+
+    #pypluginstore-container[data-layout="pyplugin"] .pps-card-desc {
+        margin-bottom: 14px;
+    }
+
+    #pypluginstore-container[data-layout="pyplugin"] .pps-card-meta {
+        margin: 0 0 14px 0;
+    }
+
+    #pypluginstore-container[data-layout="pyplugin"] .pps-actions {
+        padding: 0;
+    }
+
+    /* Keep the original PyPlugin layout independent from global Domoticz/theme card rules. */
+    #pypluginstore-container[data-layout="pyplugin"] .pps-card {
+        border-radius: 8px !important;
+    }
+
+    #pypluginstore-container[data-layout="pyplugin"] .pps-card-header {
+        border-radius: 0 !important;
+    }
+
+    #pypluginstore-container[data-layout="pyplugin"] .filters,
+    #pypluginstore-container[data-layout="pyplugin"] #pypluginstore-status {
+        border-radius: 8px !important;
+    }
+
+    #pypluginstore-container[data-layout="pyplugin"] button,
+    #pypluginstore-container[data-layout="pyplugin"] .btn-link,
+    #pypluginstore-container[data-layout="pyplugin"] .filters input[type="text"],
+    #pypluginstore-container[data-layout="pyplugin"] .sort-controls select {
+        border-radius: 6px !important;
+    }
+
+    #pypluginstore-container[data-layout="pyplugin"] .pps-switch {
+        width: 46px !important;
+        height: 22px !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        border: 0 !important;
+        border-radius: 999px !important;
+        background: transparent !important;
+        box-shadow: none !important;
+        overflow: visible !important;
+    }
+
+    #pypluginstore-container[data-layout="pyplugin"] .pps-switch input {
+        opacity: 0 !important;
+        width: 0 !important;
+        height: 0 !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        border: 0 !important;
+    }
+
+    #pypluginstore-container[data-layout="pyplugin"] .pps-slider {
+        border-radius: 999px !important;
+        background: rgba(107, 130, 160, 0.15) !important;
+        border: 1px solid rgba(74, 158, 218, 0.28) !important;
+        box-shadow: none !important;
+        box-sizing: border-box !important;
+        overflow: hidden !important;
+    }
+
+    #pypluginstore-container[data-layout="pyplugin"] .pps-slider:before {
+        content: "" !important;
+        display: block !important;
+        width: 16px !important;
+        height: 16px !important;
+        left: 2px !important;
+        bottom: 2px !important;
+        border: 0 !important;
+        border-radius: 50% !important;
+        background-color: #8ea8c0 !important;
+        box-shadow: none !important;
+    }
+
+    #pypluginstore-container[data-layout="pyplugin"] .pps-switch input:checked + .pps-slider {
+        background: rgba(58, 191, 126, 0.3) !important;
+        border-color: #3abf7e !important;
+    }
+
+    #pypluginstore-container[data-layout="pyplugin"] .pps-switch input:checked + .pps-slider:before {
+        transform: translateX(24px) !important;
+        background-color: #3abf7e !important;
     }
 
     #pypluginstore-container .header {
@@ -133,7 +324,7 @@
     #pypluginstore-container .filters input[type="text"] {
         flex-grow: 1;
         padding: 8px 14px;
-        border: 1px solid var(--pps-border);
+        border: var(--pps-input-border);
         border-radius: 6px;
         font-size: 0.9em;
         min-width: 200px;
@@ -149,7 +340,7 @@
     }
 
     #pypluginstore-container .filters input[type="text"]::placeholder {
-        color: var(--pps-text-muted);
+        color: var(--pps-input-placeholder);
     }
 
     #pypluginstore-container .filters label {
@@ -161,6 +352,10 @@
         cursor: pointer;
         user-select: none;
         color: var(--pps-text);
+    }
+
+    #pypluginstore-container .layout-choice {
+        white-space: nowrap;
     }
 
     #pypluginstore-container .sort-controls {
@@ -178,7 +373,7 @@
 
     #pypluginstore-container .sort-controls select {
         padding: 8px 12px;
-        border: 1px solid var(--pps-border);
+        border: var(--pps-input-border);
         border-radius: 6px;
         font-size: 0.88em;
         background: var(--pps-input-bg);
@@ -192,50 +387,50 @@
         border-color: var(--pps-border-hover);
     }
 
-    .switch {
+    #pypluginstore-container .pps-switch {
         position: relative;
         display: inline-block;
         width: 46px;
         height: 22px;
     }
 
-    .switch input {
+    #pypluginstore-container .pps-switch input {
         opacity: 0;
         width: 0;
         height: 0;
     }
 
-    .slider {
+    #pypluginstore-container .pps-slider {
         position: absolute;
         cursor: pointer;
         top: 0;
         left: 0;
         right: 0;
         bottom: 0;
-        background-color: rgba(255,255,255,0.1);
+        background: var(--pps-button-bg);
         transition: .3s;
         border-radius: 22px;
-        border: 1px solid rgba(255,255,255,0.12);
+        border: var(--pps-button-border);
     }
 
-    .slider:before {
+    #pypluginstore-container .pps-slider:before {
         position: absolute;
         content: "";
         height: 16px;
         width: 16px;
         left: 2px;
         bottom: 2px;
-        background-color: #8ea8c0;
+        background-color: var(--pps-text-muted);
         transition: .3s;
         border-radius: 50%;
     }
 
-    input:checked + .slider {
+    #pypluginstore-container .pps-switch input:checked + .pps-slider {
         background-color: rgba(58, 191, 126, 0.3);
         border-color: var(--pps-success);
     }
 
-    input:checked + .slider:before {
+    #pypluginstore-container .pps-switch input:checked + .pps-slider:before {
         transform: translateX(24px);
         background-color: var(--pps-success);
     }
@@ -243,89 +438,131 @@
     #pypluginstore-container .grid {
         display: grid;
         grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-        gap: 16px;
+        gap: var(--pps-grid-gap);
     }
 
-    #pypluginstore-container .card {
+    #pypluginstore-container .pps-card {
         background: var(--pps-card-bg);
-        border: 1px solid var(--pps-border);
+        border: var(--pps-card-border);
         border-radius: var(--pps-radius);
-        padding: 18px;
+        padding: var(--pps-card-padding);
         box-shadow: var(--pps-shadow);
+        color: var(--pps-text);
+        font-family: var(--pps-card-font-family);
         display: flex;
         flex-direction: column;
         transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
     }
 
-    #pypluginstore-container .card:hover {
+    #pypluginstore-container .pps-card:hover {
         border-color: var(--pps-border-hover);
         background: var(--pps-card-bg-hover);
         box-shadow: var(--pps-shadow-hover);
     }
 
-    #pypluginstore-container .card-header {
-        font-size: 1em;
-        font-weight: 600;
-        margin-bottom: 10px;
-        color: var(--pps-text-heading);
+    #pypluginstore-container .pps-card:hover .pps-card-header {
+        border-color: var(--pps-card-title-border-hover);
+        color: var(--pps-card-title-text-hover);
+        background: var(--pps-card-title-bg-hover);
+    }
+
+    #pypluginstore-container .pps-card-header {
+        font-size: var(--pps-card-title-font-size);
+        font-weight: var(--pps-card-title-font-weight);
+        margin: var(--pps-card-title-margin);
+        min-height: var(--pps-card-title-height);
+        padding: var(--pps-card-title-padding);
+        color: var(--pps-card-title-text);
+        background: var(--pps-card-title-bg);
+        border: var(--pps-card-title-border);
+        border-radius: var(--pps-card-title-radius);
+        font-family: var(--pps-card-title-font-family);
+        line-height: var(--pps-card-title-line-height);
         display: flex;
         align-items: center;
         justify-content: space-between;
         flex-wrap: wrap;
         gap: 6px;
+        box-sizing: border-box;
+        overflow: visible;
     }
 
-    #pypluginstore-container .card-header-left {
+    #pypluginstore-container[data-layout="theme"] .pps-card-header {
+        height: auto !important;
+        text-indent: 0 !important;
+    }
+
+    #pypluginstore-container .pps-card-header-left {
         display: flex;
         align-items: center;
         gap: 6px;
         flex-wrap: wrap;
+        min-width: 0;
+        flex: 1 1 auto;
     }
 
-    #pypluginstore-container .card-desc {
+    #pypluginstore-container .pps-plugin-title {
+        min-width: 0;
+        max-width: 100%;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    #pypluginstore-container .pps-card-header > .local-badge,
+    #pypluginstore-container .pps-card-header > .platform-badges {
+        flex: 0 0 auto;
+    }
+
+    #pypluginstore-container .pps-card-desc {
         font-size: 0.85em;
         color: var(--pps-text-muted);
-        margin-bottom: 14px;
+        margin: 0;
+        padding: var(--pps-card-body-padding);
         flex-grow: 1;
         line-height: 1.5;
     }
 
-    #pypluginstore-container .card-meta {
+    #pypluginstore-container .pps-card-meta {
         font-size: 0.78em;
         color: var(--pps-text-muted);
-        margin-bottom: 14px;
+        margin: 0 5px 8px 5px;
         line-height: 1.7;
         padding-top: 10px;
         border-top: 1px solid var(--pps-border);
     }
 
-    #pypluginstore-container .actions {
+    #pypluginstore-container .pps-actions {
         display: flex;
         gap: 8px;
         align-items: stretch;
+        padding: 0 5px 5px 5px;
     }
 
     #pypluginstore-container button,
     #pypluginstore-container .btn-link {
-        padding: 7px 12px;
-        border: none;
-        border-radius: 6px;
+        padding: var(--pps-button-padding);
+        border: var(--pps-button-border);
+        border-radius: var(--pps-button-radius);
         cursor: pointer;
-        font-weight: 600;
+        font-weight: var(--pps-button-font-weight);
         flex: 1;
         transition: background 0.2s, box-shadow 0.2s;
         font-size: 0.82em;
-        font-family: inherit;
+        font-family: var(--pps-button-font-family);
+        line-height: var(--pps-button-line-height);
+        background: var(--pps-button-bg);
+        color: var(--pps-button-text);
         display: flex;
         align-items: center;
         justify-content: center;
         text-decoration: none;
         box-sizing: border-box;
         min-height: 32px;
-        letter-spacing: 0.02em;
+        letter-spacing: 0;
     }
 
-    #pypluginstore-container .btn-install { background: var(--pps-primary-tint) !important; color: var(--pps-primary) !important; border: 1px solid var(--pps-primary-border) !important; }
+    #pypluginstore-container .btn-install { background: var(--pps-button-primary-bg) !important; color: var(--pps-button-primary-text) !important; border: var(--pps-button-primary-border) !important; }
     #pypluginstore-container .btn-install:hover { background: var(--pps-primary-tint-hover) !important; }
 
     #pypluginstore-container .btn-remove { background: var(--pps-danger-tint) !important; color: var(--pps-danger) !important; border: 1px solid var(--pps-danger-border) !important; }
@@ -342,16 +579,16 @@
     #pypluginstore-container .btn-update-available { background: var(--pps-success-tint) !important; color: var(--pps-success) !important; border-color: var(--pps-success-border) !important; animation: glow-pulse 3.5s ease-in-out infinite; }
     #pypluginstore-container .btn-update-available:hover { background: var(--pps-success-tint-hover) !important; }
 
-    #pypluginstore-container .btn-update-current { background: var(--pps-button-bg) !important; color: var(--pps-button-text) !important; border-color: var(--pps-border) !important; }
+    #pypluginstore-container .btn-update-current { background: var(--pps-button-bg) !important; color: var(--pps-button-text) !important; border: var(--pps-button-border) !important; }
     #pypluginstore-container .btn-update-current:hover { background: var(--pps-button-hover-bg) !important; }
 
-    #pypluginstore-container .btn-info { background: var(--pps-button-bg) !important; color: var(--pps-button-text) !important; border: 1px solid var(--pps-border) !important; text-decoration: none !important; }
+    #pypluginstore-container .btn-info { background: var(--pps-button-bg) !important; color: var(--pps-button-text) !important; border: var(--pps-button-border) !important; text-decoration: none !important; }
     #pypluginstore-container .btn-info:hover { background: var(--pps-button-hover-bg) !important; }
 
     #pypluginstore-container .btn-restart {
         background: var(--pps-button-bg);
         color: var(--pps-button-text);
-        border: 1px solid var(--pps-border) !important;
+        border: var(--pps-button-border) !important;
         flex: 0 0 auto !important;
     }
 
@@ -361,9 +598,9 @@
     }
 
     #pypluginstore-container .btn-refresh {
-        background: var(--pps-primary-tint);
-        color: var(--pps-primary);
-        border: 1px solid var(--pps-primary-border) !important;
+        background: var(--pps-button-primary-bg);
+        color: var(--pps-button-primary-text);
+        border: var(--pps-button-primary-border) !important;
         flex: 0 0 auto !important;
     }
 
@@ -372,7 +609,7 @@
         border-color: var(--pps-primary-border) !important;
     }
 
-    .installed-badge {
+    #pypluginstore-container .installed-badge {
         display: inline-block;
         background: var(--pps-badge-installed-bg);
         color: var(--pps-success);
@@ -384,7 +621,7 @@
         letter-spacing: 0.03em;
     }
 
-    .local-badge {
+    #pypluginstore-container .local-badge {
         display: inline-block;
         background: var(--pps-badge-local-bg);
         color: var(--pps-primary);
@@ -396,14 +633,14 @@
         letter-spacing: 0.03em;
     }
 
-    .platform-badges {
+    #pypluginstore-container .platform-badges {
         display: flex;
         align-items: center;
         gap: 5px;
         flex-wrap: wrap;
     }
 
-    .platform-badge {
+    #pypluginstore-container .platform-badge {
         display: inline-block;
         background: var(--pps-badge-muted-bg);
         color: var(--pps-text-muted);
@@ -415,19 +652,19 @@
         letter-spacing: 0;
     }
 
-    .platform-badge-linux {
+    #pypluginstore-container .platform-badge-linux {
         background: rgba(58, 191, 126, 0.14);
         color: var(--pps-success);
         border-color: rgba(58, 191, 126, 0.42);
     }
 
-    .platform-badge-windows {
+    #pypluginstore-container .platform-badge-windows {
         background: rgba(74, 158, 218, 0.16);
         color: var(--pps-primary);
         border-color: rgba(74, 158, 218, 0.45);
     }
 
-    .non-git-badge {
+    #pypluginstore-container .non-git-badge {
         display: inline-block;
         background: var(--pps-warning);
         color: #fff;
@@ -439,7 +676,7 @@
         letter-spacing: 0.03em;
     }
 
-    .repo-mismatch-badge {
+    #pypluginstore-container .repo-mismatch-badge {
         display: inline-block;
         background: var(--pps-warning);
         color: #fff;
@@ -451,20 +688,21 @@
         letter-spacing: 0.03em;
     }
 
-    .repo-mismatch-detail {
+    #pypluginstore-container .repo-mismatch-detail {
         color: var(--pps-warning);
         font-weight: 600;
     }
 
     #pypluginstore-container .btn-update-disabled {
-        background: rgba(107, 130, 160, 0.08) !important;
-        color: #5d6d7e !important;
-        border-color: rgba(107, 130, 160, 0.25) !important;
+        background: var(--pps-button-bg) !important;
+        color: var(--pps-text-muted) !important;
+        border: var(--pps-button-border) !important;
+        opacity: 0.55;
         cursor: not-allowed;
     }
 </style>
 
-<div id="pypluginstore-container">
+<div id="pypluginstore-container" data-layout="theme">
     <div class="header">
         <div class="header-title">
             <img class="app-icon" src="images/pypluginstore-icon.png" alt="" aria-hidden="true" onerror="if (!this.dataset.fallbackSrcApplied) { this.dataset.fallbackSrcApplied = 'true'; this.src = '/images/pypluginstore-icon.png'; } else { this.style.display = 'none'; }">
@@ -488,11 +726,18 @@
                 <option value="updated-oldest">Last Updated (Oldest)</option>
             </select>
         </div>
+        <label class="layout-choice" title="Switch between the active Domoticz theme tile layout and the original PyPluginStore layout.">
+            <span id="layout-toggle-label">Domoticz theme</span>
+            <span class="pps-switch">
+                <input type="checkbox" id="layout-toggle" checked>
+                <span class="pps-slider"></span>
+            </span>
+        </label>
         <label>
             Installed
-            <span class="switch">
+            <span class="pps-switch">
                 <input type="checkbox" id="installed-toggle">
-                <span class="slider"></span>
+                <span class="pps-slider"></span>
             </span>
         </label>
     </div>
@@ -517,7 +762,12 @@
     let installedMatchDetailsCache = {};
     let managerKey = null;
     let currentSort = 'name';
+    let themeRefreshTimer = null;
+    let themeObserver = null;
     const INSTALLED_FILTER_STORAGE_KEY = 'pypluginstore.installedOnly';
+    const LAYOUT_STORAGE_KEY = 'pypluginstore.layoutMode';
+    const LAYOUT_PYPLUGIN = 'pyplugin';
+    const LAYOUT_THEME = 'theme';
 
     function setStatus(msg) {
         console.log("PyPluginStore Status: " + msg);
@@ -539,18 +789,755 @@
         } catch (e) {}
     }
 
+    function readStoredLayoutMode() {
+        try {
+            const stored = window.localStorage.getItem(LAYOUT_STORAGE_KEY);
+            return stored === LAYOUT_PYPLUGIN ? LAYOUT_PYPLUGIN : LAYOUT_THEME;
+        } catch (e) {
+            return LAYOUT_THEME;
+        }
+    }
+
+    function writeStoredLayoutMode(mode) {
+        try {
+            window.localStorage.setItem(LAYOUT_STORAGE_KEY, mode);
+        } catch (e) {}
+    }
+
+    function setLayoutMode(mode, persist) {
+        const layoutMode = mode === LAYOUT_PYPLUGIN ? LAYOUT_PYPLUGIN : LAYOUT_THEME;
+        const container = document.getElementById('pypluginstore-container');
+        if (container) {
+            container.setAttribute('data-layout', layoutMode);
+            if (layoutMode === LAYOUT_PYPLUGIN) {
+                clearComputedDomoticzThemeVars(container);
+                container.setAttribute('data-domoticz-theme-look', 'pyplugin');
+                if (themeRefreshTimer) {
+                    clearTimeout(themeRefreshTimer);
+                    themeRefreshTimer = null;
+                }
+            }
+        }
+
+        const toggle = document.getElementById('layout-toggle');
+        if (toggle) {
+            toggle.checked = layoutMode === LAYOUT_THEME;
+        }
+
+        const label = document.getElementById('layout-toggle-label');
+        if (label) {
+            label.innerText = layoutMode === LAYOUT_THEME ? 'Domoticz theme' : 'PyPlugin layout';
+        }
+
+        if (persist) {
+            writeStoredLayoutMode(layoutMode);
+        }
+
+        if (layoutMode === LAYOUT_THEME) {
+            applyDomoticzThemeTileLook();
+        }
+    }
+
+    function clearComputedDomoticzThemeVars(container) {
+        if (!container || !container.style) return;
+        const properties = [];
+        for (let index = 0; index < container.style.length; index++) {
+            const propertyName = container.style.item(index);
+            if (propertyName.indexOf('--dz-pps-') === 0) {
+                properties.push(propertyName);
+            }
+        }
+        properties.forEach(propertyName => container.style.removeProperty(propertyName));
+    }
+
+    function setupThemeObserver() {
+        if (themeObserver || !document.body || !window.MutationObserver) return;
+        themeObserver = new MutationObserver(scheduleDomoticzThemeRefresh);
+        themeObserver.observe(document.body, {
+            attributes: true,
+            attributeFilter: ['class', 'style']
+        });
+    }
+
+    function scheduleDomoticzThemeRefresh() {
+        const container = document.getElementById('pypluginstore-container');
+        if (!container || container.getAttribute('data-layout') !== LAYOUT_THEME) return;
+        if (readStoredLayoutMode() !== LAYOUT_THEME) return;
+
+        if (themeRefreshTimer) {
+            clearTimeout(themeRefreshTimer);
+        }
+        themeRefreshTimer = setTimeout(function() {
+            themeRefreshTimer = null;
+            applyDomoticzThemeTileLook();
+        }, 80);
+    }
+
+    function applyDomoticzThemeTileLook() {
+        const container = document.getElementById('pypluginstore-container');
+        if (!container || !document.body || !window.getComputedStyle) return;
+        if (container.getAttribute('data-layout') === LAYOUT_PYPLUGIN) return;
+        clearComputedDomoticzThemeVars(container);
+
+        const probe = document.createElement('div');
+        probe.id = 'pypluginstore-theme-probe';
+        probe.setAttribute('aria-hidden', 'true');
+        probe.style.cssText = [
+            'position:absolute',
+            'left:-10000px',
+            'top:-10000px',
+            'width:320px',
+            'height:auto',
+            'visibility:hidden',
+            'pointer-events:none',
+            'z-index:-1'
+        ].join(';');
+        const existingHolder = document.getElementById('holder');
+        const tileProbeMarkup = [
+            '<div class="bannercontent">',
+            '<div class="row">',
+            '<div class="span4">',
+            '<div id="pypluginstore-theme-card-sample" class="item itemBlock span4 statusNormal">',
+            '<section>',
+            '<table id="itemtablesmall"><tbody><tr>',
+            '<td id="name">Domoticz tile</td>',
+            '<td id="bigtext">42</td>',
+            '<td id="img"></td>',
+            '<td id="status" class="status">Plugin status</td>',
+            '<td id="lastupdate">Theme sample</td>',
+            '</tr></tbody></table>',
+            '</section>',
+            '</div>',
+            '</div>',
+            '</div>',
+            '</div>'
+        ].join('');
+        const controlProbeMarkup = [
+            '<a class="btnstyle3" href="#">Button</a>',
+            '<a class="btnstyle3-sel" href="#">Primary</a>',
+            '<a class="btnstyle3-dis" href="#">Disabled</a>',
+            '<input type="text" class="text ui-widget-content ui-corner-all" value="Search">'
+        ].join('');
+        probe.innerHTML = (existingHolder ? tileProbeMarkup : '<div id="holder">' + tileProbeMarkup + '</div>') + controlProbeMarkup;
+
+        (existingHolder || document.body).appendChild(probe);
+
+        try {
+            const tile = probe.querySelector('#itemtablesmall tbody tr');
+            const tileSurface = probe.querySelector('#pypluginstore-theme-card-sample');
+            const tileRow = probe.querySelector('.bannercontent .row, .row');
+            const tileName = probe.querySelector('#itemtablesmall td#name, #itemtablesmall tr td:first-child');
+            const tileValue = probe.querySelector('#itemtablesmall td#bigtext, #itemtablesmall tr td:first-child + td');
+            const tileStatus = probe.querySelector('#itemtablesmall td#status, #itemtablesmall tr td:first-child + td + td + td');
+            const button = probe.querySelector('.btnstyle3');
+            const primaryButton = probe.querySelector('.btnstyle3-sel');
+            const input = probe.querySelector('input');
+            if (!tile || !tileName) return;
+
+            const rowStyle = window.getComputedStyle(tile);
+            const tileSurfaceStyle = tileSurface ? window.getComputedStyle(tileSurface) : null;
+            const tileRowStyle = tileRow ? window.getComputedStyle(tileRow) : null;
+            const tileStyle = hasUsefulSurface(tileSurfaceStyle) ? tileSurfaceStyle : rowStyle;
+            const nameStyle = window.getComputedStyle(tileName);
+            const valueStyle = tileValue ? window.getComputedStyle(tileValue) : tileStyle;
+            const statusStyle = tileStatus ? window.getComputedStyle(tileStatus) : valueStyle;
+            const buttonStyle = button ? window.getComputedStyle(button) : null;
+            const primaryButtonStyle = primaryButton ? window.getComputedStyle(primaryButton) : buttonStyle;
+            const inputStyle = input ? window.getComputedStyle(input) : null;
+
+            const tileHoverSelectors = [
+                '#holder .row .item table[id^="item"] > tbody > tr:hover',
+                '#holder .row .item table[id^="item"] tbody tr:hover',
+                '.item table[id^="item"] > tbody > tr:hover',
+                'table[id^="item"] > tbody > tr:hover',
+                'div.item.itemBlock:hover',
+                '.item.itemBlock:hover',
+                '.itemBlock:hover',
+                '.item:hover',
+                'table#itemtablesmall tbody tr:hover',
+                'table#itemtablesmall tr:hover'
+            ];
+            const titleHoverSelectors = [
+                '#holder .row .item table[id^="item"] > tbody > tr:hover td#name',
+                '#holder .row .item table[id^="item"] > tbody > tr:hover td:first-child',
+                '.item table[id^="item"] > tbody > tr:hover td#name',
+                'table[id^="item"] > tbody > tr:hover td#name',
+                'div.item.itemBlock:hover td#name',
+                '.item.itemBlock:hover td#name',
+                '.itemBlock:hover td#name',
+                '.item:hover td#name',
+                'table#itemtablesmall tr:hover td#name',
+                'table#itemtablesmall tr:hover td:first-child'
+            ];
+            const hoverTileBg = readFirstMatchingCssDeclaration(tileHoverSelectors, ['background', 'background-color']);
+            const hoverTileShadow = readFirstMatchingCssDeclaration(tileHoverSelectors, ['box-shadow']);
+            const hoverTileBorder = readFirstMatchingCssDeclaration(tileHoverSelectors, ['border-color', 'border-top-color']);
+            const hoverNameBg = readFirstMatchingCssDeclaration(titleHoverSelectors, ['background', 'background-color']);
+            const hoverNameColor = readFirstMatchingCssDeclaration(titleHoverSelectors, ['color']);
+            const hoverNameBorder = readFirstMatchingCssDeclaration(titleHoverSelectors, ['border-color', 'border-top-color']);
+            const buttonHoverBg = readFirstMatchingCssDeclaration(['a.btnstyle3:hover', '.btnstyle3:hover'], ['background', 'background-color']);
+
+            const domoticzMainBg = readCssVariable('--main-bg-color');
+            const domoticzItemBg = readCssVariable('--main-item-bg-color');
+            const domoticzMainText = readCssVariable('--main-text-color');
+            const domoticzSecondaryText = readCssVariable('--secondary-text-color');
+            const domoticzAccent = firstUsefulThemeValue(readCssVariable('--main-blue-color'), readCssVariable('--dz-accent-color'));
+
+            const setThemeVar = function(name, value, options) {
+                const allowNone = options && options.allowNone;
+                const allowTransparent = options && options.allowTransparent;
+                if (isUsefulThemeValue(value) ||
+                    (allowNone && isNoneThemeValue(value)) ||
+                    (allowTransparent && isTransparentThemeValue(value))) {
+                    container.style.setProperty(name, String(value).trim());
+                }
+            };
+
+            const cardBg = firstUsefulThemeValue(
+                readBackground(tileStyle),
+                domoticzItemBg,
+                readCssVariable('--dz-widget-bg'),
+                readCssVariable('--dz-panel-bg'),
+                readBackground(rowStyle)
+            );
+            const cardBorder = firstUsefulThemeValue(
+                readBorder(tileStyle),
+                readCssVariable('--dz-widget-border'),
+                readBorder(rowStyle)
+            );
+            const cardPadding = firstUsefulThemeValue(
+                readBox(tileStyle, 'padding'),
+                readCssVariable('--dz-widget-padding'),
+                readBox(rowStyle, 'padding')
+            );
+            const cardRadius = firstUsefulThemeValue(
+                readRadius(tileStyle),
+                readCssVariable('--dz-widget-border-radius'),
+                readRadius(rowStyle)
+            );
+            const cardShadow = firstUsefulThemeValue(
+                tileStyle.boxShadow,
+                readCssVariable('--dz-widget-shadow'),
+                rowStyle.boxShadow
+            );
+
+            const pageBg = firstUsefulThemeValue(
+                readEffectiveBackgroundForElement(container),
+                readEffectiveBackgroundForElement(container.parentElement),
+                domoticzMainBg,
+                readEffectiveBackgroundForElement(document.body),
+                readEffectiveBackgroundForElement(document.documentElement),
+                '#ffffff'
+            );
+            const cardHoverBg = firstUsefulThemeValue(hoverTileBg, readCssVariable('--dz-widget-hover-bg'), cardBg);
+            const titleBg = firstUsefulThemeValue(readBackground(nameStyle), readCssVariable('--dz-widget-name-bg'), cardBg);
+            const titleHoverBg = firstUsefulThemeValue(hoverNameBg, readCssVariable('--dz-widget-hover-name-bg'), titleBg, cardHoverBg, cardBg);
+            const cardTextCandidate = firstUsefulThemeValue(tileStyle.color, valueStyle.color, domoticzMainText, readCssVariable('--dz-widget-text'));
+            const mutedTextCandidate = firstUsefulThemeValue(statusStyle.color, domoticzSecondaryText, valueStyle.color, tileStyle.color, readCssVariable('--dz-widget-text'));
+            const titleTextCandidate = firstUsefulThemeValue(nameStyle.color, readCssVariable('--dz-widget-name-text'), cardTextCandidate);
+            const titleHoverTextCandidate = firstUsefulThemeValue(hoverNameColor, readCssVariable('--dz-widget-text'), titleTextCandidate);
+            const headingTextCandidate = firstUsefulThemeValue(nameStyle.color, tileStyle.color, readCssVariable('--dz-panel-text'), readCssVariable('--dz-body-text'));
+
+            const readableCardText = ensureReadableColor(cardBg, cardTextCandidate, {
+                baseBackground: pageBg,
+                minContrast: 4.5
+            });
+            const readableMutedText = ensureReadableColor(cardBg, mutedTextCandidate, {
+                baseBackground: pageBg,
+                minContrast: 3.2,
+                lightText: '#b8c7d8',
+                darkText: '#4a5562'
+            });
+            const readableTitleText = ensureReadableColor(titleBg, titleTextCandidate, {
+                baseBackground: cardBg,
+                minContrast: 4.5
+            });
+            const readableTitleHoverText = ensureReadableColor(titleHoverBg, titleHoverTextCandidate, {
+                baseBackground: firstUsefulThemeValue(cardHoverBg, cardBg),
+                minContrast: 4.5
+            });
+            const readableHeadingText = ensureReadableColor(pageBg, headingTextCandidate, {
+                minContrast: 4.5
+            });
+            const cardBorderHover = firstUsefulThemeValue(
+                hoverTileBorder,
+                readCssVariable('--dz-widget-hover-border'),
+                isTransparentThemeValue(tileStyle.borderTopColor) && isUsefulThemeValue(hoverTileShadow) ? 'transparent' : '',
+                domoticzAccent
+            );
+
+            setThemeVar('--dz-pps-bg', pageBg);
+            setThemeVar('--dz-pps-primary', domoticzAccent);
+            setThemeVar('--dz-pps-primary-hover', domoticzAccent);
+            setThemeVar('--dz-pps-border-hover', cardBorderHover, { allowTransparent: true });
+            setThemeVar('--dz-pps-success', readCssVariable('--color-success'));
+            setThemeVar('--dz-pps-danger', readCssVariable('--color-error'));
+            setThemeVar('--dz-pps-warning', readCssVariable('--color-warning'));
+            setThemeVar('--dz-pps-grid-gap', readGap(tileRowStyle));
+            setThemeVar('--dz-pps-card-bg', cardBg);
+            setThemeVar('--dz-pps-panel-bg', cardBg);
+            setThemeVar('--dz-pps-card-bg-hover', cardHoverBg);
+            setThemeVar('--dz-pps-card-border', cardBorder, { allowNone: true });
+            setThemeVar('--dz-pps-card-padding', cardPadding);
+            setThemeVar('--dz-pps-card-font-family', firstUsefulThemeValue(tileStyle.fontFamily, rowStyle.fontFamily));
+            setThemeVar('--dz-pps-radius', cardRadius);
+            setThemeVar('--dz-pps-shadow', cardShadow, { allowNone: true });
+            setThemeVar('--dz-pps-shadow-hover', firstUsefulThemeValue(hoverTileShadow, readCssVariable('--dz-widget-hover-shadow'), cardShadow), { allowNone: true });
+            setThemeVar('--dz-pps-text', readableCardText);
+            setThemeVar('--dz-pps-text-muted', readableMutedText);
+
+            setThemeVar('--dz-pps-card-title-bg', titleBg);
+            setThemeVar('--dz-pps-card-title-bg-hover', titleHoverBg);
+            setThemeVar('--dz-pps-card-title-text', readableTitleText);
+            setThemeVar('--dz-pps-card-title-text-hover', readableTitleHoverText);
+            setThemeVar('--dz-pps-text-heading', readableHeadingText);
+            setThemeVar('--dz-pps-card-title-border', readBorder(nameStyle), { allowNone: true });
+            setThemeVar('--dz-pps-card-title-border-hover', firstUsefulThemeValue(hoverNameBorder, readCssVariable('--dz-widget-hover-name-border'), nameStyle.borderTopColor));
+            setThemeVar('--dz-pps-card-title-radius', readRadius(nameStyle));
+            setThemeVar('--dz-pps-card-title-padding', readBox(nameStyle, 'padding'));
+            setThemeVar('--dz-pps-card-title-margin', readSafeTitleMargin(nameStyle));
+            setThemeVar('--dz-pps-card-title-height', readSafeTitleHeight(nameStyle));
+            setThemeVar('--dz-pps-card-title-font-family', nameStyle.fontFamily);
+            setThemeVar('--dz-pps-card-title-font-size', nameStyle.fontSize);
+            setThemeVar('--dz-pps-card-title-font-weight', nameStyle.fontWeight);
+            setThemeVar('--dz-pps-card-title-line-height', readSafeTitleLineHeight(nameStyle));
+            setThemeVar('--dz-pps-border', firstUsefulThemeValue(nameStyle.borderTopColor, tileStyle.borderTopColor, readCssVariable('--dz-widget-name-border')));
+            setThemeVar('--dz-pps-border-hover', firstUsefulThemeValue(hoverNameBorder, readCssVariable('--dz-widget-hover-name-border'), nameStyle.borderTopColor));
+
+            let buttonEffectiveBg = firstUsefulThemeValue(cardBg, pageBg);
+            if (buttonStyle) {
+                const buttonBg = readBackground(buttonStyle);
+                buttonEffectiveBg = firstUsefulThemeValue(buttonBg, cardBg, pageBg);
+                setThemeVar('--dz-pps-button-bg', buttonBg);
+                setThemeVar('--dz-pps-button-hover-bg', firstUsefulThemeValue(buttonHoverBg, buttonBg));
+                setThemeVar('--dz-pps-button-text', ensureReadableColor(buttonEffectiveBg, buttonStyle.color, {
+                    baseBackground: firstUsefulThemeValue(cardBg, pageBg),
+                    minContrast: 4.5
+                }));
+                setThemeVar('--dz-pps-button-border', readBorder(buttonStyle), { allowNone: true });
+                setThemeVar('--dz-pps-button-radius', readRadius(buttonStyle));
+                setThemeVar('--dz-pps-button-padding', readBox(buttonStyle, 'padding'));
+                setThemeVar('--dz-pps-button-line-height', buttonStyle.lineHeight);
+                setThemeVar('--dz-pps-button-font-family', buttonStyle.fontFamily);
+                setThemeVar('--dz-pps-button-font-weight', buttonStyle.fontWeight);
+            }
+
+            if (primaryButtonStyle) {
+                const primaryButtonBg = readBackground(primaryButtonStyle);
+                const primaryEffectiveBg = firstUsefulThemeValue(primaryButtonBg, buttonEffectiveBg, cardBg, pageBg);
+                setThemeVar('--dz-pps-button-primary-bg', primaryButtonBg);
+                setThemeVar('--dz-pps-button-primary-text', ensureReadableColor(primaryEffectiveBg, primaryButtonStyle.color, {
+                    baseBackground: firstUsefulThemeValue(cardBg, pageBg),
+                    minContrast: 4.5
+                }));
+                setThemeVar('--dz-pps-button-primary-border', readBorder(primaryButtonStyle), { allowNone: true });
+            }
+
+            if (inputStyle) {
+                const inputBg = readBackground(inputStyle);
+                const inputEffectiveBg = firstUsefulThemeValue(inputBg, cardBg, pageBg);
+                setThemeVar('--dz-pps-input-bg', inputBg);
+                setThemeVar('--dz-pps-input-text', ensureReadableColor(inputEffectiveBg, inputStyle.color, {
+                    baseBackground: firstUsefulThemeValue(cardBg, pageBg),
+                    minContrast: 4.5
+                }));
+                setThemeVar('--dz-pps-input-placeholder', ensureReadableColor(inputEffectiveBg, inputStyle.color, {
+                    baseBackground: firstUsefulThemeValue(cardBg, pageBg),
+                    minContrast: 3.0,
+                    lightText: '#b8c7d8',
+                    darkText: '#5c6670'
+                }));
+                setThemeVar('--dz-pps-input-border', readBorder(inputStyle), { allowNone: true });
+            }
+
+            container.setAttribute('data-domoticz-theme-look', hasUsefulSurface(tileSurfaceStyle) ? 'computed-surface' : 'computed-row');
+        } catch (e) {
+            console.warn('Could not derive Domoticz theme tile look', e);
+        } finally {
+            if (probe.parentNode) {
+                probe.parentNode.removeChild(probe);
+            }
+        }
+    }
+
+    function isUsefulThemeValue(value) {
+        if (typeof value !== 'string') return false;
+        const clean = value.trim();
+        return clean !== '' &&
+            clean !== 'initial' &&
+            clean !== 'inherit' &&
+            clean !== 'normal' &&
+            clean !== 'none' &&
+            clean !== 'rgba(0, 0, 0, 0)' &&
+            clean !== 'transparent';
+    }
+
+    function isNoneThemeValue(value) {
+        return typeof value === 'string' && value.trim().toLowerCase() === 'none';
+    }
+
+    function isTransparentThemeValue(value) {
+        if (typeof value !== 'string') return false;
+        const clean = value.trim().toLowerCase();
+        return clean === 'transparent' ||
+            clean === 'rgba(0, 0, 0, 0)' ||
+            clean === 'rgba(0,0,0,0)';
+    }
+
+    function firstUsefulThemeValue() {
+        for (let index = 0; index < arguments.length; index++) {
+            if (isUsefulThemeValue(arguments[index])) {
+                return String(arguments[index]).trim();
+            }
+        }
+        return '';
+    }
+
+    function ensureReadableColor(backgroundValue, preferredColor, options) {
+        const config = options || {};
+        const baseBackground = config.baseBackground || '#ffffff';
+        const backgroundColor = resolveCssColor(backgroundValue, baseBackground) || resolveCssColor(baseBackground, '#ffffff') || { r: 255, g: 255, b: 255, a: 1 };
+        const preferredTextColor = resolveCssColor(preferredColor, rgbaColorToString(backgroundColor));
+        const minimumContrast = typeof config.minContrast === 'number' ? config.minContrast : 4.5;
+
+        if (isUsefulThemeValue(preferredColor) && preferredTextColor && contrastRatio(backgroundColor, preferredTextColor) >= minimumContrast) {
+            return String(preferredColor).trim();
+        }
+
+        const lightText = config.lightText || '#f3f7fb';
+        const darkText = config.darkText || '#17202a';
+        const lightColor = resolveCssColor(lightText, '#000000');
+        const darkColor = resolveCssColor(darkText, '#ffffff');
+        if (!lightColor || !darkColor) {
+            return firstUsefulThemeValue(preferredColor, lightText);
+        }
+
+        return contrastRatio(backgroundColor, darkColor) >= contrastRatio(backgroundColor, lightColor) ? darkText : lightText;
+    }
+
+    function resolveCssColor(value, fallbackValue) {
+        const colors = extractCssColorTokens(value)
+            .map(parseCssColorToken)
+            .filter(Boolean);
+        let color = null;
+        for (let index = 0; index < colors.length; index++) {
+            if (colors[index].a > 0.01) {
+                color = colors[index];
+            }
+        }
+        if (!color) {
+            return fallbackValue ? resolveCssColor(fallbackValue) : null;
+        }
+        if (color.a < 1) {
+            const base = fallbackValue ? resolveCssColor(fallbackValue) : null;
+            return blendColors(color, base || { r: 255, g: 255, b: 255, a: 1 });
+        }
+        return color;
+    }
+
+    function extractCssColorTokens(value) {
+        if (typeof value !== 'string') return [];
+        const matches = value.match(/rgba?\([^)]*\)|#[0-9a-fA-F]{3,8}\b|\btransparent\b|\bblack\b|\bwhite\b/gi);
+        return matches || [];
+    }
+
+    function parseCssColorToken(token) {
+        if (typeof token !== 'string') return null;
+        const clean = token.trim().toLowerCase();
+        if (clean === 'transparent') return { r: 0, g: 0, b: 0, a: 0 };
+        if (clean === 'black') return { r: 0, g: 0, b: 0, a: 1 };
+        if (clean === 'white') return { r: 255, g: 255, b: 255, a: 1 };
+
+        if (clean.charAt(0) === '#') {
+            let hex = clean.slice(1);
+            if (hex.length === 3 || hex.length === 4) {
+                hex = hex.split('').map(character => character + character).join('');
+            }
+            if (hex.length === 6 || hex.length === 8) {
+                const r = parseInt(hex.slice(0, 2), 16);
+                const g = parseInt(hex.slice(2, 4), 16);
+                const b = parseInt(hex.slice(4, 6), 16);
+                const a = hex.length === 8 ? parseInt(hex.slice(6, 8), 16) / 255 : 1;
+                if ([r, g, b, a].every(Number.isFinite)) {
+                    return { r, g, b, a };
+                }
+            }
+            return null;
+        }
+
+        const rgbMatch = clean.match(/^rgba?\((.*)\)$/);
+        if (!rgbMatch) return null;
+        const normalized = rgbMatch[1].trim().replace(/\s*\/\s*/g, ' ');
+        const parts = normalized.indexOf(',') !== -1
+            ? normalized.split(',').map(part => part.trim()).filter(Boolean)
+            : normalized.split(/\s+/).filter(Boolean);
+        if (parts.length < 3) return null;
+        const r = parseCssColorChannel(parts[0]);
+        const g = parseCssColorChannel(parts[1]);
+        const b = parseCssColorChannel(parts[2]);
+        const a = parts.length > 3 ? parseCssAlpha(parts[3]) : 1;
+        if (![r, g, b, a].every(Number.isFinite)) return null;
+        return { r, g, b, a };
+    }
+
+    function parseCssColorChannel(value) {
+        const number = parseFloat(value);
+        if (!Number.isFinite(number)) return NaN;
+        const channel = String(value).trim().endsWith('%') ? number * 2.55 : number;
+        return Math.max(0, Math.min(255, channel));
+    }
+
+    function parseCssAlpha(value) {
+        const number = parseFloat(value);
+        if (!Number.isFinite(number)) return NaN;
+        const alpha = String(value).trim().endsWith('%') ? number / 100 : number;
+        return Math.max(0, Math.min(1, alpha));
+    }
+
+    function blendColors(foreground, background) {
+        const alpha = foreground.a + background.a * (1 - foreground.a);
+        if (alpha <= 0) return { r: 0, g: 0, b: 0, a: 0 };
+        return {
+            r: (foreground.r * foreground.a + background.r * background.a * (1 - foreground.a)) / alpha,
+            g: (foreground.g * foreground.a + background.g * background.a * (1 - foreground.a)) / alpha,
+            b: (foreground.b * foreground.a + background.b * background.a * (1 - foreground.a)) / alpha,
+            a: alpha
+        };
+    }
+
+    function relativeLuminance(color) {
+        const channels = [color.r, color.g, color.b].map(channel => {
+            const value = channel / 255;
+            return value <= 0.03928 ? value / 12.92 : Math.pow((value + 0.055) / 1.055, 2.4);
+        });
+        return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2];
+    }
+
+    function contrastRatio(firstColor, secondColor) {
+        const firstLuminance = relativeLuminance(firstColor);
+        const secondLuminance = relativeLuminance(secondColor);
+        const lighter = Math.max(firstLuminance, secondLuminance);
+        const darker = Math.min(firstLuminance, secondLuminance);
+        return (lighter + 0.05) / (darker + 0.05);
+    }
+
+    function rgbaColorToString(color) {
+        return 'rgba(' + Math.round(color.r) + ', ' + Math.round(color.g) + ', ' + Math.round(color.b) + ', ' + color.a + ')';
+    }
+
+    function readEffectiveBackgroundForElement(element) {
+        if (!window.getComputedStyle || !element || element.nodeType !== 1) return '';
+        let current = element;
+        while (current && current.nodeType === 1) {
+            const background = readBackground(window.getComputedStyle(current));
+            if (isUsefulThemeValue(background) && resolveCssColor(background)) {
+                return background;
+            }
+            current = current.parentElement;
+        }
+        return '';
+    }
+
+    function hasUsefulSurface(style) {
+        if (!style) return false;
+        return isUsefulThemeValue(readBackground(style)) ||
+            isUsefulThemeValue(style.boxShadow) ||
+            isUsefulThemeValue(readBorder(style));
+    }
+
+    function readCssVariable(name) {
+        if (!window.getComputedStyle) return '';
+        const container = document.getElementById('pypluginstore-container');
+        const sources = [container, document.body, document.documentElement].filter(Boolean);
+        for (let index = 0; index < sources.length; index++) {
+            const value = window.getComputedStyle(sources[index]).getPropertyValue(name).trim();
+            if (isUsefulThemeValue(value)) {
+                return value;
+            }
+        }
+        return '';
+    }
+
+    function readFirstMatchingCssDeclaration(selectorNeedles, propertyNames) {
+        const needles = Array.isArray(selectorNeedles) ? selectorNeedles : [selectorNeedles];
+        for (let index = 0; index < needles.length; index++) {
+            const value = readMatchingCssDeclaration(needles[index], propertyNames);
+            if (isUsefulThemeValue(value)) {
+                return value;
+            }
+        }
+        return '';
+    }
+
+    function readMatchingCssDeclaration(selectorNeedle, propertyNames) {
+        if (!document.styleSheets) return '';
+        let matchedValue = '';
+        const inspectRules = function(rules) {
+            if (!rules) return;
+            for (let index = 0; index < rules.length; index++) {
+                const rule = rules[index];
+                if (rule.cssRules) {
+                    inspectRules(rule.cssRules);
+                    continue;
+                }
+                if (!rule.selectorText || !rule.style) continue;
+                const selectors = rule.selectorText.split(',').map(part => part.trim());
+                const matches = selectors.some(selector => selectorMatchesNeedle(selector, selectorNeedle));
+                if (!matches) continue;
+                for (const propertyName of propertyNames) {
+                    const value = rule.style.getPropertyValue(propertyName);
+                    if (isUsefulThemeValue(value)) {
+                        matchedValue = value.trim();
+                    }
+                }
+            }
+        };
+
+        for (let index = 0; index < document.styleSheets.length; index++) {
+            try {
+                inspectRules(document.styleSheets[index].cssRules);
+            } catch (e) {}
+        }
+        return matchedValue;
+    }
+
+    function selectorMatchesNeedle(selector, selectorNeedle) {
+        const normalizedSelector = normalizeCssSelector(selector);
+        const normalizedNeedle = normalizeCssSelector(selectorNeedle);
+        return normalizedSelector.indexOf(normalizedNeedle) !== -1;
+    }
+
+    function normalizeCssSelector(selector) {
+        return String(selector || '')
+            .toLowerCase()
+            .replace(/\s*([>+~])\s*/g, ' $1 ')
+            .replace(/\s+/g, ' ')
+            .trim();
+    }
+
+    function readBackground(style) {
+        if (!style) return '';
+        if (style.backgroundImage && style.backgroundImage !== 'none') {
+            return style.background;
+        }
+        return style.backgroundColor;
+    }
+
+    function readBorder(style) {
+        if (!style) return '';
+        const borderStyle = style.borderTopStyle;
+        const borderWidth = style.borderTopWidth;
+        const borderColor = style.borderTopColor;
+        if (!borderStyle || borderStyle === 'none' || borderWidth === '0px') {
+            return 'none';
+        }
+        return borderWidth + ' ' + borderStyle + ' ' + borderColor;
+    }
+
+    function readGap(style) {
+        if (!style) return '';
+        const rowGap = style.rowGap;
+        const columnGap = style.columnGap;
+        if (isUsefulThemeValue(rowGap) && rowGap === columnGap) {
+            return rowGap;
+        }
+        if (isUsefulThemeValue(rowGap) && isUsefulThemeValue(columnGap)) {
+            return rowGap + ' ' + columnGap;
+        }
+        return firstUsefulThemeValue(style.gap, rowGap, columnGap);
+    }
+
+    function readBox(style, property) {
+        if (!style) return '';
+        const top = style[property + 'Top'];
+        const right = style[property + 'Right'];
+        const bottom = style[property + 'Bottom'];
+        const left = style[property + 'Left'];
+        if (!top || !right || !bottom || !left) return '';
+        return top + ' ' + right + ' ' + bottom + ' ' + left;
+    }
+
+    function readSafeTitleMargin(style) {
+        const values = parseCssLengthBox(readBox(style, 'margin'));
+        if (!values) return '0 0 5px 0';
+
+        const top = Math.max(0, values[0]);
+        const right = Math.max(0, values[1]);
+        const bottom = Math.max(5, values[2]);
+        const left = Math.max(0, values[3]);
+        return [top, right, bottom, left].map(formatCssPixelLength).join(' ');
+    }
+
+    function readSafeTitleHeight(style) {
+        const height = parseCssPixelLength(style && style.height);
+        if (!Number.isFinite(height) || height <= 0) return '24px';
+        return formatCssPixelLength(Math.max(24, height));
+    }
+
+    function readSafeTitleLineHeight(style) {
+        const lineHeight = style ? style.lineHeight : '';
+        const lineHeightPixels = parseCssPixelLength(lineHeight);
+        if (!Number.isFinite(lineHeightPixels) || lineHeightPixels <= 0) {
+            return firstUsefulThemeValue(lineHeight, 'normal');
+        }
+        return formatCssPixelLength(Math.max(18, lineHeightPixels));
+    }
+
+    function parseCssLengthBox(value) {
+        if (typeof value !== 'string') return null;
+        const parts = value.trim().split(/\s+/).filter(Boolean);
+        if (parts.length !== 4) return null;
+        const numbers = parts.map(parseCssPixelLength);
+        return numbers.every(Number.isFinite) ? numbers : null;
+    }
+
+    function parseCssPixelLength(value) {
+        if (typeof value !== 'string') return NaN;
+        const clean = value.trim();
+        if (clean === '' || clean === 'auto' || clean === 'normal') return NaN;
+        const match = clean.match(/^(-?\d+(?:\.\d+)?)px$/i);
+        return match ? parseFloat(match[1]) : NaN;
+    }
+
+    function formatCssPixelLength(value) {
+        const rounded = Math.round(value * 100) / 100;
+        return (Math.abs(rounded - Math.round(rounded)) < 0.001 ? Math.round(rounded) : rounded) + 'px';
+    }
+
+    function readRadius(style) {
+        if (!style) return '';
+        const topLeft = style.borderTopLeftRadius;
+        const topRight = style.borderTopRightRadius;
+        const bottomRight = style.borderBottomRightRadius;
+        const bottomLeft = style.borderBottomLeftRadius;
+        if (!topLeft || !topRight || !bottomRight || !bottomLeft) return '';
+        if (topLeft === topRight && topLeft === bottomRight && topLeft === bottomLeft) {
+            return topLeft;
+        }
+        return topLeft + ' ' + topRight + ' ' + bottomRight + ' ' + bottomLeft;
+    }
+
     async function init() {
+        setLayoutMode(readStoredLayoutMode(), false);
+        setupThemeObserver();
+
         if (document.getElementById('pypluginstore-status').innerText !== 'Initializing...') {
             return;
         }
 
         const installedToggle = document.getElementById('installed-toggle');
+        const layoutToggle = document.getElementById('layout-toggle');
         installedToggle.checked = readStoredInstalledFilter();
         document.getElementById('search-box').oninput = filterAndRender;
         installedToggle.onchange = function() {
             writeStoredInstalledFilter(installedToggle.checked);
             filterAndRender();
         };
+        if (layoutToggle) {
+            layoutToggle.onchange = function() {
+                setLayoutMode(layoutToggle.checked ? LAYOUT_THEME : LAYOUT_PYPLUGIN, true);
+            };
+        }
         document.getElementById('refresh-update-status').onclick = refreshUpdateStatus;
         document.getElementById('restart-domoticz').onclick = restartDomoticz;
         document.getElementById('sort-select').onchange = function() {
@@ -906,7 +1893,7 @@
             empty.style.gridColumn = '1/-1';
             empty.style.textAlign = 'center';
             empty.style.padding = '40px';
-            empty.style.color = '#888';
+            empty.style.color = 'var(--pps-text-muted)';
             empty.textContent = 'No plugins match your filters.';
             container.appendChild(empty);
             return;
@@ -944,14 +1931,19 @@
             }
 
             const card = document.createElement('div');
-            card.className = 'card';
+            card.className = 'pps-card';
 
             const header = document.createElement('div');
-            header.className = 'card-header';
+            header.className = 'pps-card-header';
 
             const headerLeft = document.createElement('div');
-            headerLeft.className = 'card-header-left';
-            headerLeft.appendChild(document.createTextNode(displayName));
+            headerLeft.className = 'pps-card-header-left';
+
+            const pluginTitle = document.createElement('span');
+            pluginTitle.className = 'pps-plugin-title';
+            pluginTitle.textContent = displayName;
+            pluginTitle.title = displayName;
+            headerLeft.appendChild(pluginTitle);
 
             if (isInstalled) {
                 const badge = document.createElement('span');
@@ -999,11 +1991,11 @@
             }
 
             const desc = document.createElement('div');
-            desc.className = 'card-desc';
+            desc.className = 'pps-card-desc';
             desc.textContent = description;
 
             const meta = document.createElement('div');
-            meta.className = 'card-meta';
+            meta.className = 'pps-card-meta';
             meta.appendChild(document.createTextNode('Author: ' + formatAuthorDisplay(author, repo)));
             meta.appendChild(document.createElement('br'));
             meta.appendChild(document.createTextNode('Repo: ' + repo + (branch ? ' (' + branch + ')' : '')));
@@ -1033,7 +2025,7 @@
             }
 
             const actions = document.createElement('div');
-            actions.className = 'actions';
+            actions.className = 'pps-actions';
 
             const repoLink = document.createElement('a');
             repoLink.className = 'btn-info btn-link';
@@ -1182,6 +2174,9 @@
         document.addEventListener('DOMContentLoaded', init);
     }
 
-    window.addEventListener('load', init);
+    window.addEventListener('load', function() {
+        setLayoutMode(readStoredLayoutMode(), false);
+        init();
+    });
 })();
 </script>
