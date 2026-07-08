@@ -441,6 +441,186 @@ writeStoredInstalledFilter(true);
     assert result.returncode == 0, result.stderr
 
 
+def test_domoticz_theme_layout_is_default_and_original_layout_is_optional():
+    html = (REPO_ROOT / "pypluginstore.html").read_text()
+    script = load_inline_script()
+
+    assert '<div id="pypluginstore-container" data-layout="theme">' in html
+    assert 'id="layout-toggle" checked' in html
+    assert "return stored === LAYOUT_PYPLUGIN ? LAYOUT_PYPLUGIN : LAYOUT_THEME" in script
+    assert "return LAYOUT_THEME" in extract_js_function(script, "readStoredLayoutMode")
+    assert "Domoticz theme" in script
+    assert "PyPlugin layout" in html
+
+
+def test_domoticz_theme_probe_matches_dashboard_tile_contexts():
+    script = load_inline_script()
+
+    assert "const holder = document.getElementById('holder')" in script
+    assert "const dashContent = document.getElementById('dashcontent')" in script
+    assert "'<div id=\"dashcontent\">'" in script
+    assert "'<div class=\"row\">'" in script
+    assert "'<div class=\"span3 span4\">'" in script
+    assert "'<div id=\"pypluginstore-theme-card-sample\" class=\"item itemBlock\">'" in script
+    assert "'<div id=\"search\"><input type=\"text\" id=\"searchInput\"" in script
+    assert "'<select id=\"pypluginstore-theme-select-sample\" class=\"ui-corner-all\"><option>Sort</option></select>'" in script
+    assert "probe.querySelector('#searchInput') || probe.querySelector('input')" in script
+    assert "probe.querySelector('#pypluginstore-theme-select-sample') || probe.querySelector('#pypluginstore-theme-content-input')" in script
+    assert "'.btnstyle3, .btnsmall, .btn.btn-default, .btn'" in script
+    assert "'--main-item-bg-color'" in script
+    assert "'--ColorDashboard_Block_or_Span3and4'" in script
+    assert "'--ColorFontName'" in script
+    assert "'--dz-accent'" in script
+    assert "'--main-blue-color'" in script
+
+
+def test_domoticz_theme_uses_panel_and_button_contract_variables():
+    html = (REPO_ROOT / "pypluginstore.html").read_text()
+    script = load_inline_script()
+
+    assert "--pps-panel-bg: var(--dz-pps-panel-bg, var(--dz-panel-bg, transparent))" in html
+    assert "--pps-panel-text: var(--dz-pps-panel-text, var(--dz-panel-text, var(--pps-text)))" in html
+    assert "--pps-panel-shadow: var(--dz-pps-panel-shadow, none)" in html
+    assert "--pps-divider-border: var(--dz-pps-divider-border, 1px solid var(--dz-border, var(--dz-border-color, var(--dz-input-border, transparent))))" in html
+    assert "--pps-card-border-hover: var(--dz-pps-card-border-hover, var(--pps-border-hover))" in html
+    assert "--pps-card-button-bg: var(--dz-pps-card-button-bg, var(--pps-button-bg))" in html
+    assert "--pps-card-button-border: var(--dz-pps-card-button-border, var(--pps-button-border))" in html
+    assert "color: var(--pps-panel-text)" in extract_css_rule(html, "\n    #pypluginstore-status")
+    assert "border-color: var(--pps-card-border-hover)" in extract_css_rule(html, "#pypluginstore-container .pps-card:hover")
+    assert "border-block-end: var(--pps-divider-border)" in html
+    assert "border-bottom: 1px solid var(--pps-border)" not in html
+    assert "const rawPanelBg = firstUsefulThemeValue(" in script
+    assert "const panelIsTransparent = !isUsefulThemeValue(rawPanelBg)" in script
+    assert "const panelText = ensureReadableColor(panelBg" in script
+    assert "setRequiredThemeVar('--dz-pps-panel-bg', panelBg)" in script
+    assert "setRequiredThemeVar('--dz-pps-panel-text', panelText)" in script
+    assert "setRequiredThemeVar('--dz-pps-panel-border', panelBorder)" in script
+    assert "setRequiredThemeVar('--dz-pps-panel-shadow', panelShadow)" in script
+    assert "container.style.setProperty(name, value)" in script
+    assert "panelIsTransparent ? '0 solid transparent'" in script
+    assert "panelIsTransparent ? 'none'" in script
+    assert "setThemeVar('--dz-pps-panel-bg', cardBg)" not in script
+    assert "const panelBg = panelIsTransparent ? 'transparent' : rawPanelBg" in script
+    assert "const cardHasTransparentBorder = isNoneThemeValue(cardBorder) ||" in script
+    assert "const cardThemeExposesShadowHover = isUsefulThemeValue(hoverTileShadow) ||" in script
+    assert "const cardCanInferAccentShadowHover = isUsefulThemeValue(cardShadow) &&" in script
+    assert "const cardUsesShadowHoverBorder = cardHasTransparentBorder && (" in script
+    assert "isUsefulThemeValue(widgetHoverShadow)" in script
+    assert "cardUsesShadowHoverBorder && isUsefulThemeValue(domoticzAccent) ? '0 0 0 2px ' + domoticzAccent : ''" in script
+    assert "const cardTitleRadius = cardUsesShadowHoverBorder ? firstUsefulThemeValue(cardRadius, readRadius(nameStyle)) : readRadius(nameStyle)" in script
+    assert "isTransparentBorder(cardBorder)" in script
+    assert "cardUsesShadowHoverBorder ? 'transparent' : ''" in script
+    assert "setThemeVar('--dz-pps-shadow-hover', cardShadowHover, { allowNone: true })" in script
+    assert "setThemeVar('--dz-pps-card-title-radius', cardTitleRadius)" in script
+    assert "setThemeVar('--dz-pps-card-border-hover', cardBorderHover, { allowTransparent: true })" in script
+    assert "setThemeVar('--dz-pps-border-hover', cardBorderHover" not in script
+    assert "const visibleTitleBorderColor = readVisibleBorderColor(nameStyle)" in script
+    assert "const themeBorderHoverColor = firstUsefulThemeValue(" in script
+    assert "readCssVariable('--dz-panel-text')" in script
+    assert "readCssVariable('--dz-modal-text')" in script
+    assert "function readColorBackground(style)" in script
+    assert "const buttonBackgroundDeclaration = readFirstMatchingCssDeclarationInfo(" in script
+    assert "const buttonHoverDeclaration = readFirstMatchingCssDeclarationInfo(" in script
+    assert "const buttonHoverBg = normalizeBackgroundUrls(buttonHoverDeclaration.value, buttonHoverDeclaration.baseUrl)" in script
+    assert "const themeButtonBg = readCssVariable('--dz-btn-bg')" in script
+    assert "const buttonComputedBg = readColorBackground(buttonStyle)" in script
+    assert "const buttonBg = firstUsefulThemeValue(themeButtonBg, buttonComputedBg)" in script
+    assert "const buttonBackground = normalizeBackgroundUrls(readBackground(buttonStyle), buttonBackgroundDeclaration.baseUrl)" in script
+    assert "const buttonHoverColorBg = readColorBackgroundValue(buttonHoverBg)" in script
+    assert "const cardButtonBg = firstUsefulThemeValue(buttonBackground, buttonComputedBg, buttonBg)" in script
+    assert "const cardButtonHoverBg = firstUsefulThemeValue(buttonHoverColorBg, cardButtonBg)" in script
+    assert "const cardButtonUsesPaintedBackground = isUsefulThemeValue(buttonBackground) && !readColorBackgroundValue(buttonBackground)" in script
+    assert "cardButtonUsesPaintedBackground && isUsefulThemeValue(buttonStyle.color)" in script
+    assert "setThemeVar('--dz-pps-card-button-bg', cardButtonBg)" in script
+    assert "setThemeVar('--dz-pps-card-button-hover-bg', cardButtonHoverBg)" in script
+    assert "setThemeVar('--dz-pps-card-button-text', cardButtonText)" in script
+    assert "setThemeVar('--dz-pps-card-button-border', cardButtonBorder, { allowNone: true })" in script
+    assert "function readColorBackgroundValue(value)" in script
+    assert "return resolveCssColor(value) ? String(value).trim() : ''" in script
+    assert "function normalizeBackgroundUrls(value, baseUrl)" in script
+    assert "function resolveCssAssetUrl(urlValue, baseUrl)" in script
+    assert "function getDomoticzCssBaseUrl()" in script
+    assert "return new URL(clean, baseUrl || getDomoticzCssBaseUrl()).href" in script
+    assert "pathname.match(/^(.*\\/domoticz)(?:\\/|$)/)" in script
+    assert "basePath + '/css/'" in script
+    assert "baseUrl: ownerHref || document.baseURI" in script
+    assert "readCssVariable('--dz-btn-bg')" in script
+    assert "readCssVariable('--dz-btn-hover-bg')" in script
+    assert "readCssVariable('--dz-btn-text')" in script
+    assert "readCssVariable('--dz-btn-border')" in script
+    assert "ensureVisibleBorder(buttonEffectiveBg" in script
+    assert "toCssBorder(readCssVariable('--dz-btn-border'))" in script
+    assert "const buttonBg = firstUsefulThemeValue(readBackground(buttonStyle), readCssVariable('--dz-btn-bg'))" not in script
+
+
+def test_domoticz_theme_keeps_container_transparent_for_image_only_page_backgrounds():
+    script = load_inline_script()
+
+    assert "const pageSurfaceBg = firstUsefulThemeValue(" in script
+    assert "const pageBg = firstUsefulThemeValue(pageSurfaceBg, '#ffffff')" in script
+    assert "setThemeVar('--dz-pps-bg', pageSurfaceBg)" in script
+    assert "setThemeVar('--dz-pps-bg', pageBg)" not in script
+
+
+def test_domoticz_theme_preserves_borderless_theme_cards():
+    script = load_inline_script()
+
+    assert "const cardBorder = firstUsefulThemeValueOrNone(" in script
+    assert "function firstUsefulThemeValueOrNone()" in script
+    assert "isNoneThemeValue(arguments[index])" in script
+    assert "setThemeVar('--dz-pps-card-border', cardBorder, { allowNone: true })" in script
+
+
+def test_normal_action_buttons_use_normal_button_style():
+    html = (REPO_ROOT / "pypluginstore.html").read_text()
+
+    refresh_rule = extract_css_rule(html, "#pypluginstore-container .btn-refresh")
+    refresh_hover_rule = extract_css_rule(html, "#pypluginstore-container .btn-refresh:hover")
+
+    assert "background: var(--pps-button-bg)" in refresh_rule
+    assert "color: var(--pps-button-text)" in refresh_rule
+    assert "border: var(--pps-button-border)" in refresh_rule
+    assert "background: var(--pps-button-hover-bg)" in refresh_hover_rule
+    assert "border-color: var(--pps-border-hover)" in refresh_hover_rule
+    assert "var(--pps-button-primary" not in refresh_rule
+    assert "var(--pps-primary" not in refresh_hover_rule
+
+    for selector in [
+        "#pypluginstore-container .btn-install",
+        "#pypluginstore-container .btn-update-current",
+        "#pypluginstore-container .btn-info",
+    ]:
+        rule = extract_css_rule(html, selector)
+        hover_rule = extract_css_rule(html, selector + ":hover")
+
+        assert "background: var(--pps-card-button-bg)" in rule
+        assert "color: var(--pps-card-button-text)" in rule
+        assert "border: var(--pps-card-button-border)" in rule
+        assert "background: var(--pps-card-button-hover-bg)" in hover_rule
+        assert "var(--pps-button-primary" not in rule
+        assert "var(--pps-primary" not in hover_rule
+
+    assert "border-color: var(--pps-border-hover)" in extract_css_rule(html, "#pypluginstore-container .btn-install:hover")
+
+
+def test_domoticz_theme_search_input_preserves_theme_specific_styles():
+    html = (REPO_ROOT / "pypluginstore.html").read_text()
+    script = load_inline_script()
+
+    assert "--pps-input-border-block-end" in html
+    assert "--pps-input-placeholder-opacity" in html
+    assert "window.getComputedStyle(input, '::placeholder')" in script
+    assert "setRequiredThemeVar('--dz-pps-input-bg', 'transparent')" in script
+    assert "const contentControlBorderBlockEnd = readBorderSide(contentControlStyle, 'Bottom')" in script
+    assert "const inputBorderBlockEnd = inputStyle ? chooseInputBorderBlockEnd(" in script
+    assert "function chooseInputBorderBlockEnd(inputBorder, contentBorder, accentColor)" in script
+    assert "function borderColorMatches(borderValue, colorValue)" in script
+    assert "function readVisibleBorderColor(style)" in script
+    assert "readBorderSide(inputStyle, 'Bottom')" in script
+    assert "setThemeVar('--dz-pps-input-border-block-end', inputBorderBlockEnd, { allowNone: true })" in script
+    assert "setThemeVar('--dz-pps-input-radius', readRadius(inputStyle))" in script
+
+
 def test_platform_badges_are_wired_to_backend_response():
     html = (REPO_ROOT / "pypluginstore.html").read_text()
     script = load_inline_script()
@@ -465,6 +645,13 @@ def load_inline_script():
     parser.feed(html)
     assert parser.scripts, "pypluginstore.html does not contain an inline script"
     return parser.scripts[0]
+
+
+def extract_css_rule(html, selector):
+    start = html.index(selector)
+    brace_start = html.index("{", start)
+    brace_end = html.index("}", brace_start)
+    return html[brace_start + 1:brace_end]
 
 
 def extract_js_function(script, function_name):
