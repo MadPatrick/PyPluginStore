@@ -372,15 +372,22 @@
         opacity: var(--pps-input-placeholder-opacity);
     }
 
-    #pypluginstore-container .filters label {
+    #pypluginstore-container .filter-control {
         display: flex;
         align-items: center;
         gap: 10px;
+        margin: 0;
         font-weight: 500;
         font-size: 0.9em;
         cursor: pointer;
         user-select: none;
-        color: var(--pps-text);
+        color: var(--pps-panel-text);
+    }
+
+    #pypluginstore-container .filter-control-label {
+        color: inherit;
+        line-height: 1.2;
+        white-space: nowrap;
     }
 
     #pypluginstore-container .layout-choice {
@@ -388,16 +395,11 @@
     }
 
     #pypluginstore-container .sort-controls {
-        display: flex;
-        gap: 10px;
-        align-items: center;
+        cursor: default;
     }
 
-    #pypluginstore-container .sort-controls label {
-        margin: 0;
-        font-weight: normal;
+    #pypluginstore-container .sort-controls .filter-control-label {
         font-size: 0.85em;
-        color: var(--pps-text-muted);
     }
 
     #pypluginstore-container .sort-controls select {
@@ -407,7 +409,7 @@
         border-radius: var(--pps-input-radius);
         font-size: 0.88em;
         background: var(--pps-input-bg);
-        color: var(--pps-input-text);
+        color: var(--pps-panel-text);
         cursor: pointer;
         outline: none;
         transition: border-color 0.2s, box-shadow 0.2s;
@@ -674,6 +676,10 @@
         #pypluginstore-container .sort-controls select {
             inline-size: 100%;
         }
+
+        #pypluginstore-container .filter-control {
+            justify-content: space-between;
+        }
     }
 
     #pypluginstore-container .btn-restart {
@@ -808,24 +814,24 @@
 
     <div class="filters">
         <input type="text" id="search-box" placeholder="Search plugins...">
-        <div class="sort-controls">
-            <label for="sort-select">Sort by:</label>
+        <label class="filter-control sort-controls" for="sort-select">
+            <span class="filter-control-label">Sort by:</span>
             <select id="sort-select">
                 <option value="name">Name (A-Z)</option>
                 <option value="name-desc">Name (Z-A)</option>
                 <option value="updated">Last Updated (Newest)</option>
                 <option value="updated-oldest">Last Updated (Oldest)</option>
             </select>
-        </div>
-        <label class="layout-choice" title="Switch between the active Domoticz theme tile layout and the original PyPluginStore layout.">
-            <span id="layout-toggle-label">Domoticz theme</span>
+        </label>
+        <label class="filter-control layout-choice" title="Switch between the active Domoticz theme tile layout and the original PyPluginStore layout.">
+            <span class="filter-control-label" id="layout-toggle-label">Domoticz theme</span>
             <span class="pps-switch">
                 <input type="checkbox" id="layout-toggle" checked>
                 <span class="pps-slider"></span>
             </span>
         </label>
-        <label>
-            Installed
+        <label class="filter-control installed-choice" for="installed-toggle">
+            <span class="filter-control-label">Installed</span>
             <span class="pps-switch">
                 <input type="checkbox" id="installed-toggle">
                 <span class="pps-slider"></span>
@@ -859,6 +865,40 @@
     const LAYOUT_STORAGE_KEY = 'pypluginstore.layoutMode';
     const LAYOUT_PYPLUGIN = 'pyplugin';
     const LAYOUT_THEME = 'theme';
+    const THEME_TILE_HOVER_SELECTORS = [
+        '#holder #dashcontent .row .span3 .item table[id^="item"] > tbody > tr:hover',
+        '#holder #dashcontent .row .span4 .item table[id^="item"] > tbody > tr:hover',
+        '#dashcontent .row .span3 .item table[id^="item"] > tbody > tr:hover',
+        '#dashcontent .row .span4 .item table[id^="item"] > tbody > tr:hover',
+        '#holder .row .item table[id^="item"] > tbody > tr:hover',
+        '#holder .row .item table[id^="item"] tbody tr:hover',
+        '.item table[id^="item"] > tbody > tr:hover',
+        'table[id^="item"] > tbody > tr:hover',
+        'div.item.itemBlock:hover',
+        '.item.itemBlock:hover',
+        '.itemBlock:hover',
+        '.item:hover',
+        'table#itemtablesmall tbody tr:hover',
+        'table#itemtablesmall tr:hover'
+    ];
+    const THEME_TITLE_HOVER_SELECTORS = [
+        '#holder #dashcontent .row .span3 .item table[id^="item"] > tbody > tr:hover td#name',
+        '#holder #dashcontent .row .span4 .item table[id^="item"] > tbody > tr:hover td#name',
+        '#dashcontent .row .span3 .item table[id^="item"] > tbody > tr:hover td#name',
+        '#dashcontent .row .span4 .item table[id^="item"] > tbody > tr:hover td#name',
+        '#holder .row .item table[id^="item"] > tbody > tr:hover td#name',
+        '#holder .row .item table[id^="item"] > tbody > tr:hover td:first-child',
+        '.item table[id^="item"] > tbody > tr:hover td#name',
+        'table[id^="item"] > tbody > tr:hover td#name',
+        'div.item.itemBlock:hover td#name',
+        '.item.itemBlock:hover td#name',
+        '.itemBlock:hover td#name',
+        '.item:hover td#name',
+        'table#itemtablesmall tr:hover td#name',
+        'table#itemtablesmall tr:hover td:first-child'
+    ];
+    const THEME_BUTTON_SELECTORS = ['a.btnstyle3', '.btnstyle3', '.btnsmall', '.btn.btn-default', '.btn'];
+    const THEME_BUTTON_HOVER_SELECTORS = ['a.btnstyle3:hover', '.btnstyle3:hover', '.btnsmall:hover', '.btn.btn-default:hover', '.btn:hover'];
 
     function setStatus(msg) {
         console.log("PyPluginStore Status: " + msg);
@@ -970,149 +1010,51 @@
         if (container.getAttribute('data-layout') === LAYOUT_PYPLUGIN) return;
         clearComputedDomoticzThemeVars(container);
 
-        const probe = document.createElement('div');
-        probe.id = 'pypluginstore-theme-probe';
-        probe.setAttribute('aria-hidden', 'true');
-        probe.style.cssText = [
-            'position:absolute',
-            'left:-10000px',
-            'top:-10000px',
-            'width:320px',
-            'height:auto',
-            'visibility:hidden',
-            'pointer-events:none',
-            'z-index:-1'
-        ].join(';');
-        const holder = document.getElementById('holder');
-        const dashContent = document.getElementById('dashcontent');
-        const tileProbeMarkup = [
-            '<div id="dashcontent">',
-            '<section>',
-            '<div class="row">',
-            '<div class="span3 span4">',
-            '<div id="pypluginstore-theme-card-sample" class="item itemBlock">',
-            '<section>',
-            '<table id="itemtablesmall"><tbody><tr>',
-            '<td id="name">Domoticz tile</td>',
-            '<td id="bigtext">42</td>',
-            '<td id="img"></td>',
-            '<td id="status" class="status">Plugin status</td>',
-            '<td id="lastupdate">Theme sample</td>',
-            '</tr></tbody></table>',
-            '</section>',
-            '</div>',
-            '</div>',
-            '</div>',
-            '</section>',
-            '</div>'
-        ].join('');
-        const controlProbeMarkup = [
-            '<div id="search"><input type="text" id="searchInput" class="text ui-widget-content ui-corner-all" placeholder="Search"></div>',
-            '<div id="pypluginstore-theme-main-control-sample">',
-            '<input type="text" id="pypluginstore-theme-content-input" class="text ui-widget-content ui-corner-all" placeholder="Filter">',
-            '<select id="pypluginstore-theme-select-sample" class="ui-corner-all"><option>Sort</option></select>',
-            '</div>',
-            '<a class="btnstyle3" href="#">Button</a>',
-            '<a class="btnsmall" href="#">Small</a>',
-            '<button class="btn btn-default" type="button">Default</button>',
-            '<a class="btnstyle3-sel" href="#">Primary</a>',
-            '<a class="btnstyle3-dis" href="#">Disabled</a>'
-        ].join('');
-        probe.innerHTML = (holder ? tileProbeMarkup : '<div id="holder">' + tileProbeMarkup + '</div>') + controlProbeMarkup;
-
-        (dashContent || holder || document.body).appendChild(probe);
+        const probeContext = createDomoticzThemeProbe();
+        const probe = probeContext.probe;
+        probeContext.mount.appendChild(probe);
 
         try {
-            const tile = probe.querySelector('#itemtablesmall tbody tr');
-            const tileSurface = probe.querySelector('#pypluginstore-theme-card-sample');
-            if (tileSurface) {
-                tileSurface.classList.add('statusNormal');
-            }
-            const tileRow = probe.querySelector('#dashcontent .row, .bannercontent .row, .row');
-            const tileName = probe.querySelector('#itemtablesmall td#name, #itemtablesmall tr td:first-child');
-            const tileValue = probe.querySelector('#itemtablesmall td#bigtext, #itemtablesmall tr td:first-child + td');
-            const tileStatus = probe.querySelector('#itemtablesmall td#status, #itemtablesmall tr td:first-child + td + td + td');
-            const button = probe.querySelector('.btnstyle3, .btnsmall, .btn.btn-default, .btn');
-            const primaryButton = probe.querySelector('.btnstyle3-sel');
-            const input = probe.querySelector('#searchInput') || probe.querySelector('input');
-            const contentControl = probe.querySelector('#pypluginstore-theme-select-sample') || probe.querySelector('#pypluginstore-theme-content-input');
-            if (!tile || !tileName) return;
+            const themeProbe = readDomoticzThemeProbe(probe);
+            if (!themeProbe) return;
 
-            const rowStyle = window.getComputedStyle(tile);
-            const tileSurfaceStyle = tileSurface ? window.getComputedStyle(tileSurface) : null;
-            const tileRowStyle = tileRow ? window.getComputedStyle(tileRow) : null;
-            const tileStyle = hasUsefulSurface(tileSurfaceStyle) ? tileSurfaceStyle : rowStyle;
-            const nameStyle = window.getComputedStyle(tileName);
-            const valueStyle = tileValue ? window.getComputedStyle(tileValue) : tileStyle;
-            const statusStyle = tileStatus ? window.getComputedStyle(tileStatus) : valueStyle;
-            const buttonStyle = button ? window.getComputedStyle(button) : null;
-            const primaryButtonStyle = primaryButton ? window.getComputedStyle(primaryButton) : buttonStyle;
-            const inputStyle = input ? window.getComputedStyle(input) : null;
-            const contentControlStyle = contentControl ? window.getComputedStyle(contentControl) : null;
-
-            const tileHoverSelectors = [
-                '#holder #dashcontent .row .span3 .item table[id^="item"] > tbody > tr:hover',
-                '#holder #dashcontent .row .span4 .item table[id^="item"] > tbody > tr:hover',
-                '#dashcontent .row .span3 .item table[id^="item"] > tbody > tr:hover',
-                '#dashcontent .row .span4 .item table[id^="item"] > tbody > tr:hover',
-                '#holder .row .item table[id^="item"] > tbody > tr:hover',
-                '#holder .row .item table[id^="item"] tbody tr:hover',
-                '.item table[id^="item"] > tbody > tr:hover',
-                'table[id^="item"] > tbody > tr:hover',
-                'div.item.itemBlock:hover',
-                '.item.itemBlock:hover',
-                '.itemBlock:hover',
-                '.item:hover',
-                'table#itemtablesmall tbody tr:hover',
-                'table#itemtablesmall tr:hover'
-            ];
-            const titleHoverSelectors = [
-                '#holder #dashcontent .row .span3 .item table[id^="item"] > tbody > tr:hover td#name',
-                '#holder #dashcontent .row .span4 .item table[id^="item"] > tbody > tr:hover td#name',
-                '#dashcontent .row .span3 .item table[id^="item"] > tbody > tr:hover td#name',
-                '#dashcontent .row .span4 .item table[id^="item"] > tbody > tr:hover td#name',
-                '#holder .row .item table[id^="item"] > tbody > tr:hover td#name',
-                '#holder .row .item table[id^="item"] > tbody > tr:hover td:first-child',
-                '.item table[id^="item"] > tbody > tr:hover td#name',
-                'table[id^="item"] > tbody > tr:hover td#name',
-                'div.item.itemBlock:hover td#name',
-                '.item.itemBlock:hover td#name',
-                '.itemBlock:hover td#name',
-                '.item:hover td#name',
-                'table#itemtablesmall tr:hover td#name',
-                'table#itemtablesmall tr:hover td:first-child'
-            ];
-            const hoverTileBg = readFirstMatchingCssDeclaration(tileHoverSelectors, ['background', 'background-color']);
-            const hoverTileShadow = readFirstMatchingCssDeclaration(tileHoverSelectors, ['box-shadow']);
-            const hoverTileBorder = readFirstMatchingCssDeclaration(tileHoverSelectors, ['border-color', 'border-top-color']);
-            const hoverNameBg = readFirstMatchingCssDeclaration(titleHoverSelectors, ['background', 'background-color']);
-            const hoverNameColor = readFirstMatchingCssDeclaration(titleHoverSelectors, ['color']);
-            const hoverNameBorder = readFirstMatchingCssDeclaration(titleHoverSelectors, ['border-color', 'border-top-color']);
-            const buttonBackgroundDeclaration = readFirstMatchingCssDeclarationInfo(['a.btnstyle3', '.btnstyle3', '.btnsmall', '.btn.btn-default', '.btn'], ['background', 'background-color']);
-            const buttonHoverDeclaration = readFirstMatchingCssDeclarationInfo(['a.btnstyle3:hover', '.btnstyle3:hover', '.btnsmall:hover', '.btn.btn-default:hover', '.btn:hover'], ['background', 'background-color']);
+            const {
+                rowStyle,
+                tileSurfaceStyle,
+                tileRowStyle,
+                tileStyle,
+                nameStyle,
+                valueStyle,
+                statusStyle,
+                buttonStyle,
+                primaryButtonStyle,
+                input,
+                inputStyle,
+                contentControlStyle
+            } = themeProbe;
+            const hoverStyles = readDomoticzThemeHoverStyles();
+            const hoverTileBg = hoverStyles.tile.background;
+            const hoverTileShadow = hoverStyles.tile.shadow;
+            const hoverTileBorder = hoverStyles.tile.border;
+            const hoverNameBg = hoverStyles.title.background;
+            const hoverNameColor = hoverStyles.title.color;
+            const hoverNameBorder = hoverStyles.title.border;
+            const buttonBackgroundDeclaration = readFirstMatchingCssDeclarationInfo(THEME_BUTTON_SELECTORS, ['background', 'background-color']);
+            const buttonHoverDeclaration = readFirstMatchingCssDeclarationInfo(THEME_BUTTON_HOVER_SELECTORS, ['background', 'background-color']);
             const buttonHoverBg = normalizeBackgroundUrls(buttonHoverDeclaration.value, buttonHoverDeclaration.baseUrl);
 
             const domoticzMainBg = readCssVariable('--main-bg-color');
             const domoticzItemBg = readCssVariable('--main-item-bg-color');
             const domoticzLegacyItemBg = readCssVariable('--ColorDashboard_Block_or_Span3and4');
+            const domoticzLegacyItemHoverBg = readCssVariable('--ColorDashboard_Block_or_Span3and4_HOVER');
             const domoticzMainText = readCssVariable('--main-text-color');
             const domoticzLegacyText = readCssVariable('--ColorFontName');
             const domoticzSecondaryText = readCssVariable('--secondary-text-color');
             const domoticzAccent = firstUsefulThemeValue(readCssVariable('--dz-accent'), readCssVariable('--main-blue-color'), readCssVariable('--dz-accent-color'));
 
-            const setThemeVar = function(name, value, options) {
-                const allowNone = options && options.allowNone;
-                const allowTransparent = options && options.allowTransparent;
-                if (isUsefulThemeValue(value) ||
-                    (allowNone && isNoneThemeValue(value)) ||
-                    (allowTransparent && isTransparentThemeValue(value))) {
-                    container.style.setProperty(name, String(value).trim());
-                }
-            };
-
-            const setRequiredThemeVar = function(name, value) {
-                container.style.setProperty(name, value);
-            };
+            const themeVars = createDomoticzThemeVarWriters(container);
+            const setThemeVar = themeVars.setThemeVar;
+            const setRequiredThemeVar = themeVars.setRequiredThemeVar;
 
             const cardBg = firstUsefulThemeValue(
                 readBackground(tileStyle),
@@ -1158,7 +1100,7 @@
                 readEffectiveBackgroundForElement(document.documentElement)
             );
             const pageBg = firstUsefulThemeValue(pageSurfaceBg, '#ffffff');
-            const cardHoverBg = firstUsefulThemeValue(hoverTileBg, readCssVariable('--dz-widget-hover-bg'), cardBg);
+            const cardHoverBg = firstResolvedThemeValue(hoverTileBg, readCssVariable('--dz-widget-hover-bg'), domoticzLegacyItemHoverBg, cardBg);
             const titleBg = firstUsefulThemeValue(readBackground(nameStyle), readCssVariable('--dz-widget-name-bg'), cardBg);
             const titleHoverBg = firstUsefulThemeValue(hoverNameBg, readCssVariable('--dz-widget-hover-name-bg'), titleBg, cardHoverBg, cardBg);
             const cardTextCandidate = firstUsefulThemeValue(tileStyle.color, valueStyle.color, domoticzMainText, domoticzLegacyText, readCssVariable('--dz-widget-text'));
@@ -1309,92 +1251,32 @@
             setThemeVar('--dz-pps-border', firstUsefulThemeValue(themeBorderColor, domoticzAccent));
             setThemeVar('--dz-pps-border-hover', themeBorderHoverColor);
 
-            let buttonEffectiveBg = firstUsefulThemeValue(cardBg, pageBg);
-            if (buttonStyle) {
-                const themeButtonBg = readCssVariable('--dz-btn-bg');
-                const buttonComputedBg = readColorBackground(buttonStyle);
-                const buttonBg = firstUsefulThemeValue(themeButtonBg, buttonComputedBg);
-                const buttonBackground = normalizeBackgroundUrls(readBackground(buttonStyle), buttonBackgroundDeclaration.baseUrl);
-                const buttonHoverColorBg = readColorBackgroundValue(buttonHoverBg);
-                const cardButtonBg = firstUsefulThemeValue(buttonBackground, buttonComputedBg, buttonBg);
-                const cardButtonHoverBg = firstUsefulThemeValue(buttonHoverColorBg, cardButtonBg);
-                const cardButtonEffectiveBg = firstUsefulThemeValue(cardButtonBg, cardBg, pageBg);
-                const cardButtonUsesPaintedBackground = isUsefulThemeValue(buttonBackground) && !readColorBackgroundValue(buttonBackground);
-                const cardButtonText = cardButtonUsesPaintedBackground && isUsefulThemeValue(buttonStyle.color)
-                    ? buttonStyle.color
-                    : ensureReadableColor(cardButtonEffectiveBg, firstUsefulThemeValue(
-                        readCssVariable('--dz-btn-text'),
-                        buttonStyle.color
-                    ), {
-                        baseBackground: firstUsefulThemeValue(cardBg, pageBg),
-                        minContrast: 4.5
-                    });
-                const cardButtonBorder = firstUsefulThemeValueOrNone(
-                    readBorder(buttonStyle),
-                    toCssBorder(readCssVariable('--dz-btn-border')),
-                    cardBorder
-                );
-                buttonEffectiveBg = firstUsefulThemeValue(buttonBg, cardBg, pageBg);
-                setThemeVar('--dz-pps-button-bg', buttonBg);
-                setThemeVar('--dz-pps-button-hover-bg', firstUsefulThemeValue(readCssVariable('--dz-btn-hover-bg'), buttonHoverBg, buttonBg));
-                setThemeVar('--dz-pps-button-text', ensureReadableColor(buttonEffectiveBg, firstUsefulThemeValue(
-                    readCssVariable('--dz-btn-text'),
-                    buttonStyle.color
-                ), {
-                    baseBackground: firstUsefulThemeValue(cardBg, pageBg),
-                    minContrast: 4.5
-                }));
-                setThemeVar('--dz-pps-button-border', ensureVisibleBorder(buttonEffectiveBg, firstUsefulThemeValue(
-                    readBorder(buttonStyle),
-                    toCssBorder(readCssVariable('--dz-btn-border')),
-                    cardBorder
-                ), domoticzAccent), { allowNone: true });
-                setThemeVar('--dz-pps-button-radius', readRadius(buttonStyle));
-                setThemeVar('--dz-pps-button-padding', readBox(buttonStyle, 'padding'));
-                setThemeVar('--dz-pps-button-line-height', buttonStyle.lineHeight);
-                setThemeVar('--dz-pps-button-font-family', buttonStyle.fontFamily);
-                setThemeVar('--dz-pps-button-font-weight', buttonStyle.fontWeight);
-                setThemeVar('--dz-pps-card-button-bg', cardButtonBg);
-                setThemeVar('--dz-pps-card-button-hover-bg', cardButtonHoverBg);
-                setThemeVar('--dz-pps-card-button-text', cardButtonText);
-                setThemeVar('--dz-pps-card-button-border', cardButtonBorder, { allowNone: true });
-            }
-
-            if (primaryButtonStyle) {
-                const primaryButtonBg = readBackground(primaryButtonStyle);
-                const primaryEffectiveBg = firstUsefulThemeValue(primaryButtonBg, buttonEffectiveBg, cardBg, pageBg);
-                setThemeVar('--dz-pps-button-primary-bg', primaryButtonBg);
-                setThemeVar('--dz-pps-button-primary-text', ensureReadableColor(primaryEffectiveBg, primaryButtonStyle.color, {
-                    baseBackground: firstUsefulThemeValue(cardBg, pageBg),
-                    minContrast: 4.5
-                }));
-                setThemeVar('--dz-pps-button-primary-border', readBorder(primaryButtonStyle), { allowNone: true });
-            }
-
-            if (inputStyle) {
-                const inputBg = readBackground(inputStyle);
-                const inputEffectiveBg = firstUsefulThemeValue(inputBg, cardBg, pageBg);
-                const placeholderStyle = window.getComputedStyle(input, '::placeholder');
-                if (isTransparentThemeValue(inputBg)) {
-                    setRequiredThemeVar('--dz-pps-input-bg', 'transparent');
-                } else {
-                    setThemeVar('--dz-pps-input-bg', inputBg);
-                }
-                setThemeVar('--dz-pps-input-text', ensureReadableColor(inputEffectiveBg, inputStyle.color, {
-                    baseBackground: firstUsefulThemeValue(cardBg, pageBg),
-                    minContrast: 4.5
-                }));
-                setThemeVar('--dz-pps-input-placeholder', ensureReadableColor(inputEffectiveBg, firstUsefulThemeValue(placeholderStyle && placeholderStyle.color, inputStyle.color), {
-                    baseBackground: firstUsefulThemeValue(cardBg, pageBg),
-                    minContrast: 3.0,
-                    lightText: '#b8c7d8',
-                    darkText: '#5c6670'
-                }));
-                setThemeVar('--dz-pps-input-placeholder-opacity', placeholderStyle && placeholderStyle.opacity);
-                setThemeVar('--dz-pps-input-border', readBorder(inputStyle), { allowNone: true });
-                setThemeVar('--dz-pps-input-border-block-end', inputBorderBlockEnd, { allowNone: true });
-                setThemeVar('--dz-pps-input-radius', readRadius(inputStyle));
-            }
+            const buttonEffectiveBg = applyDomoticzButtonThemeVars({
+                setThemeVar,
+                buttonStyle,
+                buttonBackgroundDeclaration,
+                buttonHoverBg,
+                cardBg,
+                pageBg,
+                cardBorder,
+                domoticzAccent
+            });
+            applyDomoticzPrimaryButtonThemeVars({
+                setThemeVar,
+                primaryButtonStyle,
+                buttonEffectiveBg,
+                cardBg,
+                pageBg
+            });
+            applyDomoticzInputThemeVars({
+                setThemeVar,
+                setRequiredThemeVar,
+                input,
+                inputStyle,
+                inputBorderBlockEnd,
+                cardBg,
+                pageBg
+            });
 
             container.setAttribute('data-domoticz-theme-look', hasUsefulSurface(tileSurfaceStyle) ? 'computed-surface' : 'computed-row');
         } catch (e) {
@@ -1404,6 +1286,248 @@
                 probe.parentNode.removeChild(probe);
             }
         }
+    }
+
+    function createDomoticzThemeProbe() {
+        const probe = document.createElement('div');
+        probe.id = 'pypluginstore-theme-probe';
+        probe.setAttribute('aria-hidden', 'true');
+        probe.style.cssText = [
+            'position:absolute',
+            'left:-10000px',
+            'top:-10000px',
+            'width:320px',
+            'height:auto',
+            'visibility:hidden',
+            'pointer-events:none',
+            'z-index:-1'
+        ].join(';');
+
+        const holder = document.getElementById('holder');
+        const dashContent = document.getElementById('dashcontent');
+        const tileProbeMarkup = [
+            '<div id="dashcontent">',
+            '<section>',
+            '<div class="row">',
+            '<div class="span3 span4">',
+            '<div id="pypluginstore-theme-card-sample" class="item itemBlock">',
+            '<section>',
+            '<table id="itemtablesmall"><tbody><tr>',
+            '<td id="name">Domoticz tile</td>',
+            '<td id="bigtext">42</td>',
+            '<td id="img"></td>',
+            '<td id="status" class="status">Plugin status</td>',
+            '<td id="lastupdate">Theme sample</td>',
+            '</tr></tbody></table>',
+            '</section>',
+            '</div>',
+            '</div>',
+            '</div>',
+            '</section>',
+            '</div>'
+        ].join('');
+        const controlProbeMarkup = [
+            '<div id="search"><input type="text" id="searchInput" class="text ui-widget-content ui-corner-all" placeholder="Search"></div>',
+            '<div id="pypluginstore-theme-main-control-sample">',
+            '<input type="text" id="pypluginstore-theme-content-input" class="text ui-widget-content ui-corner-all" placeholder="Filter">',
+            '<select id="pypluginstore-theme-select-sample" class="ui-corner-all"><option>Sort</option></select>',
+            '</div>',
+            '<a class="btnstyle3" href="#">Button</a>',
+            '<a class="btnsmall" href="#">Small</a>',
+            '<button class="btn btn-default" type="button">Default</button>',
+            '<a class="btnstyle3-sel" href="#">Primary</a>',
+            '<a class="btnstyle3-dis" href="#">Disabled</a>'
+        ].join('');
+
+        probe.innerHTML = (holder ? tileProbeMarkup : '<div id="holder">' + tileProbeMarkup + '</div>') + controlProbeMarkup;
+        return {
+            probe,
+            mount: dashContent || holder || document.body
+        };
+    }
+
+    function readDomoticzThemeProbe(probe) {
+        const tile = probe.querySelector('#itemtablesmall tbody tr');
+        const tileSurface = probe.querySelector('#pypluginstore-theme-card-sample');
+        if (tileSurface) {
+            tileSurface.classList.add('statusNormal');
+        }
+
+        const tileRow = probe.querySelector('#dashcontent .row, .bannercontent .row, .row');
+        const tileName = probe.querySelector('#itemtablesmall td#name, #itemtablesmall tr td:first-child');
+        if (!tile || !tileName) return null;
+
+        const tileValue = probe.querySelector('#itemtablesmall td#bigtext, #itemtablesmall tr td:first-child + td');
+        const tileStatus = probe.querySelector('#itemtablesmall td#status, #itemtablesmall tr td:first-child + td + td + td');
+        const button = probe.querySelector('.btnstyle3, .btnsmall, .btn.btn-default, .btn');
+        const primaryButton = probe.querySelector('.btnstyle3-sel');
+        const input = probe.querySelector('#searchInput') || probe.querySelector('input');
+        const contentControl = probe.querySelector('#pypluginstore-theme-select-sample') || probe.querySelector('#pypluginstore-theme-content-input');
+        const rowStyle = window.getComputedStyle(tile);
+        const tileSurfaceStyle = tileSurface ? window.getComputedStyle(tileSurface) : null;
+        const tileStyle = hasUsefulSurface(tileSurfaceStyle) ? tileSurfaceStyle : rowStyle;
+        const valueStyle = tileValue ? window.getComputedStyle(tileValue) : tileStyle;
+        const buttonStyle = button ? window.getComputedStyle(button) : null;
+
+        return {
+            rowStyle,
+            tileSurfaceStyle,
+            tileRowStyle: tileRow ? window.getComputedStyle(tileRow) : null,
+            tileStyle,
+            nameStyle: window.getComputedStyle(tileName),
+            valueStyle,
+            statusStyle: tileStatus ? window.getComputedStyle(tileStatus) : valueStyle,
+            buttonStyle,
+            primaryButtonStyle: primaryButton ? window.getComputedStyle(primaryButton) : buttonStyle,
+            input,
+            inputStyle: input ? window.getComputedStyle(input) : null,
+            contentControlStyle: contentControl ? window.getComputedStyle(contentControl) : null
+        };
+    }
+
+    function readDomoticzThemeHoverStyles() {
+        return {
+            tile: {
+                background: readFirstMatchingCssDeclaration(THEME_TILE_HOVER_SELECTORS, ['background', 'background-color']),
+                shadow: readFirstMatchingCssDeclaration(THEME_TILE_HOVER_SELECTORS, ['box-shadow']),
+                border: readFirstMatchingCssDeclaration(THEME_TILE_HOVER_SELECTORS, ['border-color', 'border-top-color'])
+            },
+            title: {
+                background: readFirstMatchingCssDeclaration(THEME_TITLE_HOVER_SELECTORS, ['background', 'background-color']),
+                color: readFirstMatchingCssDeclaration(THEME_TITLE_HOVER_SELECTORS, ['color']),
+                border: readFirstMatchingCssDeclaration(THEME_TITLE_HOVER_SELECTORS, ['border-color', 'border-top-color'])
+            }
+        };
+    }
+
+    function createDomoticzThemeVarWriters(container) {
+        return {
+            setThemeVar: function(name, value, options) {
+                const allowNone = options && options.allowNone;
+                const allowTransparent = options && options.allowTransparent;
+                if (isUsefulThemeValue(value) ||
+                    (allowNone && isNoneThemeValue(value)) ||
+                    (allowTransparent && isTransparentThemeValue(value))) {
+                    container.style.setProperty(name, String(value).trim());
+                }
+            },
+            setRequiredThemeVar: function(name, value) {
+                container.style.setProperty(name, value);
+            }
+        };
+    }
+
+    function applyDomoticzButtonThemeVars(options) {
+        const setThemeVar = options.setThemeVar;
+        const buttonStyle = options.buttonStyle;
+        const cardBg = options.cardBg;
+        const pageBg = options.pageBg;
+        const cardBorder = options.cardBorder;
+        const domoticzAccent = options.domoticzAccent;
+        if (!buttonStyle) {
+            return firstUsefulThemeValue(cardBg, pageBg);
+        }
+
+        const themeButtonBg = readCssVariable('--dz-btn-bg');
+        const buttonComputedBg = readColorBackground(buttonStyle);
+        const buttonBg = firstUsefulThemeValue(themeButtonBg, buttonComputedBg);
+        const buttonBackground = normalizeBackgroundUrls(
+            readBackground(buttonStyle),
+            options.buttonBackgroundDeclaration && options.buttonBackgroundDeclaration.baseUrl
+        );
+        const buttonHoverColorBg = readColorBackgroundValue(options.buttonHoverBg);
+        const cardButtonBg = firstUsefulThemeValue(buttonBackground, buttonComputedBg, buttonBg);
+        const cardButtonHoverBg = firstUsefulThemeValue(buttonHoverColorBg, cardButtonBg);
+        const cardButtonEffectiveBg = firstUsefulThemeValue(cardButtonBg, cardBg, pageBg);
+        const cardButtonUsesPaintedBackground = isUsefulThemeValue(buttonBackground) && !readColorBackgroundValue(buttonBackground);
+        const cardButtonText = cardButtonUsesPaintedBackground && isUsefulThemeValue(buttonStyle.color)
+            ? buttonStyle.color
+            : ensureReadableColor(cardButtonEffectiveBg, firstUsefulThemeValue(
+                readCssVariable('--dz-btn-text'),
+                buttonStyle.color
+            ), {
+                baseBackground: firstUsefulThemeValue(cardBg, pageBg),
+                minContrast: 4.5
+            });
+        const cardButtonBorder = firstUsefulThemeValueOrNone(
+            readBorder(buttonStyle),
+            toCssBorder(readCssVariable('--dz-btn-border')),
+            cardBorder
+        );
+        const buttonEffectiveBg = firstUsefulThemeValue(buttonBg, cardBg, pageBg);
+
+        setThemeVar('--dz-pps-button-bg', buttonBg);
+        setThemeVar('--dz-pps-button-hover-bg', firstUsefulThemeValue(readCssVariable('--dz-btn-hover-bg'), options.buttonHoverBg, buttonBg));
+        setThemeVar('--dz-pps-button-text', ensureReadableColor(buttonEffectiveBg, firstUsefulThemeValue(
+            readCssVariable('--dz-btn-text'),
+            buttonStyle.color
+        ), {
+            baseBackground: firstUsefulThemeValue(cardBg, pageBg),
+            minContrast: 4.5
+        }));
+        setThemeVar('--dz-pps-button-border', ensureVisibleBorder(buttonEffectiveBg, firstUsefulThemeValue(
+            readBorder(buttonStyle),
+            toCssBorder(readCssVariable('--dz-btn-border')),
+            cardBorder
+        ), domoticzAccent), { allowNone: true });
+        setThemeVar('--dz-pps-button-radius', readRadius(buttonStyle));
+        setThemeVar('--dz-pps-button-padding', readBox(buttonStyle, 'padding'));
+        setThemeVar('--dz-pps-button-line-height', buttonStyle.lineHeight);
+        setThemeVar('--dz-pps-button-font-family', buttonStyle.fontFamily);
+        setThemeVar('--dz-pps-button-font-weight', buttonStyle.fontWeight);
+        setThemeVar('--dz-pps-card-button-bg', cardButtonBg);
+        setThemeVar('--dz-pps-card-button-hover-bg', cardButtonHoverBg);
+        setThemeVar('--dz-pps-card-button-text', cardButtonText);
+        setThemeVar('--dz-pps-card-button-border', cardButtonBorder, { allowNone: true });
+
+        return buttonEffectiveBg;
+    }
+
+    function applyDomoticzPrimaryButtonThemeVars(options) {
+        const primaryButtonStyle = options.primaryButtonStyle;
+        if (!primaryButtonStyle) return;
+
+        const cardBg = options.cardBg;
+        const pageBg = options.pageBg;
+        const primaryButtonBg = readBackground(primaryButtonStyle);
+        const primaryEffectiveBg = firstUsefulThemeValue(primaryButtonBg, options.buttonEffectiveBg, cardBg, pageBg);
+        options.setThemeVar('--dz-pps-button-primary-bg', primaryButtonBg);
+        options.setThemeVar('--dz-pps-button-primary-text', ensureReadableColor(primaryEffectiveBg, primaryButtonStyle.color, {
+            baseBackground: firstUsefulThemeValue(cardBg, pageBg),
+            minContrast: 4.5
+        }));
+        options.setThemeVar('--dz-pps-button-primary-border', readBorder(primaryButtonStyle), { allowNone: true });
+    }
+
+    function applyDomoticzInputThemeVars(options) {
+        const input = options.input;
+        const inputStyle = options.inputStyle;
+        if (!inputStyle) return;
+
+        const cardBg = options.cardBg;
+        const pageBg = options.pageBg;
+        const inputBg = readBackground(inputStyle);
+        const inputEffectiveBg = firstUsefulThemeValue(inputBg, cardBg, pageBg);
+        const placeholderStyle = window.getComputedStyle(input, '::placeholder');
+        if (isTransparentThemeValue(inputBg)) {
+            options.setRequiredThemeVar('--dz-pps-input-bg', 'transparent');
+        } else {
+            options.setThemeVar('--dz-pps-input-bg', inputBg);
+        }
+        options.setThemeVar('--dz-pps-input-text', ensureReadableColor(inputEffectiveBg, inputStyle.color, {
+            baseBackground: firstUsefulThemeValue(cardBg, pageBg),
+            minContrast: 4.5
+        }));
+        options.setThemeVar('--dz-pps-input-placeholder', ensureReadableColor(inputEffectiveBg, firstUsefulThemeValue(placeholderStyle && placeholderStyle.color, inputStyle.color), {
+            baseBackground: firstUsefulThemeValue(cardBg, pageBg),
+            minContrast: 3.0,
+            lightText: '#b8c7d8',
+            darkText: '#5c6670'
+        }));
+        options.setThemeVar('--dz-pps-input-placeholder-opacity', placeholderStyle && placeholderStyle.opacity);
+        options.setThemeVar('--dz-pps-input-border', readBorder(inputStyle), { allowNone: true });
+        options.setThemeVar('--dz-pps-input-border-block-end', options.inputBorderBlockEnd, { allowNone: true });
+        options.setThemeVar('--dz-pps-input-radius', readRadius(inputStyle));
     }
 
     function isUsefulThemeValue(value) {
@@ -1437,6 +1561,23 @@
             }
         }
         return '';
+    }
+
+    function firstResolvedThemeValue() {
+        for (let index = 0; index < arguments.length; index++) {
+            if (isUsefulThemeValue(arguments[index]) && !isUnresolvedCssVariableReference(arguments[index])) {
+                return String(arguments[index]).trim();
+            }
+        }
+        return '';
+    }
+
+    function isUnresolvedCssVariableReference(value) {
+        if (typeof value !== 'string') return false;
+        const match = value.trim().match(/^var\(\s*(--[-_a-zA-Z0-9]+)\s*(?:,\s*(.+))?\)$/);
+        if (!match) return false;
+        if (isUsefulThemeValue(readCssVariable(match[1]))) return false;
+        return !isUsefulThemeValue(match[2] || '');
     }
 
     function firstUsefulThemeValueOrNone() {

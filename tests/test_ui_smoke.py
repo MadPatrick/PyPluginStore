@@ -491,6 +491,11 @@ def test_domoticz_theme_uses_panel_and_button_contract_variables():
     assert "border-bottom: 1px solid var(--pps-border)" not in html
     assert "const rawPanelBg = firstUsefulThemeValue(" in script
     assert "const panelIsTransparent = !isUsefulThemeValue(rawPanelBg)" in script
+    assert "const domoticzLegacyItemHoverBg = readCssVariable('--ColorDashboard_Block_or_Span3and4_HOVER')" in script
+    assert "const cardHoverBg = firstResolvedThemeValue(hoverTileBg, readCssVariable('--dz-widget-hover-bg'), domoticzLegacyItemHoverBg, cardBg)" in script
+    assert "function firstResolvedThemeValue()" in script
+    assert "function isUnresolvedCssVariableReference(value)" in script
+    assert "isUsefulThemeValue(readCssVariable(match[1]))" in script
     assert "const panelText = ensureReadableColor(panelBg" in script
     assert "setRequiredThemeVar('--dz-pps-panel-bg', panelBg)" in script
     assert "setRequiredThemeVar('--dz-pps-panel-text', panelText)" in script
@@ -522,11 +527,18 @@ def test_domoticz_theme_uses_panel_and_button_contract_variables():
     assert "const buttonBackgroundDeclaration = readFirstMatchingCssDeclarationInfo(" in script
     assert "const buttonHoverDeclaration = readFirstMatchingCssDeclarationInfo(" in script
     assert "const buttonHoverBg = normalizeBackgroundUrls(buttonHoverDeclaration.value, buttonHoverDeclaration.baseUrl)" in script
+    assert "function createDomoticzThemeProbe()" in script
+    assert "function readDomoticzThemeProbe(probe)" in script
+    assert "function readDomoticzThemeHoverStyles()" in script
+    assert "function createDomoticzThemeVarWriters(container)" in script
+    assert "function applyDomoticzButtonThemeVars(options)" in script
+    assert "function applyDomoticzPrimaryButtonThemeVars(options)" in script
     assert "const themeButtonBg = readCssVariable('--dz-btn-bg')" in script
     assert "const buttonComputedBg = readColorBackground(buttonStyle)" in script
     assert "const buttonBg = firstUsefulThemeValue(themeButtonBg, buttonComputedBg)" in script
-    assert "const buttonBackground = normalizeBackgroundUrls(readBackground(buttonStyle), buttonBackgroundDeclaration.baseUrl)" in script
-    assert "const buttonHoverColorBg = readColorBackgroundValue(buttonHoverBg)" in script
+    assert "const buttonBackground = normalizeBackgroundUrls(" in script
+    assert "options.buttonBackgroundDeclaration && options.buttonBackgroundDeclaration.baseUrl" in script
+    assert "const buttonHoverColorBg = readColorBackgroundValue(options.buttonHoverBg)" in script
     assert "const cardButtonBg = firstUsefulThemeValue(buttonBackground, buttonComputedBg, buttonBg)" in script
     assert "const cardButtonHoverBg = firstUsefulThemeValue(buttonHoverColorBg, cardButtonBg)" in script
     assert "const cardButtonUsesPaintedBackground = isUsefulThemeValue(buttonBackground) && !readColorBackgroundValue(buttonBackground)" in script
@@ -616,9 +628,22 @@ def test_domoticz_theme_search_input_preserves_theme_specific_styles():
     assert "function chooseInputBorderBlockEnd(inputBorder, contentBorder, accentColor)" in script
     assert "function borderColorMatches(borderValue, colorValue)" in script
     assert "function readVisibleBorderColor(style)" in script
+    assert "function applyDomoticzInputThemeVars(options)" in script
     assert "readBorderSide(inputStyle, 'Bottom')" in script
-    assert "setThemeVar('--dz-pps-input-border-block-end', inputBorderBlockEnd, { allowNone: true })" in script
+    assert "options.setThemeVar('--dz-pps-input-border-block-end', options.inputBorderBlockEnd, { allowNone: true })" in script
     assert "setThemeVar('--dz-pps-input-radius', readRadius(inputStyle))" in script
+
+
+def test_filter_controls_share_panel_text_and_markup_pattern():
+    html = (REPO_ROOT / "pypluginstore.html").read_text()
+
+    assert '<label class="filter-control sort-controls" for="sort-select">' in html
+    assert '<label class="filter-control layout-choice"' in html
+    assert '<label class="filter-control installed-choice" for="installed-toggle">' in html
+    assert html.count('class="filter-control-label"') == 3
+    assert "color: var(--pps-panel-text)" in extract_css_rule(html, "#pypluginstore-container .filter-control")
+    assert "color: var(--pps-panel-text)" in extract_css_rule(html, "#pypluginstore-container .sort-controls select")
+    assert "#pypluginstore-container .filters label" not in html
 
 
 def test_platform_badges_are_wired_to_backend_response():
