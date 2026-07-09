@@ -1,5 +1,14 @@
 # Changelog
 
+## [2.16.1](https://github.com/adrighem/PyPluginStore/compare/v2.16.0...v2.16.1) (2026-07-09)
+
+
+### Bug Fixes
+
+* keep API payload device disabled ([11d2e0b](https://github.com/adrighem/PyPluginStore/commit/11d2e0ba2b0bbf52da3f1c4c2a7a23daea434656))
+* report stale self-update git lock ([7029eed](https://github.com/adrighem/PyPluginStore/commit/7029eeddecfe8e8857f5c1bd660f45e991ed8c04)), closes [#94](https://github.com/adrighem/PyPluginStore/issues/94)
+* track PyPluginStore self-update state ([f1d5a2c](https://github.com/adrighem/PyPluginStore/commit/f1d5a2c37da56efe2e179afa44bd882b38f5ed67)), closes [#94](https://github.com/adrighem/PyPluginStore/issues/94)
+
 ## [2.16.0](https://github.com/adrighem/PyPluginStore/compare/v2.15.2...v2.16.0) (2026-07-08)
 
 
