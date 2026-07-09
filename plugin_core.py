@@ -13,7 +13,7 @@ import urllib.parse
 import urllib.request
 import json
 import shutil
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import Domoticz
 
@@ -101,6 +101,64 @@ class HostRuntime:
 
     def self_update_log_file(self):
         return os.path.join(self.plugin_home_folder(), "self_update.log")
+
+    def self_update_state_file(self):
+        return os.path.join(self.plugin_home_folder(), "self_update_state.json")
+
+    def utc_timestamp(self):
+        return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    def read_self_update_state(self):
+        default_state = {
+            "operation": "self_update",
+            "phase": "idle",
+            "message": "",
+            "log_file": self.self_update_log_file(),
+        }
+        state_file = self.self_update_state_file()
+        if not os.path.isfile(state_file):
+            return default_state
+
+        try:
+            with open(state_file, "r", encoding="utf-8") as f:
+                state = json.load(f)
+            if not isinstance(state, dict):
+                raise ValueError("state file does not contain a JSON object")
+            default_state.update(state)
+            default_state["operation"] = "self_update"
+            default_state["log_file"] = default_state.get("log_file") or self.self_update_log_file()
+            return default_state
+        except Exception as e:
+            default_state.update({
+                "phase": "stale_unknown",
+                "message": "Could not read self-update state: " + str(e),
+            })
+            return default_state
+
+    def write_json_atomic(self, path, data):
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        tmp_path = path + ".tmp"
+        with open(tmp_path, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2, sort_keys=True)
+            f.write("\n")
+        os.replace(tmp_path, path)
+
+    def write_self_update_state(self, phase, message="", previous_state=None, **fields):
+        now = self.utc_timestamp()
+        state = dict(previous_state or {})
+        state.setdefault("created_at", now)
+        state.update({
+            "operation": "self_update",
+            "phase": phase,
+            "message": message,
+            "updated_at": now,
+            "log_file": self.self_update_log_file(),
+        })
+        for key, value in fields.items():
+            if value is not None:
+                state[key] = value
+        self.write_json_atomic(self.self_update_state_file(), state)
+        return state
 
     def append_restart_log(self, message):
         timestamp = datetime.now().isoformat(timespec="seconds")
@@ -657,13 +715,23 @@ else:
         if message:
             return False, message, {}
 
-        _, message = self.require_git_success(
+        current_result, message = self.require_git_success(
+            plugin_dir,
+            ["git", "rev-parse", "--verify", "HEAD"],
+            fallback="Could not verify the current PyPluginStore revision.",
+        )
+        if message:
+            return False, message, {}
+        current_commit = current_result.stdout.strip().splitlines()[0] if current_result.stdout.strip() else ""
+
+        target_result, message = self.require_git_success(
             plugin_dir,
             ["git", "rev-parse", "--verify", upstream_ref],
             fallback="Could not verify the PyPluginStore upstream revision.",
         )
         if message:
             return False, message, {}
+        target_commit = target_result.stdout.strip().splitlines()[0] if target_result.stdout.strip() else ""
 
         _, message = self.require_git_success(
             plugin_dir,
@@ -687,7 +755,12 @@ else:
         if ahead:
             return False, "PyPluginStore has local commits; self-update refused.", {}
         if behind == 0:
-            return True, "PyPluginStore is already up-to-date.", {"already_current": True, "upstream_ref": upstream_ref}
+            return True, "PyPluginStore is already up-to-date.", {
+                "already_current": True,
+                "upstream_ref": upstream_ref,
+                "current_commit": current_commit,
+                "target_commit": target_commit,
+            }
 
         valid_candidate, message = self.validate_self_update_candidate(plugin_dir, upstream_ref)
         if not valid_candidate:
@@ -696,11 +769,25 @@ else:
         return True, "Self update pre-flight checks passed.", {
             "already_current": False,
             "upstream_ref": upstream_ref,
+            "current_commit": current_commit,
+            "target_commit": target_commit,
         }
 
-    def build_self_update_helper(self, plugin_dir, log_file, upstream_ref, startup_delay=SELF_UPDATE_STARTUP_DELAY_SECONDS):
+    def build_self_update_helper(
+        self,
+        plugin_dir,
+        log_file,
+        upstream_ref,
+        state_file=None,
+        job_id="",
+        state_template=None,
+        startup_delay=SELF_UPDATE_STARTUP_DELAY_SECONDS,
+    ):
+        state_file = state_file or self.self_update_state_file()
+        state_template = dict(state_template or {})
         helper = """
 import datetime
+import json
 import os
 import subprocess
 import time
@@ -709,6 +796,9 @@ import traceback
 plugin_dir = __PLUGIN_DIR__
 log_file = __LOG_FILE__
 upstream_ref = __UPSTREAM_REF__
+state_file = __STATE_FILE__
+job_id = __JOB_ID__
+state_template = __STATE_TEMPLATE__
 startup_delay = __STARTUP_DELAY__
 safe_directory = os.path.realpath(os.path.abspath(plugin_dir))
 
@@ -720,12 +810,38 @@ def write_log(message):
     except Exception:
         pass
 
+def write_state(phase, message="", **extra):
+    timestamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    state = dict(state_template)
+    state.setdefault("created_at", timestamp)
+    state.update({
+        "operation": "self_update",
+        "phase": phase,
+        "message": message,
+        "updated_at": timestamp,
+        "log_file": log_file,
+        "job_id": job_id,
+        "upstream_ref": upstream_ref,
+    })
+    state.update(extra)
+    try:
+        os.makedirs(os.path.dirname(state_file), exist_ok=True)
+        tmp_state_file = state_file + ".tmp"
+        with open(tmp_state_file, "w", encoding="utf-8") as state_handle:
+            json.dump(state, state_handle, indent=2, sort_keys=True)
+            state_handle.write("\\n")
+        os.replace(tmp_state_file, state_file)
+    except Exception as e:
+        write_log("failed to write state: {}".format(e))
+
 write_log("self update helper started")
+write_state("running", "Self update helper is running.")
 if startup_delay:
     time.sleep(startup_delay)
 
 if not os.path.isdir(os.path.join(plugin_dir, ".git")):
     write_log("not a git repository: {}".format(plugin_dir))
+    write_state("failed", "PyPluginStore is not installed as a git repository.")
     raise SystemExit(1)
 
 env = os.environ.copy()
@@ -754,39 +870,84 @@ def run_command(command, timeout):
             write_log("stderr: {}".format(result.stderr.strip()))
         if result.returncode != 0:
             write_log("self update failed")
+            write_state(
+                "failed",
+                "Self update command failed: {}".format(subprocess.list2cmdline(command)),
+                return_code=result.returncode
+            )
             raise SystemExit(result.returncode)
         return result
     except Exception as e:
         write_log("exception: {}".format(e))
         write_log(traceback.format_exc().strip())
+        write_state("failed", "Self update helper exception: {}".format(e))
         raise
 
 status = run_command(git_command("status", "--porcelain", "--untracked-files=no"), 15)
 if status.stdout.strip():
     write_log("tracked files changed after pre-flight; self update refused")
+    write_state("failed", "Tracked files changed after pre-flight; self update refused.")
     raise SystemExit(1)
 
 run_command(git_command("fetch", "--prune"), 60)
 run_command(git_command("merge", "--ff-only", upstream_ref), 120)
+head = run_command(git_command("rev-parse", "--short", "HEAD"), 15).stdout.strip()
 write_log("self update completed")
+write_state(
+    "applied_needs_reload",
+    "Self update completed. Reload the Plugin Store after Domoticz finishes reloading the plugin.",
+    applied_commit=head
+)
 """
         return (
             helper
             .replace("__PLUGIN_DIR__", repr(plugin_dir))
             .replace("__LOG_FILE__", repr(log_file))
             .replace("__UPSTREAM_REF__", repr(upstream_ref))
+            .replace("__STATE_FILE__", repr(state_file))
+            .replace("__JOB_ID__", repr(job_id))
+            .replace("__STATE_TEMPLATE__", repr(state_template))
             .replace("__STARTUP_DELAY__", repr(startup_delay))
         )
 
     def schedule_self_update(self, plugin_dir):
+        Domoticz.Log("Starting PyPluginStore self-update pre-flight.")
         preflight_success, preflight_message, preflight_plan = self.preflight_self_update(plugin_dir)
         if not preflight_success or preflight_plan.get("already_current"):
+            phase = "confirmed" if preflight_plan.get("already_current") else "preflight_failed"
+            state = self.write_self_update_state(
+                phase,
+                preflight_message,
+                job_id=self.utc_timestamp().replace("-", "").replace(":", ""),
+                upstream_ref=preflight_plan.get("upstream_ref", ""),
+                current_commit=preflight_plan.get("current_commit", ""),
+                target_commit=preflight_plan.get("target_commit", ""),
+            )
+            if preflight_success:
+                Domoticz.Log("PyPluginStore self-update pre-flight completed: " + preflight_message)
+            else:
+                Domoticz.Error("PyPluginStore self-update pre-flight failed: " + preflight_message)
             return preflight_success, preflight_message
+
+        job_id = self.utc_timestamp().replace("-", "").replace(":", "")
+        state = self.write_self_update_state(
+            "scheduled",
+            "Self update helper scheduled.",
+            job_id=job_id,
+            upstream_ref=preflight_plan["upstream_ref"],
+            current_commit=preflight_plan.get("current_commit", ""),
+            target_commit=preflight_plan.get("target_commit", ""),
+        )
+        log_file = self.self_update_log_file()
+        Domoticz.Log("PyPluginStore self-update helper scheduled; detailed output: " + log_file)
 
         helper = self.build_self_update_helper(
             plugin_dir,
-            self.self_update_log_file(),
+            log_file,
             preflight_plan["upstream_ref"],
+            self.self_update_state_file(),
+            job_id,
+            state,
         )
         popen_kwargs = {
             "stdin": subprocess.DEVNULL,
@@ -800,6 +961,13 @@ write_log("self update completed")
             return True, "Self update started after pre-flight checks. Reload the Plugin Store after Domoticz finishes reloading the plugin."
         except Exception as e:
             Domoticz.Error(f"Failed to schedule PyPluginStore self update: {e}")
+            self.write_self_update_state(
+                "failed",
+                str(e),
+                previous_state=state,
+                job_id=job_id,
+                upstream_ref=preflight_plan["upstream_ref"],
+            )
             return False, str(e)
 
     def dependency_install_command(self, requirements_file, target_dir):
@@ -3017,6 +3185,7 @@ class BasePlugin:
 
         host = self.get_host()
         Domoticz.Log(f"PyPluginStore host runtime is: {host.platform_name}")
+        self.finalizeSelfUpdateState()
 
         plugins_dir = host.plugins_dir()
 
@@ -3348,7 +3517,8 @@ class BasePlugin:
                 "installed_match_details": self.installed_plugin_match_details,
                 "update_status": cached_update_status,
                 "versions": versions,
-                "platforms": self.plugin_platforms
+                "platforms": self.plugin_platforms,
+                "self_update": self.getSelfUpdateState()
             })
         elif action == "refresh_update_status":
             self.fetch_registry()
@@ -3365,7 +3535,14 @@ class BasePlugin:
                 "installed_match_details": self.installed_plugin_match_details,
                 "update_status": update_status,
                 "versions": versions,
-                "platforms": self.plugin_platforms
+                "platforms": self.plugin_platforms,
+                "self_update": self.getSelfUpdateState()
+            })
+        elif action == "self_update_status":
+            self.sendApiResponse({
+                "status": "success",
+                "action": action,
+                "self_update": self.getSelfUpdateState()
             })
         elif action == "install":
             plugin_key = payload.get("plugin_key")
@@ -3385,6 +3562,9 @@ class BasePlugin:
                 update_success, update_message = self.UpdatePythonPlugin(entry.author, entry.repository, plugin_key)
                 if update_success:
                     response = {"status": "success", "action": action, "plugin_key": plugin_key}
+                    if plugin_key == self.get_current_plugin_folder():
+                        response["operation"] = "self_update"
+                        response["self_update"] = self.getSelfUpdateState()
                     if update_message:
                         response["message"] = update_message
                     self.sendApiResponse(response)
@@ -3417,6 +3597,51 @@ class BasePlugin:
 
     def getGitUpdateStatus(self, plugin_dir, plugin_key=None, fetch_first=True):
         return self.update_status_service.get_git_update_status(plugin_dir, plugin_key, fetch_first)
+
+    def getSelfUpdateState(self):
+        return self.get_host().read_self_update_state()
+
+    def finalizeSelfUpdateState(self):
+        host = self.get_host()
+        state = host.read_self_update_state()
+        if state.get("phase") != "applied_needs_reload":
+            return state
+
+        plugin_dir = host.plugin_home_folder()
+        result = host.run_git(["git", "rev-parse", "--verify", "HEAD"], plugin_dir, timeout=15)
+        current_commit = result.stdout.strip().splitlines()[0] if result is not None and result.returncode == 0 and result.stdout.strip() else ""
+        target_commit = str(state.get("target_commit") or "").strip()
+
+        if not current_commit:
+            message = "PyPluginStore self-update finalization could not verify the current revision."
+            updated_state = host.write_self_update_state(
+                "stale_unknown",
+                message,
+                previous_state=state,
+            )
+            Domoticz.Error(message + " Detailed output: " + host.self_update_log_file())
+            return updated_state
+
+        if target_commit and current_commit and not (current_commit.startswith(target_commit) or target_commit.startswith(current_commit)):
+            message = "PyPluginStore self-update finalization found " + current_commit + " instead of target " + target_commit + "."
+            updated_state = host.write_self_update_state(
+                "failed",
+                message,
+                previous_state=state,
+                confirmed_commit=current_commit,
+            )
+            Domoticz.Error(message + " Detailed output: " + host.self_update_log_file())
+            return updated_state
+
+        message = "PyPluginStore self-update confirmed."
+        updated_state = host.write_self_update_state(
+            "confirmed",
+            message,
+            previous_state=state,
+            confirmed_commit=current_commit,
+        )
+        Domoticz.Log(message + " Detailed output: " + host.self_update_log_file())
+        return updated_state
 
     def logApiErrorResponse(self, response_dict):
         if not isinstance(response_dict, dict) or response_dict.get("status") != "error":

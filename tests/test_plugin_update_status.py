@@ -1,3 +1,4 @@
+import json
 import os
 from datetime import datetime
 from pathlib import Path
@@ -57,6 +58,10 @@ def safe_git_command(repo_dir, command):
     return ["git", "-c", "safe.directory=" + str(repo_dir.resolve())] + list(command)[1:]
 
 
+def read_json(path):
+    return json.loads(path.read_text())
+
+
 def add_self_update_repository_checks(scenario, manager_dir, status_stdout=""):
     scenario.expect(["git", "rev-parse", "--is-inside-work-tree"], stdout="true\n")
     scenario.expect(["git", "rev-parse", "--show-toplevel"], stdout=str(manager_dir) + "\n")
@@ -67,7 +72,8 @@ def add_self_update_repository_checks(scenario, manager_dir, status_stdout=""):
 def add_self_update_comparison_checks(scenario, upstream_ref="origin/master", comparison_stdout="0\t1\n"):
     scenario.expect(["git", "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"], stdout=upstream_ref + "\n")
     scenario.expect(["git", "fetch", "--prune"])
-    scenario.expect(["git", "rev-parse", "--verify", upstream_ref], stdout="abc123\n")
+    scenario.expect(["git", "rev-parse", "--verify", "HEAD"], stdout="abc1111\n")
+    scenario.expect(["git", "rev-parse", "--verify", upstream_ref], stdout="def2222\n")
     scenario.expect(["git", "merge-base", "--is-ancestor", "HEAD", upstream_ref])
     scenario.expect(["git", "rev-list", "--left-right", "--count", "HEAD..." + upstream_ref], stdout=comparison_stdout)
     return scenario
@@ -577,7 +583,7 @@ def test_update_command_refuses_registry_mismatch(plugin_core_module, tmp_path, 
 
 
 def test_self_update_command_schedules_detached_helper(plugin_core_module, tmp_path, monkeypatch):
-    configure_home(plugin_core_module, tmp_path)
+    _, manager_dir = configure_home(plugin_core_module, tmp_path)
     plugin = plugin_core_module.BasePlugin()
     plugin.plugin_data = {
         "00-PyPluginStore": ["adrighem", "PyPluginStore", "description", "master", ""],
@@ -602,7 +608,12 @@ def test_self_update_command_schedules_detached_helper(plugin_core_module, tmp_p
         lambda self, plugin_dir: (
             True,
             "Self update pre-flight checks passed.",
-            {"already_current": False, "upstream_ref": "origin/master"},
+            {
+                "already_current": False,
+                "upstream_ref": "origin/master",
+                "current_commit": "abc1111",
+                "target_commit": "def2222",
+            },
         ),
     )
     monkeypatch.setattr(plugin_core_module.subprocess, "run", fail_sync_git)
@@ -614,13 +625,30 @@ def test_self_update_command_schedules_detached_helper(plugin_core_module, tmp_p
     assert responses[0]["status"] == "success"
     assert responses[0]["action"] == "update"
     assert responses[0]["plugin_key"] == "00-PyPluginStore"
+    assert responses[0]["operation"] == "self_update"
+    assert responses[0]["self_update"]["phase"] == "scheduled"
+    assert responses[0]["self_update"]["upstream_ref"] == "origin/master"
+    assert responses[0]["self_update"]["current_commit"] == "abc1111"
+    assert responses[0]["self_update"]["target_commit"] == "def2222"
     assert responses[0]["message"].startswith("Self update started after pre-flight checks.")
     assert plugin.update_status["00-PyPluginStore"] == "unknown"
     assert len(popen_calls) == 1
 
+    state = read_json(manager_dir / "self_update_state.json")
+    assert state["operation"] == "self_update"
+    assert state["phase"] == "scheduled"
+    assert state["upstream_ref"] == "origin/master"
+    assert state["current_commit"] == "abc1111"
+    assert state["target_commit"] == "def2222"
+    assert state["log_file"].endswith("self_update.log")
+
     command = popen_calls[0][0][0]
     helper = command[2]
     assert command[:2] == [plugin_core_module.sys.executable, "-c"]
+    assert "self_update_state.json" in helper
+    assert 'write_state("running"' in helper
+    assert '"applied_needs_reload"' in helper
+    assert 'write_state("failed"' in helper
     assert 'git_command("status", "--porcelain", "--untracked-files=no")' in helper
     assert 'git_command("fetch", "--prune")' in helper
     assert 'git_command("merge", "--ff-only", upstream_ref)' in helper
@@ -628,10 +656,12 @@ def test_self_update_command_schedules_detached_helper(plugin_core_module, tmp_p
     assert "safe.directory=" in helper
     assert '["git", "reset", "--hard", "HEAD"]' not in helper
     assert '["git", "pull", "--force"]' not in helper
+    assert any("Starting PyPluginStore self-update pre-flight" in message for message in recorded_messages(plugin_core_module, "Log"))
+    assert any("self_update.log" in message for message in recorded_messages(plugin_core_module, "Log"))
 
 
 def test_self_update_command_reports_preflight_failure(plugin_core_module, tmp_path, monkeypatch):
-    configure_home(plugin_core_module, tmp_path)
+    _, manager_dir = configure_home(plugin_core_module, tmp_path)
     plugin = plugin_core_module.BasePlugin()
     plugin.plugin_data = {
         "00-PyPluginStore": ["adrighem", "PyPluginStore", "description", "master", ""],
@@ -658,6 +688,11 @@ def test_self_update_command_reports_preflight_failure(plugin_core_module, tmp_p
         "plugin_key": "00-PyPluginStore",
         "message": "PyPluginStore has local tracked file changes; self-update refused.",
     }
+    state = read_json(manager_dir / "self_update_state.json")
+    assert state["operation"] == "self_update"
+    assert state["phase"] == "preflight_failed"
+    assert state["message"] == "PyPluginStore has local tracked file changes; self-update refused."
+    assert any("PyPluginStore self-update pre-flight failed" in message for message in recorded_messages(plugin_core_module, "Error"))
 
 
 def test_self_update_preflight_rejects_dirty_tracked_files(plugin_core_module, tmp_path, monkeypatch):
@@ -741,7 +776,12 @@ def test_self_update_preflight_allows_fast_forward_candidate(plugin_core_module,
 
     assert success is True
     assert message == "Self update pre-flight checks passed."
-    assert plan == {"already_current": False, "upstream_ref": "origin/master"}
+    assert plan == {
+        "already_current": False,
+        "upstream_ref": "origin/master",
+        "current_commit": "abc1111",
+        "target_commit": "def2222",
+    }
     scenario.assert_complete()
 
 
@@ -760,7 +800,12 @@ def test_self_update_preflight_reports_already_current(plugin_core_module, tmp_p
 
     assert success is True
     assert message == "PyPluginStore is already up-to-date."
-    assert plan == {"already_current": True, "upstream_ref": "origin/master"}
+    assert plan == {
+        "already_current": True,
+        "upstream_ref": "origin/master",
+        "current_commit": "abc1111",
+        "target_commit": "def2222",
+    }
     scenario.assert_complete()
 
 
@@ -807,7 +852,85 @@ def test_refresh_update_status_command_runs_serial_refresh(plugin_core_module, t
     assert response["data"] == plugin.plugin_data
     assert response["local_plugins"] == ["LocalPlugin"]
     assert response["installed_match_details"]["OtherPlugin"]["source"] == "exact folder key"
+    assert response["self_update"]["phase"] == "idle"
     assert calls == ["fetch_registry", "refresh_status"]
+
+
+def test_self_update_status_command_returns_persisted_state(plugin_core_module, tmp_path, monkeypatch):
+    _, manager_dir = configure_home(plugin_core_module, tmp_path)
+    plugin = plugin_core_module.BasePlugin()
+    plugin.get_host().write_self_update_state(
+        "running",
+        "Self update helper is running.",
+        job_id="job-1",
+        upstream_ref="origin/master",
+        target_commit="def2222",
+    )
+    responses = []
+
+    monkeypatch.setattr(plugin, "sendApiResponse", responses.append)
+
+    plugin.handleApiCommand({"action": "self_update_status"})
+
+    assert responses[0]["status"] == "success"
+    assert responses[0]["action"] == "self_update_status"
+    assert responses[0]["self_update"]["phase"] == "running"
+    assert responses[0]["self_update"]["message"] == "Self update helper is running."
+    assert responses[0]["self_update"]["job_id"] == "job-1"
+    assert responses[0]["self_update"]["target_commit"] == "def2222"
+    assert responses[0]["self_update"]["log_file"] == str(manager_dir / "self_update.log")
+
+
+def test_finalize_self_update_state_confirms_applied_target(plugin_core_module, tmp_path, monkeypatch):
+    _, manager_dir = configure_home(plugin_core_module, tmp_path)
+    plugin = plugin_core_module.BasePlugin()
+    host = plugin.get_host()
+    host.write_self_update_state(
+        "applied_needs_reload",
+        "Self update completed.",
+        job_id="job-1",
+        target_commit="def2222",
+    )
+
+    monkeypatch.setattr(
+        host,
+        "run_git",
+        lambda command, cwd, timeout=15: FakeGitResult(stdout="def2222\n"),
+    )
+
+    plugin.finalizeSelfUpdateState()
+
+    state = read_json(manager_dir / "self_update_state.json")
+    assert state["phase"] == "confirmed"
+    assert state["confirmed_commit"] == "def2222"
+    assert "confirmed" in state["message"].lower()
+    assert any("PyPluginStore self-update confirmed" in message for message in recorded_messages(plugin_core_module, "Log"))
+    assert any("self_update.log" in message for message in recorded_messages(plugin_core_module, "Log"))
+
+
+def test_finalize_self_update_state_reports_unknown_when_head_cannot_be_verified(plugin_core_module, tmp_path, monkeypatch):
+    _, manager_dir = configure_home(plugin_core_module, tmp_path)
+    plugin = plugin_core_module.BasePlugin()
+    host = plugin.get_host()
+    host.write_self_update_state(
+        "applied_needs_reload",
+        "Self update completed.",
+        job_id="job-1",
+        target_commit="def2222",
+    )
+
+    monkeypatch.setattr(
+        host,
+        "run_git",
+        lambda command, cwd, timeout=15: FakeGitResult(stderr="fatal: no head\n", returncode=128),
+    )
+
+    plugin.finalizeSelfUpdateState()
+
+    state = read_json(manager_dir / "self_update_state.json")
+    assert state["phase"] == "stale_unknown"
+    assert "could not verify" in state["message"]
+    assert any("self_update.log" in message for message in recorded_messages(plugin_core_module, "Error"))
 
 
 def test_check_for_update_reports_unknown_without_error(plugin_core_module, tmp_path, monkeypatch):

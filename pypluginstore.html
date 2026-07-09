@@ -798,6 +798,44 @@
         font-weight: 600;
     }
 
+    #pypluginstore-container .self-update-badge {
+        display: inline-block;
+        background: var(--pps-badge-muted-bg);
+        color: var(--pps-text-muted);
+        border: 1px solid var(--pps-badge-muted-border);
+        padding: 2px 8px;
+        border-radius: 10px;
+        font-size: 0.7em;
+        font-weight: 600;
+        letter-spacing: 0;
+    }
+
+    #pypluginstore-container .self-update-badge-scheduled,
+    #pypluginstore-container .self-update-badge-running {
+        background: rgba(74, 158, 218, 0.16);
+        color: var(--pps-primary);
+        border-color: rgba(74, 158, 218, 0.45);
+    }
+
+    #pypluginstore-container .self-update-badge-applied_needs_reload {
+        background: rgba(58, 191, 126, 0.14);
+        color: var(--pps-success);
+        border-color: rgba(58, 191, 126, 0.42);
+    }
+
+    #pypluginstore-container .self-update-badge-failed,
+    #pypluginstore-container .self-update-badge-preflight_failed,
+    #pypluginstore-container .self-update-badge-stale_unknown {
+        background: var(--pps-warning);
+        color: #fff;
+        border-color: var(--pps-warning);
+    }
+
+    #pypluginstore-container .self-update-detail {
+        color: var(--pps-text-muted);
+        font-weight: 600;
+    }
+
     #pypluginstore-container .btn-update-disabled {
         background: var(--pps-card-button-bg) !important;
         color: var(--pps-text-muted) !important;
@@ -866,6 +904,7 @@
     let platformCache = {};
     let installedMatchDetailsCache = {};
     let managerKey = null;
+    let selfUpdateState = null;
     let currentSort = 'name';
     let themeRefreshTimer = null;
     let themeObserver = null;
@@ -2121,7 +2160,7 @@
         }
     }
 
-    async function sendCommand(action, data) {
+    async function sendCommand(action, data, options = {}) {
         if (isLoading) {
             alert("An operation is already in progress. Please wait.");
             return null;
@@ -2137,7 +2176,7 @@
             await fetch(`json.htm?type=command&param=udevice&idx=${payloadIdx}&nvalue=0&svalue=${encodeURIComponent(payload)}`);
             await fetch(`json.htm?type=command&param=switchlight&idx=${triggerIdx}&switchcmd=On`);
 
-            return await pollResponse(action, txId);
+            return await pollResponse(action, txId, options.retries || 120);
         } finally {
             isLoading = false;
         }
@@ -2194,6 +2233,7 @@
                 platformCache = response.platforms || {};
                 installedMatchDetailsCache = response.installed_match_details || {};
                 managerKey = response.manager_key || null;
+                selfUpdateState = response.self_update || null;
                 filterAndRender();
                 setStatus(`Loaded ${Object.keys(response.data).length} plugins.`);
             } else {
@@ -2405,6 +2445,64 @@
         return repoReference.host + '/' + ownerPath.join('/');
     }
 
+    function selfUpdatePhase(state) {
+        return state && state.phase ? String(state.phase) : 'idle';
+    }
+
+    function selfUpdateIsActive(state) {
+        const phase = selfUpdatePhase(state);
+        return phase === 'scheduled' || phase === 'running';
+    }
+
+    function selfUpdateBlocksUpdate(state) {
+        const phase = selfUpdatePhase(state);
+        return selfUpdateIsActive(state) || phase === 'applied_needs_reload';
+    }
+
+    function selfUpdateIsVisible(state) {
+        const phase = selfUpdatePhase(state);
+        return phase !== 'idle' && phase !== 'confirmed';
+    }
+
+    function selfUpdatePhaseLabel(state) {
+        const phase = selfUpdatePhase(state);
+        if (phase === 'scheduled') return 'Update queued';
+        if (phase === 'running') return 'Updating';
+        if (phase === 'applied_needs_reload') return 'Update applied';
+        if (phase === 'preflight_failed') return 'Update refused';
+        if (phase === 'failed') return 'Update failed';
+        if (phase === 'stale_unknown') return 'Update status unknown';
+        return 'Self-update';
+    }
+
+    function renderSelfUpdateState(meta) {
+        if (!selfUpdateIsVisible(selfUpdateState)) return;
+
+        const phase = selfUpdatePhase(selfUpdateState);
+        const message = selfUpdateState.message || selfUpdatePhaseLabel(selfUpdateState);
+        const detail = document.createElement('span');
+        detail.className = 'self-update-detail self-update-detail-' + phase;
+        detail.textContent = 'Self-update: ' + message;
+        if (selfUpdateState.log_file && (phase === 'failed' || phase === 'preflight_failed' || phase === 'stale_unknown')) {
+            detail.title = 'Details: ' + selfUpdateState.log_file;
+        }
+        meta.appendChild(document.createElement('br'));
+        meta.appendChild(detail);
+    }
+
+    function appendSelfUpdateBadge(statusBadges) {
+        if (!selfUpdateIsVisible(selfUpdateState)) return;
+
+        const phase = selfUpdatePhase(selfUpdateState);
+        const badge = document.createElement('span');
+        badge.className = 'self-update-badge self-update-badge-' + phase;
+        badge.textContent = selfUpdatePhaseLabel(selfUpdateState);
+        if (selfUpdateState.log_file) {
+            badge.title = 'Details: ' + selfUpdateState.log_file;
+        }
+        statusBadges.appendChild(badge);
+    }
+
     function renderPlugins(pluginData, installedList) {
         const container = document.getElementById('plugins-list');
         if (!container) return;
@@ -2440,6 +2538,7 @@
             const matchDetails = installedMatchDetailsCache[key] || {};
             const isGit = matchDetails.is_git !== false;
             const hasRepoMismatch = Boolean(matchDetails.registry_mismatch || matchDetails.repo_mismatch || matchDetails.branch_mismatch || updateStatus === 'mismatch');
+            const isManager = key === managerKey;
 
             let timeStr = "";
             if (updatedAt) {
@@ -2504,6 +2603,10 @@
                 statusBadges.appendChild(localBadge);
             }
 
+            if (isManager) {
+                appendSelfUpdateBadge(statusBadges);
+            }
+
             const knownPlatforms = platforms.filter(platformName => platformName === 'linux' || platformName === 'windows');
             if (knownPlatforms.length > 0) {
                 const platformBadges = document.createElement('div');
@@ -2544,6 +2647,10 @@
                 }
             }
 
+            if (isManager) {
+                renderSelfUpdateState(meta);
+            }
+
             if (isInstalled && hasRepoMismatch) {
                 const installedRepo = String(matchDetails.installed_repo || 'unknown repo');
                 const installedBranch = String(matchDetails.installed_branch || '');
@@ -2575,6 +2682,10 @@
                 } else if (hasRepoMismatch) {
                     updateButton.className = 'btn-update btn-update-disabled';
                     updateButton.title = 'Add a matching registry_local.json override before updating this checkout';
+                    updateButton.disabled = true;
+                } else if (isManager && selfUpdateBlocksUpdate(selfUpdateState)) {
+                    updateButton.className = 'btn-update btn-update-disabled';
+                    updateButton.title = selfUpdatePhaseLabel(selfUpdateState);
                     updateButton.disabled = true;
                 } else {
                     const updateClass = updateStatus === 'available' ? 'btn-update btn-update-available' : 'btn-update btn-update-current';
@@ -2639,7 +2750,11 @@
                 const successMessage = response.message || `Successfully completed ${action} for ${pluginKey}. Domoticz restart may be required.`;
                 alert(successMessage);
                 setStatus(successMessage);
-                if (!(action === 'update' && pluginKey === managerKey)) {
+                if (response.operation === 'self_update') {
+                    selfUpdateState = response.self_update || selfUpdateState;
+                    filterAndRender();
+                    pollSelfUpdateStatus();
+                } else if (!(action === 'update' && pluginKey === managerKey)) {
                     await loadPlugins();
                 }
             } else {
@@ -2649,6 +2764,25 @@
         } catch (e) {
             alert("Error: " + e.message);
             setStatus("Operation failed.");
+        }
+    }
+
+    async function pollSelfUpdateStatus(maxAttempts = 30) {
+        for (let attempt = 0; attempt < maxAttempts; attempt++) {
+            await new Promise(r => setTimeout(r, 2000));
+            try {
+                const response = await sendCommand('self_update_status', {}, { retries: 10 });
+                if (response && response.status === 'success') {
+                    selfUpdateState = response.self_update || selfUpdateState;
+                    filterAndRender();
+                    if (!selfUpdateIsActive(selfUpdateState)) {
+                        setStatus(selfUpdateState && selfUpdateState.message ? selfUpdateState.message : "Self-update status refreshed.");
+                        return;
+                    }
+                }
+            } catch (e) {
+                console.warn("Self-update status polling failed", e);
+            }
         }
     }
 
@@ -2667,6 +2801,7 @@
                 platformCache = response.platforms || platformCache;
                 installedMatchDetailsCache = response.installed_match_details || installedMatchDetailsCache;
                 managerKey = response.manager_key || managerKey;
+                selfUpdateState = response.self_update || selfUpdateState;
                 filterAndRender();
                 setStatus("Update status refreshed.");
             } else {

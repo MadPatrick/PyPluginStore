@@ -481,6 +481,7 @@ def test_list_plugins_response_includes_manager_and_update_status(plugin_core_mo
     assert response["installed_match_details"]["OtherPlugin"]["source"] == "exact folder key"
     assert response["installed_match_details"]["OtherPlugin"]["is_git"] is True
     assert response["platforms"] == {}
+    assert response["self_update"]["phase"] == "idle"
 
 
 def test_list_plugins_response_includes_local_plugin_keys(plugin_core_module, tmp_path, monkeypatch):

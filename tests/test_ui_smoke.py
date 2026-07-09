@@ -362,6 +362,19 @@ def test_self_update_does_not_reload_plugin_list_immediately():
     assert "action === 'update' && pluginKey === managerKey" in script
 
 
+def test_self_update_state_is_cached_rendered_and_polled():
+    script = load_inline_script()
+
+    assert "let selfUpdateState = null;" in script
+    assert "selfUpdateState = response.self_update || null;" in script
+    assert "function renderSelfUpdateState" in script
+    assert "function selfUpdateIsActive" in script
+    assert "async function pollSelfUpdateStatus" in script
+    assert "sendCommand('self_update_status', {}, { retries: 10 })" in script
+    assert "response.operation === 'self_update'" in script
+    assert "pollSelfUpdateStatus();" in script
+
+
 def test_installed_filter_state_is_persisted_in_local_storage():
     script = load_inline_script()
 
