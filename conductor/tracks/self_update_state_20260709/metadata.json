@@ -1,0 +1,8 @@
+{
+  "track_id": "self_update_state_20260709",
+  "type": "implementation",
+  "status": "completed",
+  "created_at": "2026-07-09T13:11:02Z",
+  "updated_at": "2026-07-09T14:34:12Z",
+  "description": "Make PyPluginStore self-update an explicit asynchronous operation with durable backend state, UI status, and clear Domoticz logging."
+}
