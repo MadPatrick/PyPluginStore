@@ -660,6 +660,37 @@ def test_self_update_command_schedules_detached_helper(plugin_core_module, tmp_p
     assert any("self_update.log" in message for message in recorded_messages(plugin_core_module, "Log"))
 
 
+def test_self_update_helper_reports_git_index_lock(plugin_core_module, tmp_path):
+    _, manager_dir = configure_home(plugin_core_module, tmp_path)
+    (manager_dir / ".git").mkdir()
+    (manager_dir / ".git" / "index.lock").write_text("")
+    runtime = plugin_core_module.LinuxHostRuntime(plugin_core_module.Parameters)
+
+    helper = runtime.build_self_update_helper(
+        str(manager_dir),
+        str(manager_dir / "self_update.log"),
+        "origin/master",
+        str(manager_dir / "self_update_state.json"),
+        "job-1",
+        {"current_commit": "abc1111", "target_commit": "def2222"},
+        startup_delay=0,
+    )
+    result = plugin_core_module.subprocess.run(
+        [plugin_core_module.sys.executable, "-c", helper],
+        stdout=plugin_core_module.subprocess.PIPE,
+        stderr=plugin_core_module.subprocess.PIPE,
+        text=True,
+        timeout=15,
+    )
+
+    assert result.returncode == 1
+    state = read_json(manager_dir / "self_update_state.json")
+    assert state["phase"] == "failed"
+    assert str(manager_dir / ".git" / "index.lock") in state["message"]
+    assert "remove the lock file if it is stale" in state["message"]
+    assert "git index lock exists" in (manager_dir / "self_update.log").read_text()
+
+
 def test_self_update_command_reports_preflight_failure(plugin_core_module, tmp_path, monkeypatch):
     _, manager_dir = configure_home(plugin_core_module, tmp_path)
     plugin = plugin_core_module.BasePlugin()
@@ -711,6 +742,27 @@ def test_self_update_preflight_rejects_dirty_tracked_files(plugin_core_module, t
     assert message == "PyPluginStore has local tracked file changes; self-update refused."
     assert plan == {}
     scenario.assert_complete()
+
+
+def test_self_update_preflight_rejects_git_index_lock(plugin_core_module, tmp_path, monkeypatch):
+    _, manager_dir = configure_home(plugin_core_module, tmp_path)
+    (manager_dir / ".git").mkdir()
+    (manager_dir / ".git" / "index.lock").write_text("")
+    runtime = plugin_core_module.LinuxHostRuntime(plugin_core_module.Parameters)
+
+    monkeypatch.setattr(runtime, "command_available", lambda command: command == "git")
+    monkeypatch.setattr(
+        runtime,
+        "run_git",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("unexpected git command")),
+    )
+
+    success, message, plan = runtime.preflight_self_update(manager_dir)
+
+    assert success is False
+    assert str(manager_dir / ".git" / "index.lock") in message
+    assert "remove the lock file if it is stale" in message
+    assert plan == {}
 
 
 def test_self_update_preflight_reports_dubious_ownership(plugin_core_module, tmp_path, monkeypatch):

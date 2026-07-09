@@ -146,6 +146,19 @@ class HostRuntime:
     def self_update_state_file(self):
         return os.path.join(self.plugin_home_folder(), "self_update_state.json")
 
+    def git_index_lock_file(self, plugin_dir):
+        return os.path.join(plugin_dir, ".git", "index.lock")
+
+    def has_git_index_lock(self, plugin_dir):
+        return os.path.exists(self.git_index_lock_file(plugin_dir))
+
+    def git_index_lock_message(self, plugin_dir):
+        lock_file = self.git_index_lock_file(plugin_dir)
+        return (
+            "PyPluginStore git index lock exists at " + lock_file
+            + "; stop any running git command, then remove the lock file if it is stale and retry self-update."
+        )
+
     def utc_timestamp(self):
         return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
@@ -703,6 +716,8 @@ else:
             return False, "Git is not available, so PyPluginStore cannot self-update.", {}
         if not os.path.isdir(os.path.join(plugin_dir, ".git")):
             return False, "PyPluginStore is not installed as a git repository.", {}
+        if self.has_git_index_lock(plugin_dir):
+            return False, self.git_index_lock_message(plugin_dir), {}
 
         result, message = self.require_git_success(
             plugin_dir,
@@ -806,6 +821,8 @@ else:
         valid_candidate, message = self.validate_self_update_candidate(plugin_dir, upstream_ref)
         if not valid_candidate:
             return False, message, {}
+        if self.has_git_index_lock(plugin_dir):
+            return False, self.git_index_lock_message(plugin_dir), {}
 
         return True, "Self update pre-flight checks passed.", {
             "already_current": False,
@@ -842,6 +859,7 @@ job_id = __JOB_ID__
 state_template = __STATE_TEMPLATE__
 startup_delay = __STARTUP_DELAY__
 safe_directory = os.path.realpath(os.path.abspath(plugin_dir))
+index_lock_file = os.path.join(plugin_dir, ".git", "index.lock")
 
 def write_log(message):
     timestamp = datetime.datetime.now().isoformat(timespec="seconds")
@@ -891,6 +909,19 @@ env["GIT_TERMINAL_PROMPT"] = "0"
 def git_command(*args):
     return ["git", "-c", "safe.directory=" + safe_directory] + list(args)
 
+def git_index_lock_message():
+    return (
+        "PyPluginStore git index lock exists at {}; "
+        "stop any running git command, then remove the lock file if it is stale and retry self-update."
+    ).format(index_lock_file)
+
+def refuse_git_index_lock():
+    if os.path.exists(index_lock_file):
+        message = git_index_lock_message()
+        write_log(message)
+        write_state("failed", message)
+        raise SystemExit(1)
+
 def run_command(command, timeout):
     write_log("running: {}".format(subprocess.list2cmdline(command)))
     try:
@@ -924,6 +955,7 @@ def run_command(command, timeout):
         write_state("failed", "Self update helper exception: {}".format(e))
         raise
 
+refuse_git_index_lock()
 status = run_command(git_command("status", "--porcelain", "--untracked-files=no"), 15)
 if status.stdout.strip():
     write_log("tracked files changed after pre-flight; self update refused")
@@ -931,6 +963,7 @@ if status.stdout.strip():
     raise SystemExit(1)
 
 run_command(git_command("fetch", "--prune"), 60)
+refuse_git_index_lock()
 run_command(git_command("merge", "--ff-only", upstream_ref), 120)
 head = run_command(git_command("rev-parse", "--short", "HEAD"), 15).stdout.strip()
 write_log("self update completed")
