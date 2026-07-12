@@ -718,6 +718,12 @@
             "linux"
         ]
     ],
+        "Weatherinfo": [
+        "MadPatrick",
+        "domoticz_weatherinfo",
+        "Weather Forecast for Domoticz based on Buienradar and Open_Meteo",
+        "main"
+    ],
     "Domoticz-TinyTUYA-Plugin": [
         "Xenomes",
         "Domoticz-TinyTUYA-Plugin",
