@@ -2688,5 +2688,15 @@
         "Domoticz-Indevolt-plugin",
         "A plugin for the Indevolt Solid and Powerflex home batteries",
         "main"
+    ],
+    "Zonneplan-Domoticz-Plugin": [
+        "frepke",
+        "Zonneplan-Domoticz-Plugin",
+        "Zonneplan-Domoticz-Plugin plugin for Domoticz",
+        "master",
+        "",
+        [
+            "linux"
+        ]
     ]
 }

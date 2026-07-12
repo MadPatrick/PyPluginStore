@@ -3576,6 +3576,37 @@
                 ]
             },
             "policy_action": "kept_low_confidence_new"
+        },
+        "Zonneplan-Domoticz-Plugin": {
+            "identity": "github.com/frepke/zonneplan-domoticz-plugin@master",
+            "owner": "frepke",
+            "repository": "Zonneplan-Domoticz-Plugin",
+            "branch": "master",
+            "registry_platforms": [
+                "linux"
+            ],
+            "source": "detected",
+            "confidence": "medium",
+            "evidence_class": "linux_evidence",
+            "reviewed": false,
+            "last_detection": {
+                "platforms": [
+                    "linux"
+                ],
+                "confidence": "medium",
+                "evidence_class": "linux_evidence",
+                "scores": {
+                    "linux": 8,
+                    "windows": 0,
+                    "both": 0
+                },
+                "reasons": [
+                    "README.md: uses sudo",
+                    "README.md: uses systemd",
+                    "README.md: uses shell commands"
+                ]
+            },
+            "policy_action": "accepted_new_medium_or_high"
         }
     }
 }
