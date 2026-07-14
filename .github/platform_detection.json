@@ -919,6 +919,37 @@
             "evidence_class": "legacy",
             "reviewed": false
         },
+        "WeatherInfo": {
+            "identity": "github.com/madpatrick/domoticz_weatherinfo@main",
+            "owner": "MadPatrick",
+            "repository": "domoticz_weatherinfo",
+            "branch": "main",
+            "registry_platforms": [
+                "linux"
+            ],
+            "source": "detected",
+            "confidence": "medium",
+            "evidence_class": "linux_evidence",
+            "reviewed": false,
+            "last_detection": {
+                "platforms": [
+                    "linux"
+                ],
+                "confidence": "medium",
+                "evidence_class": "linux_evidence",
+                "scores": {
+                    "linux": 8,
+                    "windows": 0,
+                    "both": 0
+                },
+                "reasons": [
+                    "README.md: uses sudo",
+                    "README.md: uses systemd",
+                    "README.md: uses shell commands"
+                ]
+            },
+            "policy_action": "accepted_new_medium_or_high"
+        },
         "Domoticz-TinyTUYA-Plugin": {
             "identity": "github.com/xenomes/domoticz-tinytuya-plugin@master",
             "owner": "Xenomes",
