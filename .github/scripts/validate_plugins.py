@@ -14,6 +14,7 @@ DEFAULT_GIT_HOST = "github.com"
 SUPPORTED_GIT_HOSTS = ("github.com", "gitlab.com", "codeberg.org")
 VALID_PLATFORM_METADATA_SOURCES = {"unknown", "legacy_detected", "detected", "reviewed"}
 VALID_PLATFORM_METADATA_CONFIDENCE = {"unknown", "low", "medium", "high"}
+GIT_REMOTE_TIMEOUT_SECONDS = 30
 
 try:
     from detect_plugin_platforms import get_registry_entry_platforms
@@ -169,7 +170,17 @@ def validate_repository(author, repository, branch):
     env = os.environ.copy()
     env["GIT_TERMINAL_PROMPT"] = "0"
     repo_clone_cmd = ["git", "ls-remote", "--heads", repo_url, branch]
-    result = subprocess.run(repo_clone_cmd, env=env, capture_output=True, text=True)
+    try:
+        result = subprocess.run(
+            repo_clone_cmd,
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=GIT_REMOTE_TIMEOUT_SECONDS,
+        )
+    except subprocess.TimeoutExpired:
+        print(f"Timed out executing command after {GIT_REMOTE_TIMEOUT_SECONDS}s: {' '.join(repo_clone_cmd)}")
+        return False
     if result.returncode != 0:
         print(f"Error executing command: {' '.join(repo_clone_cmd)}")
         print(f"stdout: {result.stdout}")

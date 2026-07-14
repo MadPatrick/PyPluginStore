@@ -161,15 +161,16 @@ def test_validate_registry_entry_rejects_invalid_entry(validate_plugins_module, 
         validate_plugins_module.validate_registry_entry(key, entry)
 
 
-def test_validate_repository_uses_argument_list_and_disables_prompts(validate_plugins_module, monkeypatch):
+def test_validate_repository_uses_argument_list_disables_prompts_and_sets_timeout(validate_plugins_module, monkeypatch):
     calls = []
 
-    def fake_run(cmd, env, capture_output, text):
+    def fake_run(cmd, env, capture_output, text, timeout):
         calls.append({
             "cmd": cmd,
             "env": env,
             "capture_output": capture_output,
             "text": text,
+            "timeout": timeout,
         })
         return SimpleNamespace(returncode=0, stdout="abc123\trefs/heads/main\n", stderr="")
 
@@ -186,12 +187,13 @@ def test_validate_repository_uses_argument_list_and_disables_prompts(validate_pl
     assert calls[0]["env"]["GIT_TERMINAL_PROMPT"] == "0"
     assert calls[0]["capture_output"] is True
     assert calls[0]["text"] is True
+    assert calls[0]["timeout"] == validate_plugins_module.GIT_REMOTE_TIMEOUT_SECONDS
 
 
 def test_validate_repository_uses_supported_host_urls(validate_plugins_module, monkeypatch):
     calls = []
 
-    def fake_run(cmd, env, capture_output, text):
+    def fake_run(cmd, env, capture_output, text, timeout):
         calls.append(cmd)
         return SimpleNamespace(returncode=0, stdout="abc123\trefs/heads/main\n", stderr="")
 
@@ -226,12 +228,21 @@ def test_validate_repository_uses_supported_host_urls(validate_plugins_module, m
 
 
 def test_validate_repository_requires_matching_branch_output(validate_plugins_module, monkeypatch):
-    def fake_run(cmd, env, capture_output, text):
+    def fake_run(cmd, env, capture_output, text, timeout):
         return SimpleNamespace(returncode=0, stdout="", stderr="")
 
     monkeypatch.setattr(validate_plugins_module.subprocess, "run", fake_run)
 
     assert validate_plugins_module.validate_repository("owner", "empty-repo", "main") is False
+
+
+def test_validate_repository_returns_false_on_timeout(validate_plugins_module, monkeypatch):
+    def fake_run(cmd, env, capture_output, text, timeout):
+        raise validate_plugins_module.subprocess.TimeoutExpired(cmd, timeout)
+
+    monkeypatch.setattr(validate_plugins_module.subprocess, "run", fake_run)
+
+    assert validate_plugins_module.validate_repository("owner", "slow-repo", "main") is False
 
 
 def test_validate_root_plugin_py_accepts_present_file_on_supported_hosts(validate_plugins_module):
