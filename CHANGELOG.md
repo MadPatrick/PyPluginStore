@@ -1,5 +1,19 @@
 # Changelog
 
+## [2.17.0](https://github.com/adrighem/PyPluginStore/compare/v2.16.1...v2.17.0) (2026-07-14)
+
+
+### Features
+
+* update Domoticz Python plugin registry ([fcba4a6](https://github.com/adrighem/PyPluginStore/commit/fcba4a621018f6eb6169776d57b010577f32cf27))
+
+
+### Bug Fixes
+
+* align WeatherInfo registry metadata ([cb7e6cf](https://github.com/adrighem/PyPluginStore/commit/cb7e6cfc8b083c63613099eb1a0bd0af199922fb))
+* bound registry git validation ([c4ea849](https://github.com/adrighem/PyPluginStore/commit/c4ea849c36ac06684ec54abc3824fecbea8e5584))
+* retry transient registry fetches ([7adaadd](https://github.com/adrighem/PyPluginStore/commit/7adaadd655781305fcd81858984a229c31cad505))
+
 ## [2.16.1](https://github.com/adrighem/PyPluginStore/compare/v2.16.0...v2.16.1) (2026-07-09)
 
 
