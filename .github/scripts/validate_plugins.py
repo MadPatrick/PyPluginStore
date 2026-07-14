@@ -2,6 +2,7 @@ import os
 import sys
 import json
 import subprocess
+import time
 
 # Adjust path relative to the current script location
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -15,6 +16,8 @@ SUPPORTED_GIT_HOSTS = ("github.com", "gitlab.com", "codeberg.org")
 VALID_PLATFORM_METADATA_SOURCES = {"unknown", "legacy_detected", "detected", "reviewed"}
 VALID_PLATFORM_METADATA_CONFIDENCE = {"unknown", "low", "medium", "high"}
 GIT_REMOTE_TIMEOUT_SECONDS = 30
+ROOT_PLUGIN_MAX_ATTEMPTS = 3
+ROOT_PLUGIN_RETRY_DELAY_SECONDS = 1
 
 try:
     from detect_plugin_platforms import get_registry_entry_platforms
@@ -188,18 +191,27 @@ def validate_repository(author, repository, branch):
     return result.returncode == 0 and bool(result.stdout.strip())
 
 
-def validate_root_plugin_py(key, author, repository, branch, opener=None):
+def validate_root_plugin_py(key, author, repository, branch, opener=None, sleeper=time.sleep):
     if check_root_plugin_py is None:
         print("Root plugin.py validation is unavailable because cleanup_registry.py could not be imported.")
         return False
 
-    result = check_root_plugin_py(
-        key,
-        [author, repository, "", branch],
-        opener=opener,
-    )
-    if result.status == "present":
-        return True
+    for attempt in range(1, ROOT_PLUGIN_MAX_ATTEMPTS + 1):
+        result = check_root_plugin_py(
+            key,
+            [author, repository, "", branch],
+            opener=opener,
+        )
+        if result.status == "present":
+            return True
+        if result.status != "error" or attempt == ROOT_PLUGIN_MAX_ATTEMPTS:
+            break
+
+        print(
+            f"Root plugin.py check for {key} returned an error; "
+            f"retrying ({attempt}/{ROOT_PLUGIN_MAX_ATTEMPTS - 1})."
+        )
+        sleeper(ROOT_PLUGIN_RETRY_DELAY_SECONDS)
 
     detail = f" ({result.reason})" if result.reason else ""
     print(f"Root plugin.py check failed for {key}: {result.status}{detail}")

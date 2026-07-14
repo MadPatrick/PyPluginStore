@@ -275,6 +275,38 @@ def test_validate_root_plugin_py_accepts_present_file_on_supported_hosts(validat
     ]
 
 
+def test_validate_root_plugin_py_retries_transient_errors(validate_plugins_module):
+    attempts = []
+    delays = []
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc_value, traceback):
+            return False
+
+        def read(self, size=-1):
+            return b'import Domoticz\n'
+
+    def fake_urlopen(request, timeout=0):
+        attempts.append(request.full_url)
+        if len(attempts) == 1:
+            raise TimeoutError("read timed out")
+        return FakeResponse()
+
+    assert validate_plugins_module.validate_root_plugin_py(
+        "RetryPlugin",
+        "owner",
+        "repo",
+        "main",
+        opener=fake_urlopen,
+        sleeper=delays.append,
+    ) is True
+    assert len(attempts) == 2
+    assert delays == [validate_plugins_module.ROOT_PLUGIN_RETRY_DELAY_SECONDS]
+
+
 @pytest.mark.parametrize(
     ("content", "error"),
     [
