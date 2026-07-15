@@ -2596,19 +2596,12 @@
 
             header.appendChild(headerMain);
 
-            if (isLocal) {
-                const localBadge = document.createElement('span');
-                localBadge.className = 'local-badge';
-                localBadge.textContent = 'Local';
-                statusBadges.appendChild(localBadge);
-            }
-
             if (isManager) {
                 appendSelfUpdateBadge(statusBadges);
             }
 
             const knownPlatforms = platforms.filter(platformName => platformName === 'linux' || platformName === 'windows');
-            if (knownPlatforms.length > 0) {
+            if (knownPlatforms.length > 0 || isLocal) {
                 const platformBadges = document.createElement('div');
                 platformBadges.className = 'pps-card-header-platforms platform-badges';
                 knownPlatforms.forEach(platformName => {
@@ -2617,6 +2610,12 @@
                     platformBadge.textContent = platformName === 'linux' ? 'Linux' : 'Windows';
                     platformBadges.appendChild(platformBadge);
                 });
+                if (isLocal) {
+                    const localBadge = document.createElement('span');
+                    localBadge.className = 'local-badge';
+                    localBadge.textContent = 'Local';
+                    platformBadges.appendChild(localBadge);
+                }
                 header.appendChild(platformBadges);
             }
 

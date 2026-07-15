@@ -692,8 +692,10 @@ def test_card_header_badges_use_multiline_rows():
     assert "headerMain.appendChild(badge)" in script
     assert "statusBadges.appendChild(nonGitBadge)" in script
     assert "statusBadges.appendChild(mismatchBadge)" in script
-    assert "statusBadges.appendChild(localBadge)" in script
     assert "platformBadges.className = 'pps-card-header-platforms platform-badges'" in script
+    assert "if (knownPlatforms.length > 0 || isLocal)" in script
+    assert "platformBadges.appendChild(localBadge)" in script
+    assert "statusBadges.appendChild(localBadge)" not in script
     assert "if (statusBadges.childNodes.length > 0)" in script
 
 
