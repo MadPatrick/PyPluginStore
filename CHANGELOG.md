@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.17.1](https://github.com/adrighem/PyPluginStore/compare/v2.17.0...v2.17.1) (2026-07-15)
+
+
+### Bug Fixes
+
+* align local badge with platforms ([6e89809](https://github.com/adrighem/PyPluginStore/commit/6e898091ff3a95edcf34a76a925901bc888d8592)), closes [#98](https://github.com/adrighem/PyPluginStore/issues/98)
+
 ## [2.17.0](https://github.com/adrighem/PyPluginStore/compare/v2.16.1...v2.17.0) (2026-07-14)
 
 
