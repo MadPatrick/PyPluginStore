@@ -1,5 +1,19 @@
 # Changelog
 
+## [2.18.0](https://github.com/adrighem/PyPluginStore/compare/v2.17.1...v2.18.0) (2026-07-16)
+
+
+### Features
+
+* **registry:** add atomic local registry service ([35b30ec](https://github.com/adrighem/PyPluginStore/commit/35b30ec2ed6c3374b35875b9783ba635251493fd)), closes [#95](https://github.com/adrighem/PyPluginStore/issues/95)
+* **registry:** expose local registry management API ([b147193](https://github.com/adrighem/PyPluginStore/commit/b147193ad80b737ab0c6681826757ced8d5f59d9)), closes [#95](https://github.com/adrighem/PyPluginStore/issues/95)
+* **ui:** manage local registry entries ([697d93d](https://github.com/adrighem/PyPluginStore/commit/697d93d0ab10a52ff362a6510220f3279efbd39c)), closes [#95](https://github.com/adrighem/PyPluginStore/issues/95)
+
+
+### Documentation
+
+* **registry:** document local registry manager ([6c29421](https://github.com/adrighem/PyPluginStore/commit/6c294210312f60ec0acd46d9ae6bec6e3e535cbf)), closes [#95](https://github.com/adrighem/PyPluginStore/issues/95)
+
 ## [2.17.1](https://github.com/adrighem/PyPluginStore/compare/v2.17.0...v2.17.1) (2026-07-15)
 
 
