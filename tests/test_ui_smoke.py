@@ -699,6 +699,90 @@ def test_card_header_badges_use_multiline_rows():
     assert "if (statusBadges.childNodes.length > 0)" in script
 
 
+def test_local_registry_uses_one_accessible_native_dialog():
+    html = (REPO_ROOT / "pypluginstore.html").read_text()
+
+    assert 'id="manage-local-registry"' in html
+    assert '>Local registry</button>' in html
+    assert html.count("<dialog ") == 1
+    assert 'id="local-registry-dialog"' in html
+    assert 'aria-labelledby="local-registry-title"' in html
+    assert 'id="local-registry-title"' in html
+    assert 'id="local-registry-close"' in html
+    assert 'aria-label="Close local registry manager"' in html
+    assert 'id="local-registry-alert"' in html
+    assert 'role="alert"' in html
+    assert 'aria-live="assertive"' in html
+
+
+def test_local_registry_form_has_only_approved_editable_fields():
+    html = (REPO_ROOT / "pypluginstore.html").read_text()
+    dialog = html[
+        html.index('<dialog id="local-registry-dialog"'):
+        html.index("</dialog>")
+    ]
+
+    for field_id in [
+        "local-registry-key",
+        "local-registry-source",
+        "local-registry-description",
+        "local-registry-branch",
+    ]:
+        assert f'for="{field_id}"' in dialog
+        assert f'id="{field_id}"' in dialog
+
+    assert 'id="local-registry-public-seed"' in dialog
+    assert 'maxlength="128"' in dialog
+    assert 'maxlength="1000"' in dialog
+    assert 'maxlength="500"' in dialog
+    assert 'maxlength="255"' in dialog
+    assert "platform" not in dialog.lower()
+
+
+def test_local_registry_ui_wires_revisioned_crud_actions():
+    script = load_inline_script()
+
+    assert "sendCommand('get_local_registry', {})" in script
+    assert "sendCommand('upsert_local_registry_entry'," in script
+    assert "sendCommand('delete_local_registry_entry'," in script
+    assert "expected_revision: localRegistryRevision" in script
+    assert "original_key: localRegistryOriginalKey" in script
+    assert "field_errors" in script
+    assert "reload_required" in script
+    assert "localRegistryKey.readOnly = Boolean(localRegistryOriginalKey)" in script
+    assert "await loadPlugins()" in extract_js_function(
+        script, "saveLocalRegistryEntry"
+    )
+
+
+def test_local_registry_delete_confirmation_is_inline_and_explains_installed_state():
+    script = load_inline_script()
+
+    assert "local-registry-delete-confirm" in script
+    assert "The installed plugin will remain on disk." in script
+    assert "may become Repo mismatch" in script
+    assert "confirm(`Delete local registry" not in script
+
+
+def test_local_registry_dialog_uses_theme_tokens_and_modern_layout():
+    html = (REPO_ROOT / "pypluginstore.html").read_text()
+    dialog_rule = extract_css_rule(
+        html, "#pypluginstore-container .local-registry-dialog"
+    )
+    form_rule = extract_css_rule(
+        html, "#pypluginstore-container .local-registry-form"
+    )
+
+    assert "background: var(--pps-panel-bg)" in dialog_rule
+    assert "color: var(--pps-panel-text)" in dialog_rule
+    assert "max-block-size:" in dialog_rule
+    assert "inline-size:" in dialog_rule
+    assert "display: grid" in form_rule
+    assert "gap:" in form_rule
+    assert ".local-registry-dialog::backdrop" in html
+    assert ".local-registry-field :is(input, textarea, select):focus-visible" in html
+
+
 def test_custom_ui_references_existing_icon_asset():
     html = (REPO_ROOT / "pypluginstore.html").read_text()
 

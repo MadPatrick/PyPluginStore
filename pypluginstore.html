@@ -714,6 +714,212 @@
         border-color: var(--pps-border-hover) !important;
     }
 
+    #pypluginstore-container .btn-local-registry {
+        background: var(--pps-button-bg);
+        border: var(--pps-button-border) !important;
+        color: var(--pps-button-text);
+        flex: 0 0 auto !important;
+    }
+
+    #pypluginstore-container .btn-local-registry:hover {
+        background: var(--pps-button-hover-bg);
+        border-color: var(--pps-border-hover) !important;
+    }
+
+    #pypluginstore-container .local-registry-dialog {
+        background: var(--pps-panel-bg);
+        border: var(--pps-panel-border);
+        border-radius: var(--pps-radius);
+        box-shadow: var(--pps-shadow);
+        color: var(--pps-panel-text);
+        inline-size: min(720px, calc(100% - 2rem));
+        max-block-size: min(82vh, 760px);
+        padding: 0;
+    }
+
+    #pypluginstore-container .local-registry-dialog[open] {
+        display: grid;
+        grid-template-rows: auto minmax(0, 1fr);
+    }
+
+    #pypluginstore-container .local-registry-dialog::backdrop {
+        background: rgba(0, 0, 0, 0.58);
+    }
+
+    #pypluginstore-container .local-registry-dialog-header {
+        align-items: center;
+        border-block-end: var(--pps-divider-border);
+        display: flex;
+        gap: 16px;
+        justify-content: space-between;
+        padding: 16px 20px;
+    }
+
+    #pypluginstore-container .local-registry-dialog-header h2 {
+        color: var(--pps-text-heading);
+        font-size: 1.15em;
+        margin: 0;
+    }
+
+    #pypluginstore-container .local-registry-close {
+        flex: 0 0 auto;
+        min-inline-size: 40px;
+        padding-inline: 12px;
+    }
+
+    #pypluginstore-container .local-registry-dialog-body {
+        overflow-y: auto;
+        overscroll-behavior: contain;
+        padding: 20px;
+    }
+
+    #pypluginstore-container .local-registry-view[hidden],
+    #pypluginstore-container .local-registry-alert[hidden],
+    #pypluginstore-container .local-registry-empty[hidden],
+    #pypluginstore-container .local-registry-reload[hidden] {
+        display: none;
+    }
+
+    #pypluginstore-container .local-registry-alert {
+        background: var(--pps-danger-tint);
+        border: 1px solid var(--pps-danger-border);
+        border-radius: var(--pps-button-radius);
+        color: var(--pps-danger);
+        margin-block-end: 16px;
+        padding: 10px 12px;
+    }
+
+    #pypluginstore-container .local-registry-path {
+        color: var(--pps-text-muted);
+        font-size: 0.82em;
+        overflow-wrap: anywhere;
+    }
+
+    #pypluginstore-container .local-registry-list-header,
+    #pypluginstore-container .local-registry-entry-header,
+    #pypluginstore-container .local-registry-actions {
+        align-items: center;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        justify-content: space-between;
+    }
+
+    #pypluginstore-container .local-registry-list-header {
+        margin-block: 14px;
+    }
+
+    #pypluginstore-container .local-registry-list-header button,
+    #pypluginstore-container .local-registry-entry-actions button,
+    #pypluginstore-container .local-registry-actions button,
+    #pypluginstore-container .local-registry-delete-confirm button {
+        flex: 0 0 auto;
+    }
+
+    #pypluginstore-container .local-registry-entries {
+        display: grid;
+        gap: 10px;
+    }
+
+    #pypluginstore-container .local-registry-entry {
+        background: var(--pps-card-bg);
+        border: var(--pps-card-border);
+        border-radius: var(--pps-radius);
+        display: grid;
+        gap: 8px;
+        padding: 12px;
+    }
+
+    #pypluginstore-container .local-registry-entry-title {
+        color: var(--pps-text-heading);
+        font-weight: 600;
+        overflow-wrap: anywhere;
+    }
+
+    #pypluginstore-container .local-registry-entry-meta {
+        color: var(--pps-text-muted);
+        font-size: 0.82em;
+        overflow-wrap: anywhere;
+    }
+
+    #pypluginstore-container .local-registry-entry-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+
+    #pypluginstore-container .local-registry-delete-confirm {
+        background: var(--pps-danger-tint);
+        border: 1px solid var(--pps-danger-border);
+        border-radius: var(--pps-button-radius);
+        display: grid;
+        gap: 10px;
+        padding: 10px;
+    }
+
+    #pypluginstore-container .local-registry-delete-confirm p {
+        margin: 0;
+    }
+
+    #pypluginstore-container .local-registry-form {
+        display: grid;
+        gap: 14px;
+    }
+
+    #pypluginstore-container .local-registry-form-intro {
+        color: var(--pps-text-muted);
+        margin: 0;
+    }
+
+    #pypluginstore-container .local-registry-field {
+        display: grid;
+        gap: 5px;
+    }
+
+    #pypluginstore-container .local-registry-field label {
+        color: var(--pps-text-heading);
+        font-weight: 600;
+    }
+
+    #pypluginstore-container .local-registry-field :is(input, textarea, select) {
+        background: var(--pps-input-bg);
+        border: var(--pps-input-border);
+        border-block-end: var(--pps-input-border-block-end);
+        border-radius: var(--pps-input-radius);
+        box-sizing: border-box;
+        color: var(--pps-input-text);
+        font: inherit;
+        inline-size: 100%;
+        padding: 8px 10px;
+    }
+
+    #pypluginstore-container .local-registry-field :is(input, textarea, select):focus-visible {
+        border-color: var(--pps-border-hover);
+        box-shadow: 0 0 0 3px var(--pps-focus-ring);
+        outline: none;
+    }
+
+    #pypluginstore-container .local-registry-field :is(input, textarea, select)[aria-invalid="true"] {
+        border-color: var(--pps-danger);
+    }
+
+    #pypluginstore-container .local-registry-field textarea {
+        min-block-size: 84px;
+        resize: vertical;
+    }
+
+    #pypluginstore-container .local-registry-field-error {
+        color: var(--pps-danger);
+        font-size: 0.8em;
+        min-block-size: 1em;
+    }
+
+    #pypluginstore-container .local-registry-danger {
+        background: var(--pps-danger-tint);
+        border-color: var(--pps-danger-border);
+        color: var(--pps-danger);
+    }
+
     #pypluginstore-container .installed-badge {
         display: inline-block;
         background: var(--pps-badge-installed-bg);
@@ -852,6 +1058,7 @@
             <h1>PyPluginStore: Plugin Store</h1>
         </div>
         <div class="header-actions">
+            <button id="manage-local-registry" class="btn-local-registry" type="button">Local registry</button>
             <button id="refresh-update-status" class="btn-refresh" type="button">Refresh status</button>
             <button id="restart-domoticz" class="btn-restart" type="button">Restart Domoticz</button>
             <div id="pypluginstore-status">Initializing...</div>
@@ -885,6 +1092,70 @@
         </label>
     </div>
 
+    <dialog id="local-registry-dialog" class="local-registry-dialog" aria-labelledby="local-registry-title">
+        <header class="local-registry-dialog-header">
+            <h2 id="local-registry-title">Local registry</h2>
+            <button id="local-registry-close" class="local-registry-close" type="button" aria-label="Close local registry manager">Close</button>
+        </header>
+        <div class="local-registry-dialog-body">
+            <div id="local-registry-alert" class="local-registry-alert" role="alert" aria-live="assertive" hidden></div>
+            <button id="local-registry-reload" class="local-registry-reload" type="button" hidden>Reload entries</button>
+
+            <section id="local-registry-list-view" class="local-registry-view" aria-labelledby="local-registry-list-title">
+                <h3 id="local-registry-list-title">Entries</h3>
+                <p id="local-registry-path" class="local-registry-path"></p>
+                <div class="local-registry-list-header">
+                    <p>Local entries override matching plugins from the public registry.</p>
+                    <button id="local-registry-add" type="button">Add entry</button>
+                </div>
+                <p id="local-registry-empty" class="local-registry-empty">No local registry entries.</p>
+                <div id="local-registry-entries" class="local-registry-entries"></div>
+            </section>
+
+            <section id="local-registry-form-view" class="local-registry-view" aria-labelledby="local-registry-form-title" hidden>
+                <h3 id="local-registry-form-title">Add local entry</h3>
+                <p class="local-registry-form-intro">Saving validates the entry locally. It does not contact the repository or install the plugin.</p>
+                <form id="local-registry-form" class="local-registry-form" novalidate>
+                    <div id="local-registry-public-seed-field" class="local-registry-field">
+                        <label for="local-registry-public-seed">Start from a public plugin</label>
+                        <select id="local-registry-public-seed">
+                            <option value="">Blank entry</option>
+                        </select>
+                    </div>
+
+                    <div class="local-registry-field">
+                        <label for="local-registry-key">Plugin key</label>
+                        <input id="local-registry-key" name="key" type="text" maxlength="128" required aria-describedby="local-registry-key-error" autocomplete="off">
+                        <span id="local-registry-key-error" class="local-registry-field-error"></span>
+                    </div>
+
+                    <div class="local-registry-field">
+                        <label for="local-registry-source">Repository source</label>
+                        <input id="local-registry-source" name="repository_source" type="text" maxlength="1000" required aria-describedby="local-registry-source-error" autocomplete="off" spellcheck="false" placeholder="https://github.com/owner/repository">
+                        <span id="local-registry-source-error" class="local-registry-field-error"></span>
+                    </div>
+
+                    <div class="local-registry-field">
+                        <label for="local-registry-description">Description</label>
+                        <textarea id="local-registry-description" name="description" maxlength="500" aria-describedby="local-registry-description-error"></textarea>
+                        <span id="local-registry-description-error" class="local-registry-field-error"></span>
+                    </div>
+
+                    <div class="local-registry-field">
+                        <label for="local-registry-branch">Branch</label>
+                        <input id="local-registry-branch" name="branch" type="text" maxlength="255" required value="master" aria-describedby="local-registry-branch-error" autocomplete="off" spellcheck="false">
+                        <span id="local-registry-branch-error" class="local-registry-field-error"></span>
+                    </div>
+
+                    <div class="local-registry-actions">
+                        <button id="local-registry-cancel" type="button">Back to entries</button>
+                        <button id="local-registry-save" type="submit">Save entry</button>
+                    </div>
+                </form>
+            </section>
+        </div>
+    </dialog>
+
     <div id="plugins-list" class="grid">
         <!-- Plugins will be rendered here -->
     </div>
@@ -905,11 +1176,19 @@
     let installedMatchDetailsCache = {};
     let managerKey = null;
     let selfUpdateState = null;
+    let localRegistryEntries = [];
+    let localRegistryRevision = '';
+    let localRegistryPath = '';
+    let localRegistryReadOnly = false;
+    let localRegistryOriginalKey = '';
+    let localRegistryFormDirty = false;
+    let localRegistryPendingDeleteKey = '';
     let currentSort = 'name';
     let themeRefreshTimer = null;
     let themeObserver = null;
     const INSTALLED_FILTER_STORAGE_KEY = 'pypluginstore.installedOnly';
     const LAYOUT_STORAGE_KEY = 'pypluginstore.layoutMode';
+    const LOCAL_REGISTRY_PAYLOAD_MAX_LENGTH = 2000;
     const LAYOUT_PYPLUGIN = 'pyplugin';
     const LAYOUT_THEME = 'theme';
     const THEME_TILE_HOVER_SELECTORS = [
@@ -2101,6 +2380,8 @@
                 setLayoutMode(layoutToggle.checked ? LAYOUT_THEME : LAYOUT_PYPLUGIN, true);
             };
         }
+        setupLocalRegistryDialog();
+        document.getElementById('manage-local-registry').onclick = openLocalRegistry;
         document.getElementById('refresh-update-status').onclick = refreshUpdateStatus;
         document.getElementById('restart-domoticz').onclick = restartDomoticz;
         document.getElementById('sort-select').onchange = function() {
@@ -2241,6 +2522,385 @@
             }
         } catch (e) {
             setStatus(e.message);
+        }
+    }
+
+    function setupLocalRegistryDialog() {
+        const dialog = document.getElementById('local-registry-dialog');
+        if (!dialog || dialog.dataset.initialized === 'true') return;
+        dialog.dataset.initialized = 'true';
+
+        document.getElementById('local-registry-close').onclick = requestCloseLocalRegistry;
+        document.getElementById('local-registry-add').onclick = function() {
+            showLocalRegistryForm(null);
+        };
+        document.getElementById('local-registry-cancel').onclick = function() {
+            if (!localRegistryFormDirty || confirm('Discard your unsaved local registry changes?')) {
+                showLocalRegistryList();
+            }
+        };
+        document.getElementById('local-registry-reload').onclick = loadLocalRegistry;
+        document.getElementById('local-registry-public-seed').onchange = function() {
+            prefillLocalRegistryFromPublic(this.value);
+        };
+
+        const form = document.getElementById('local-registry-form');
+        form.addEventListener('input', function() {
+            localRegistryFormDirty = true;
+        });
+        form.addEventListener('submit', function(event) {
+            event.preventDefault();
+            saveLocalRegistryEntry();
+        });
+        dialog.addEventListener('cancel', function(event) {
+            event.preventDefault();
+            requestCloseLocalRegistry();
+        });
+        dialog.addEventListener('close', function() {
+            localRegistryPendingDeleteKey = '';
+        });
+    }
+
+    async function openLocalRegistry() {
+        const dialog = document.getElementById('local-registry-dialog');
+        showLocalRegistryList();
+        setLocalRegistryAlert('');
+        document.getElementById('local-registry-path').textContent = 'Loading registry_local.json...';
+        if (!dialog.open) dialog.showModal();
+        await loadLocalRegistry();
+    }
+
+    function requestCloseLocalRegistry() {
+        if (localRegistryFormDirty && !confirm('Discard your unsaved local registry changes?')) {
+            return;
+        }
+        localRegistryFormDirty = false;
+        document.getElementById('local-registry-dialog').close();
+    }
+
+    function setLocalRegistryAlert(message, showReload = false) {
+        const alertRegion = document.getElementById('local-registry-alert');
+        const reloadButton = document.getElementById('local-registry-reload');
+        alertRegion.textContent = message || '';
+        alertRegion.hidden = !message;
+        reloadButton.hidden = !showReload;
+    }
+
+    async function loadLocalRegistry() {
+        try {
+            const response = await sendCommand('get_local_registry', {});
+            if (!response) return;
+
+            localRegistryRevision = response.revision || '';
+            localRegistryPath = response.path || '';
+            localRegistryReadOnly = response.status !== 'success' || Boolean(response.read_only);
+            localRegistryEntries = response.status === 'success' ? (response.entries || []) : [];
+            document.getElementById('local-registry-path').textContent = localRegistryPath ? 'File: ' + localRegistryPath : 'registry_local.json';
+            if (response.status === 'success') {
+                setLocalRegistryAlert('');
+            } else {
+                setLocalRegistryAlert(response.message || 'Could not read registry_local.json.');
+            }
+            renderLocalRegistryEntries();
+            updateLocalRegistryMutationState();
+        } catch (error) {
+            localRegistryReadOnly = true;
+            setLocalRegistryAlert('Could not load registry_local.json: ' + error.message, true);
+            updateLocalRegistryMutationState();
+        }
+    }
+
+    function updateLocalRegistryMutationState() {
+        document.getElementById('local-registry-add').disabled = localRegistryReadOnly;
+        document.getElementById('local-registry-save').disabled = localRegistryReadOnly;
+    }
+
+    function renderLocalRegistryEntries() {
+        const container = document.getElementById('local-registry-entries');
+        const empty = document.getElementById('local-registry-empty');
+        container.replaceChildren();
+        empty.hidden = localRegistryEntries.length > 0;
+
+        for (const entry of localRegistryEntries) {
+            const item = document.createElement('article');
+            item.className = 'local-registry-entry';
+
+            const header = document.createElement('div');
+            header.className = 'local-registry-entry-header';
+            const title = document.createElement('span');
+            title.className = 'local-registry-entry-title';
+            title.textContent = entry.key;
+            header.appendChild(title);
+
+            const badges = document.createElement('span');
+            if (entry.installed) {
+                const installed = document.createElement('span');
+                installed.className = 'installed-badge';
+                installed.textContent = 'Installed';
+                badges.appendChild(installed);
+            }
+            if (entry.overrides_public) {
+                const override = document.createElement('span');
+                override.className = 'local-badge';
+                override.textContent = 'Public override';
+                badges.appendChild(override);
+            }
+            header.appendChild(badges);
+            item.appendChild(header);
+
+            const source = document.createElement('div');
+            source.className = 'local-registry-entry-meta';
+            source.textContent = entry.repository_source || 'Repository source needs repair';
+            item.appendChild(source);
+
+            const branch = document.createElement('div');
+            branch.className = 'local-registry-entry-meta';
+            branch.textContent = 'Branch: ' + (entry.branch || 'master');
+            item.appendChild(branch);
+
+            if (!entry.valid) {
+                const error = document.createElement('div');
+                error.className = 'local-registry-alert';
+                error.textContent = Object.values(entry.errors || {}).join(' ') || 'This entry needs repair.';
+                item.appendChild(error);
+            }
+
+            if (localRegistryPendingDeleteKey === entry.key) {
+                item.appendChild(renderLocalRegistryDeleteConfirmation(entry));
+            } else {
+                const actions = document.createElement('div');
+                actions.className = 'local-registry-entry-actions';
+                const editButton = document.createElement('button');
+                editButton.type = 'button';
+                editButton.textContent = 'Edit';
+                editButton.disabled = localRegistryReadOnly;
+                editButton.onclick = function() {
+                    showLocalRegistryForm(entry);
+                };
+                const deleteButton = document.createElement('button');
+                deleteButton.type = 'button';
+                deleteButton.className = 'local-registry-danger';
+                deleteButton.textContent = 'Delete';
+                deleteButton.disabled = localRegistryReadOnly;
+                deleteButton.onclick = function() {
+                    localRegistryPendingDeleteKey = entry.key;
+                    renderLocalRegistryEntries();
+                };
+                actions.appendChild(editButton);
+                actions.appendChild(deleteButton);
+                item.appendChild(actions);
+            }
+
+            container.appendChild(item);
+        }
+    }
+
+    function renderLocalRegistryDeleteConfirmation(entry) {
+        const confirmation = document.createElement('div');
+        confirmation.className = 'local-registry-delete-confirm';
+        confirmation.setAttribute('role', 'alert');
+        const message = document.createElement('p');
+        let detail = 'Delete the local override for ' + entry.key + '?';
+        if (entry.installed) {
+            detail += ' The installed plugin will remain on disk. It may become Repo mismatch when the public registry entry becomes active.';
+        }
+        message.textContent = detail;
+        confirmation.appendChild(message);
+
+        const actions = document.createElement('div');
+        actions.className = 'local-registry-actions';
+        const cancelButton = document.createElement('button');
+        cancelButton.type = 'button';
+        cancelButton.textContent = 'Cancel';
+        cancelButton.onclick = function() {
+            localRegistryPendingDeleteKey = '';
+            renderLocalRegistryEntries();
+        };
+        const deleteButton = document.createElement('button');
+        deleteButton.type = 'button';
+        deleteButton.className = 'local-registry-danger';
+        deleteButton.textContent = 'Delete override';
+        deleteButton.onclick = function() {
+            deleteLocalRegistryEntry(entry.key);
+        };
+        actions.appendChild(cancelButton);
+        actions.appendChild(deleteButton);
+        confirmation.appendChild(actions);
+        return confirmation;
+    }
+
+    function showLocalRegistryList() {
+        document.getElementById('local-registry-list-view').hidden = false;
+        document.getElementById('local-registry-form-view').hidden = true;
+        localRegistryOriginalKey = '';
+        localRegistryFormDirty = false;
+        localRegistryPendingDeleteKey = '';
+        clearLocalRegistryFieldErrors();
+        renderLocalRegistryEntries();
+    }
+
+    function showLocalRegistryForm(entry) {
+        localRegistryOriginalKey = entry ? entry.key : '';
+        document.getElementById('local-registry-list-view').hidden = true;
+        document.getElementById('local-registry-form-view').hidden = false;
+        document.getElementById('local-registry-form-title').textContent = entry ? 'Edit local entry' : 'Add local entry';
+        document.getElementById('local-registry-public-seed-field').hidden = Boolean(entry);
+        populateLocalRegistryPublicSeeds();
+
+        const localRegistryKey = document.getElementById('local-registry-key');
+        localRegistryKey.value = entry ? entry.key : '';
+        localRegistryKey.readOnly = Boolean(localRegistryOriginalKey);
+        document.getElementById('local-registry-source').value = entry ? entry.repository_source : '';
+        document.getElementById('local-registry-description').value = entry ? entry.description : '';
+        document.getElementById('local-registry-branch').value = entry ? (entry.branch || 'master') : 'master';
+        document.getElementById('local-registry-public-seed').value = '';
+        clearLocalRegistryFieldErrors();
+        setLocalRegistryAlert('');
+        localRegistryFormDirty = false;
+        localRegistryKey.focus();
+    }
+
+    function populateLocalRegistryPublicSeeds() {
+        const select = document.getElementById('local-registry-public-seed');
+        const blank = document.createElement('option');
+        blank.value = '';
+        blank.textContent = 'Blank entry';
+        select.replaceChildren(blank);
+        const localKeys = new Set(localRegistryEntries.map(entry => entry.key));
+        for (const key of Object.keys(pluginCache || {}).sort((a, b) => a.localeCompare(b))) {
+            if (localKeys.has(key) || key === managerKey) continue;
+            const option = document.createElement('option');
+            option.value = key;
+            option.textContent = formatPluginDisplayName(key);
+            select.appendChild(option);
+        }
+    }
+
+    function prefillLocalRegistryFromPublic(pluginKey) {
+        if (!pluginKey || !pluginCache || !pluginCache[pluginKey]) return;
+        const info = pluginCache[pluginKey];
+        const author = String(info[0] || '');
+        const repository = String(info[1] || '');
+        const branch = String(info[3] || 'master');
+        document.getElementById('local-registry-key').value = pluginKey;
+        document.getElementById('local-registry-source').value = repository ? buildRepoUrl(author, repository, branch) : author;
+        document.getElementById('local-registry-description').value = String(info[2] || '');
+        document.getElementById('local-registry-branch').value = branch;
+        localRegistryFormDirty = true;
+        clearLocalRegistryFieldErrors();
+    }
+
+    function clearLocalRegistryFieldErrors() {
+        const fields = ['key', 'source', 'description', 'branch'];
+        for (const field of fields) {
+            const input = document.getElementById('local-registry-' + field);
+            const error = document.getElementById('local-registry-' + field + '-error');
+            if (input) input.setAttribute('aria-invalid', 'false');
+            if (error) error.textContent = '';
+        }
+    }
+
+    function showLocalRegistryFieldErrors(fieldErrors) {
+        clearLocalRegistryFieldErrors();
+        const fieldIds = {
+            key: 'key',
+            repository_source: 'source',
+            description: 'description',
+            branch: 'branch'
+        };
+        for (const [field, message] of Object.entries(fieldErrors || {})) {
+            const fieldId = fieldIds[field];
+            if (!fieldId) continue;
+            const input = document.getElementById('local-registry-' + fieldId);
+            const error = document.getElementById('local-registry-' + fieldId + '-error');
+            input.setAttribute('aria-invalid', 'true');
+            error.textContent = message;
+        }
+    }
+
+    function localRegistryFormEntry() {
+        return {
+            key: document.getElementById('local-registry-key').value.trim(),
+            repository_source: document.getElementById('local-registry-source').value.trim(),
+            description: document.getElementById('local-registry-description').value.trim(),
+            branch: document.getElementById('local-registry-branch').value.trim() || 'master'
+        };
+    }
+
+    function localRegistryRequestFitsBridge(entry) {
+        const request = {
+            action: 'upsert_local_registry_entry',
+            tx_id: '0000000000000',
+            expected_revision: localRegistryRevision,
+            original_key: localRegistryOriginalKey,
+            entry
+        };
+        return JSON.stringify(request).length <= LOCAL_REGISTRY_PAYLOAD_MAX_LENGTH;
+    }
+
+    async function saveLocalRegistryEntry() {
+        const form = document.getElementById('local-registry-form');
+        clearLocalRegistryFieldErrors();
+        if (!form.reportValidity()) return;
+
+        const entry = localRegistryFormEntry();
+        if (!localRegistryRequestFitsBridge(entry)) {
+            setLocalRegistryAlert('This entry is too large for the Domoticz API bridge. Shorten the repository source or description.');
+            return;
+        }
+
+        try {
+            const response = await sendCommand('upsert_local_registry_entry', {
+                expected_revision: localRegistryRevision,
+                original_key: localRegistryOriginalKey,
+                entry
+            });
+            if (response && response.status === 'success') {
+                localRegistryRevision = response.revision || localRegistryRevision;
+                localRegistryFormDirty = false;
+                await loadLocalRegistry();
+                await loadPlugins();
+                showLocalRegistryList();
+                setStatus('Local registry entry saved.');
+                return;
+            }
+
+            const fieldErrors = response && response.field_errors ? response.field_errors : {};
+            showLocalRegistryFieldErrors(fieldErrors);
+            setLocalRegistryAlert(
+                response ? response.message : 'Could not save the local registry entry.',
+                Boolean(response && response.reload_required)
+            );
+            if (response && response.read_only) {
+                localRegistryReadOnly = true;
+                updateLocalRegistryMutationState();
+            }
+        } catch (error) {
+            setLocalRegistryAlert('Could not save the local registry entry: ' + error.message, true);
+        }
+    }
+
+    async function deleteLocalRegistryEntry(pluginKey) {
+        try {
+            const response = await sendCommand('delete_local_registry_entry', {
+                expected_revision: localRegistryRevision,
+                plugin_key: pluginKey
+            });
+            if (response && response.status === 'success') {
+                localRegistryRevision = response.revision || localRegistryRevision;
+                localRegistryPendingDeleteKey = '';
+                await loadLocalRegistry();
+                await loadPlugins();
+                showLocalRegistryList();
+                setStatus('Local registry override deleted.');
+                return;
+            }
+            setLocalRegistryAlert(
+                response ? response.message : 'Could not delete the local registry entry.',
+                Boolean(response && response.reload_required)
+            );
+        } catch (error) {
+            setLocalRegistryAlert('Could not delete the local registry entry: ' + error.message, true);
         }
     }
 
