@@ -2,7 +2,28 @@
 
 Use `registry_local.json` for plugins that should only appear in your own PyPluginStore installation: private repositories, local forks, test branches, or plugins that are not ready for the public registry.
 
-Create the file in the installed PyPluginStore folder:
+## Manage Entries in the UI
+
+Open the Plugin Store custom page and select **Local registry** in the header. The manager lets you:
+
+- Add a blank entry for a private, local, or unpublished plugin.
+- Select a public plugin and prefill a new local override.
+- Edit the repository source, description, or branch of an existing local entry.
+- Delete an override without deleting the installed plugin directory.
+
+The plugin key cannot be renamed while editing. To use a different key, create a new entry and delete the old one.
+
+Saving validates the values locally; it does not contact the repository or install the plugin. Use SSH keys or the Git credential configuration of the Domoticz OS user for private access. Repository URLs containing HTTP usernames or passwords are rejected so credentials are not persisted through the UI.
+
+Every save and delete includes a revision of the file that was loaded. If another browser tab or process changes `registry_local.json`, PyPluginStore keeps your form values and asks you to reload instead of overwriting the newer file.
+
+If the file contains malformed JSON, the dialog shows the file path and parse error and stays read-only. Correct the file manually, then select **Reload entries**.
+
+UI-created and UI-edited entries use one complete **Repository source** and do not write platform metadata. Existing entries that are not edited keep their current representation and platform values.
+
+## Advanced Manual Editing
+
+The UI is the recommended workflow. You can still create or edit the file directly in the installed PyPluginStore folder:
 
 - Linux: `/path/to/domoticz/plugins/00-PyPluginStore/registry_local.json`
 - Windows: `C:\path\to\domoticz\plugins\00-PyPluginStore\registry_local.json`
@@ -11,9 +32,9 @@ PyPluginStore loads the public `registry.json` first, then overlays `registry_lo
 
 After editing the file, click **Refresh status** in the Plugin Store UI or restart Domoticz.
 
-## Recommended Format
+## Manual File Format
 
-Use object-style entries. The file itself must be valid JSON: double-quoted strings, no comments, and no trailing commas.
+Use object-style entries. The file itself must be valid JSON: double-quoted strings, no comments, and no trailing commas. Manual entries may keep separate `owner` and `repository` fields and optional platform metadata for backward compatibility.
 
 ```json
 {
@@ -39,7 +60,7 @@ The top-level key, `MyPlugin` in this example, is the plugin key and install fol
 | `branch` | Branch to clone or update, usually `main` or `master`. Defaults to `master` if omitted. |
 | `platforms` | Optional list: `["linux"]`, `["windows"]`, or `["linux", "windows"]`. Omitted means unknown, not blocked. |
 
-`author` and `repo` are accepted aliases for older files, but new entries should use `owner` and `repository`.
+`author` and `repo` are accepted aliases for older files. The UI stores a complete clone source in `owner` and omits `repository`; both representations are supported.
 
 ## Common Use Cases
 
@@ -133,8 +154,10 @@ Use the same key as the public entry. PyPluginStore keeps the public registry av
 
 You have two good options:
 
-- If the installed repo is the one you want, add a matching `registry_local.json` entry with the same owner, repository, and branch.
+- If the installed repo is the one you want, open **Local registry** and add a matching repository source and branch.
 - If you want the managed registry repo instead, remove the mismatched plugin folder, install the registry entry, and restart Domoticz. This works as long as the `plugin.py` metadata keeps the same `<plugin key="...">`, because Domoticz uses that key to match the existing hardware entry.
+
+Deleting a local override never removes the installed plugin. If a public entry becomes active again and points elsewhere, the installed checkout may show **Repo mismatch** until the registry and checkout agree.
 
 ### Test a Feature Branch
 
@@ -181,10 +204,12 @@ Point a local entry at a branch before you publish or submit it to the public re
 
 ## Troubleshooting
 
-Validate the JSON before restarting:
+For manually edited files, validate the JSON before reloading:
 
 ```bash
 python -m json.tool /path/to/domoticz/plugins/00-PyPluginStore/registry_local.json
 ```
+
+Then open **Local registry** and select **Reload entries**, or click **Refresh status** on the main page.
 
 If a private plugin appears but install fails, check that the Domoticz OS user can run `git ls-remote` against the same URL and branch. PyPluginStore cannot install a private repository until Git access works outside PyPluginStore too.

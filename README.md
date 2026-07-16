@@ -142,9 +142,9 @@ Domoticz only shows the **Custom** menu when custom pages exist and the menu is 
 
 Use `registry_local.json` when you want your Domoticz installation to track a different branch of a public plugin, or when you want to add a plugin that is not in the public registry yet.
 
-Create `registry_local.json` in the installed PyPluginStore folder. Local entries are loaded after the public registry, override matching public entries, and show a **Local** badge in the Plugin Store UI.
+Open **Local registry** in the Plugin Store header to add, edit, or delete entries. You can start from an existing public plugin to create an override, or create a blank entry for a private, local, or unpublished repository. Local entries are loaded after the public registry, override matching public entries, and show a **Local** badge.
 
-See the [`registry_local.json` how-to](docs/registry_local.md) for object-style examples covering branch overrides, GitHub, GitLab, Codeberg, and local repositories. If a plugin card shows **Repo mismatch**, see the [Repo Mismatch warning](docs/registry_local.md#repo-mismatch-warning).
+The manager validates entries without contacting the repository and saves changes atomically. Existing manual files remain supported. See the [`registry_local.json` how-to](docs/registry_local.md) for the UI workflow, advanced object-style examples, and GitHub, GitLab, Codeberg, SSH, and local repository sources. If a plugin card shows **Repo mismatch**, see the [Repo Mismatch warning](docs/registry_local.md#repo-mismatch-warning).
 
 ### Restart Button
 
