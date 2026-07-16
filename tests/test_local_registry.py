@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from plugin_core_helpers import configure_home
+from plugin_core_helpers import configure_home, write_plugin_py
 
 
 def make_service(plugin_core_module, tmp_path):
@@ -181,3 +181,216 @@ def test_atomic_replace_failure_preserves_registry(
     assert error.value.code == "registry_write_failed"
     assert registry_file.read_text(encoding="utf-8") == original
     assert not (registry_file.parent / "registry_local.json.tmp").exists()
+
+
+def test_get_local_registry_api_returns_derived_entry_metadata(
+    plugin_core_module, tmp_path, monkeypatch
+):
+    plugin, _, registry_file = make_service(plugin_core_module, tmp_path)
+    plugins_dir = registry_file.parents[1]
+    write_plugin_py(
+        plugins_dir / "PublicPlugin",
+        key="PUBLIC",
+        name="PublicPlugin",
+    )
+    registry_file.write_text(
+        json.dumps(
+            {
+                "PublicPlugin": [
+                    "local-owner",
+                    "public-plugin",
+                    "Local override",
+                    "main",
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    plugin.public_registry_data = {
+        "PublicPlugin": [
+            "public-owner",
+            "public-plugin",
+            "Public description",
+            "master",
+        ]
+    }
+    plugin.apply_registry_sources(
+        plugin.public_registry_data,
+        plugin.local_registry_service.read_document().entries,
+    )
+    responses = []
+    monkeypatch.setattr(plugin, "sendApiResponse", responses.append)
+
+    plugin.handleApiCommand({"action": "get_local_registry"})
+
+    response = responses[0]
+    assert response["status"] == "success"
+    assert response["action"] == "get_local_registry"
+    assert response["path"] == str(registry_file)
+    assert response["read_only"] is False
+    assert response["entries"] == [
+        {
+            "key": "PublicPlugin",
+            "repository_source": (
+                "https://github.com/local-owner/public-plugin.git"
+            ),
+            "description": "Local override",
+            "branch": "main",
+            "overrides_public": True,
+            "installed": True,
+            "valid": True,
+            "errors": {},
+        }
+    ]
+
+
+def test_get_local_registry_api_keeps_malformed_file_read_only(
+    plugin_core_module, tmp_path, monkeypatch
+):
+    plugin, _, registry_file = make_service(plugin_core_module, tmp_path)
+    registry_file.write_text("{broken", encoding="utf-8")
+    responses = []
+    monkeypatch.setattr(plugin, "sendApiResponse", responses.append)
+
+    plugin.handleApiCommand({"action": "get_local_registry"})
+
+    response = responses[0]
+    assert response["status"] == "error"
+    assert response["code"] == "invalid_local_registry"
+    assert response["read_only"] is True
+    assert response["path"] == str(registry_file)
+
+
+def test_upsert_api_reapplies_cached_public_registry_without_network(
+    plugin_core_module, tmp_path, monkeypatch
+):
+    plugin, service, registry_file = make_service(plugin_core_module, tmp_path)
+    plugin.public_registry_data = {
+        "PublicPlugin": [
+            "public-owner",
+            "public-plugin",
+            "Public description",
+            "master",
+        ],
+        "RemoteOnly": ["owner", "remote-only", "Remote", "main"],
+    }
+    plugin.apply_registry_sources(plugin.public_registry_data, {})
+    monkeypatch.setattr(
+        plugin,
+        "fetch_remote_registry",
+        lambda: (_ for _ in ()).throw(AssertionError("unexpected network fetch")),
+    )
+    responses = []
+    monkeypatch.setattr(plugin, "sendApiResponse", responses.append)
+
+    plugin.handleApiCommand(
+        {
+            "action": "upsert_local_registry_entry",
+            "expected_revision": service.read_document().revision,
+            "original_key": "",
+            "entry": {
+                "key": "PublicPlugin",
+                "repository_source": "https://example.org/team/private-plugin",
+                "description": "Local override",
+                "branch": "main",
+            },
+        }
+    )
+
+    assert responses[0]["status"] == "success"
+    assert responses[0]["plugin_key"] == "PublicPlugin"
+    assert responses[0]["revision"].startswith("sha256:")
+    assert plugin.local_plugin_keys == ["PublicPlugin"]
+    assert plugin.plugin_data["PublicPlugin"][:4] == [
+        "https://example.org/team/private-plugin",
+        "",
+        "Local override",
+        "main",
+    ]
+    assert "RemoteOnly" in plugin.plugin_data
+    assert json.loads(registry_file.read_text(encoding="utf-8"))[
+        "PublicPlugin"
+    ]["owner"] == "https://example.org/team/private-plugin"
+
+
+def test_delete_api_restores_cached_public_override(
+    plugin_core_module, tmp_path, monkeypatch
+):
+    plugin, service, registry_file = make_service(plugin_core_module, tmp_path)
+    registry_file.write_text(
+        json.dumps(
+            {
+                "PublicPlugin": {
+                    "owner": "https://example.org/team/private-plugin",
+                    "description": "Local override",
+                    "branch": "main",
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    plugin.public_registry_data = {
+        "PublicPlugin": [
+            "public-owner",
+            "public-plugin",
+            "Public description",
+            "master",
+        ]
+    }
+    plugin.apply_registry_sources(
+        plugin.public_registry_data,
+        service.read_document().entries,
+    )
+    responses = []
+    monkeypatch.setattr(plugin, "sendApiResponse", responses.append)
+
+    plugin.handleApiCommand(
+        {
+            "action": "delete_local_registry_entry",
+            "expected_revision": service.read_document().revision,
+            "plugin_key": "PublicPlugin",
+        }
+    )
+
+    assert responses[0]["status"] == "success"
+    assert plugin.local_plugin_keys == []
+    assert plugin.plugin_data["PublicPlugin"][:4] == [
+        "public-owner",
+        "public-plugin",
+        "Public description",
+        "master",
+    ]
+
+
+def test_local_registry_api_returns_structured_validation_errors(
+    plugin_core_module, tmp_path, monkeypatch
+):
+    plugin, service, _ = make_service(plugin_core_module, tmp_path)
+    responses = []
+    monkeypatch.setattr(plugin, "sendApiResponse", responses.append)
+
+    plugin.handleApiCommand(
+        {
+            "action": "upsert_local_registry_entry",
+            "expected_revision": service.read_document().revision,
+            "original_key": "",
+            "entry": {
+                "key": "Plugin",
+                "repository_source": "not a repository",
+                "description": "",
+                "branch": "main",
+            },
+        }
+    )
+
+    assert responses[0] == {
+        "status": "error",
+        "action": "upsert_local_registry_entry",
+        "code": "invalid_local_registry_entry",
+        "message": "Check the highlighted local registry fields.",
+        "field_errors": {
+            "repository_source": "Enter a valid repository source."
+        },
+        "reload_required": False,
+        "read_only": False,
+    }

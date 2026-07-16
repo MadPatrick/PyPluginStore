@@ -1794,6 +1794,59 @@ class LocalRegistryService:
         del next_entries[plugin_key]
         return self.write_entries(next_entries)
 
+    def entry_for_api(self, key, data, public_keys, installed_keys):
+        errors = {}
+        if isinstance(data, dict):
+            author = data.get("author", data.get("owner", ""))
+            repository = data.get("repository", data.get("repo", ""))
+            description = data.get("description", "")
+            branch = data.get("branch", "master")
+        elif isinstance(data, list) and len(data) >= 4:
+            author, repository, description, branch = data[:4]
+        else:
+            author = ""
+            repository = ""
+            description = ""
+            branch = "master"
+            errors["entry"] = "Entry must use a supported object or list format."
+
+        source = ""
+        if author or repository:
+            source = self.plugin.build_git_clone_url(author, repository)
+
+        entry = {
+            "key": str(key),
+            "repository_source": source,
+            "description": str(description or ""),
+            "branch": str(branch or "master"),
+            "overrides_public": key in public_keys,
+            "installed": key in installed_keys,
+            "valid": not errors,
+            "errors": errors,
+        }
+        if not errors:
+            try:
+                self.validate_entry(entry)
+            except LocalRegistryError as error:
+                entry["valid"] = False
+                entry["errors"] = error.field_errors or {
+                    "entry": error.message,
+                }
+        return entry
+
+    def entries_for_api(self, document):
+        public_keys = set(self.plugin.public_registry_data or {})
+        installed_keys = set(
+            self.plugin.getInstalledPlugins(self.plugin.get_host().plugins_dir())
+        )
+        return [
+            self.entry_for_api(key, data, public_keys, installed_keys)
+            for key, data in sorted(
+                document.entries.items(),
+                key=lambda item: str(item[0]).casefold(),
+            )
+        ]
+
 
 class UpdateStatusService:
     def __init__(self, plugin):
@@ -2076,6 +2129,7 @@ class BasePlugin:
         self.secpoluser_list = {}
         self.plugin_data = {}
         self.registry_entries = {}
+        self.public_registry_data = None
         self.local_plugin_keys = []
         self.update_times = {}
         self.update_status = {}
@@ -3427,6 +3481,41 @@ class BasePlugin:
         self.registry_entries = registry_entries
         return normalized_registry, plugin_platforms
 
+    def apply_registry_sources(self, public_registry, local_registry):
+        public_registry = dict(public_registry or {})
+        local_registry = dict(local_registry or {})
+        merged_registry = dict(public_registry)
+        merged_registry.update(local_registry)
+        local_plugin_keys = sorted(local_registry.keys())
+
+        (
+            self.plugin_data,
+            self.plugin_platforms,
+            self.registry_entries,
+        ) = self.registry_service.normalize_registry(
+            merged_registry,
+            local_plugin_keys,
+        )
+        self.local_plugin_keys = local_plugin_keys
+        if local_plugin_keys:
+            Domoticz.Log(
+                "Merged "
+                + str(len(local_plugin_keys))
+                + " local plugin registry entries."
+            )
+
+    def reapply_local_registry(self, local_registry):
+        if self.public_registry_data is None:
+            self.fetch_registry()
+            return
+
+        self.apply_registry_sources(
+            self.public_registry_data,
+            local_registry,
+        )
+        self.apply_update_times(self.update_times, include_local=False)
+        self.add_self_to_registry()
+
     def fetch_registry(self):
         registry = self.fetch_remote_registry()
         if registry is None:
@@ -3434,21 +3523,19 @@ class BasePlugin:
 
         local_registry = self.load_local_registry()
         registry_loaded = registry is not None or local_registry is not None
-        merged_registry = dict(registry) if registry is not None else {}
-        local_plugin_keys = []
-
-        if local_registry:
-            merged_registry.update(local_registry)
-            local_plugin_keys = sorted(local_registry.keys())
-            Domoticz.Log("Merged " + str(len(local_registry)) + " local plugin registry entries.")
 
         if registry_loaded:
-            (
-                self.plugin_data,
-                self.plugin_platforms,
-                self.registry_entries,
-            ) = self.registry_service.normalize_registry(merged_registry, local_plugin_keys)
-            self.local_plugin_keys = local_plugin_keys
+            if registry is not None:
+                self.public_registry_data = dict(registry)
+            selected_public_registry = (
+                registry
+                if registry is not None
+                else self.public_registry_data
+            )
+            self.apply_registry_sources(
+                selected_public_registry,
+                local_registry,
+            )
         elif self.plugin_data:
             Domoticz.Error("No plugin registry found. Keeping existing plugin registry.")
         else:
@@ -3812,7 +3899,85 @@ class BasePlugin:
         action = str(payload.get("action", ""))
         plugins_dir = self.get_host().plugins_dir()
         
-        if action == "list_plugins":
+        if action == "get_local_registry":
+            document = self.local_registry_service.read_document()
+            if document.writable:
+                self.sendApiResponse({
+                    "status": "success",
+                    "action": action,
+                    "entries": self.local_registry_service.entries_for_api(
+                        document
+                    ),
+                    "revision": document.revision,
+                    "path": document.path,
+                    "read_only": False,
+                })
+            else:
+                self.sendApiResponse({
+                    "status": "error",
+                    "action": action,
+                    "code": document.error_code,
+                    "message": document.message,
+                    "revision": document.revision,
+                    "path": document.path,
+                    "read_only": True,
+                })
+        elif action in (
+            "upsert_local_registry_entry",
+            "delete_local_registry_entry",
+        ):
+            try:
+                if action == "upsert_local_registry_entry":
+                    entry = payload.get("entry")
+                    document = self.local_registry_service.upsert(
+                        payload.get("expected_revision"),
+                        payload.get("original_key"),
+                        entry,
+                    )
+                    plugin_key = str(
+                        entry.get("key") if isinstance(entry, dict) else ""
+                    ).strip()
+                else:
+                    plugin_key = str(payload.get("plugin_key") or "").strip()
+                    document = self.local_registry_service.delete(
+                        payload.get("expected_revision"),
+                        plugin_key,
+                    )
+
+                try:
+                    self.reapply_local_registry(document.entries)
+                except Exception as error:
+                    self.fetch_registry()
+                    self.sendApiResponse({
+                        "status": "error",
+                        "action": action,
+                        "code": "registry_reapply_failed",
+                        "message": (
+                            "registry_local.json was saved, but the registry "
+                            "could not be reapplied: " + str(error)
+                        ),
+                        "reload_required": True,
+                        "read_only": False,
+                    })
+                    return
+
+                self.sendApiResponse({
+                    "status": "success",
+                    "action": action,
+                    "plugin_key": plugin_key,
+                    "revision": document.revision,
+                })
+            except LocalRegistryError as error:
+                self.sendApiResponse({
+                    "status": "error",
+                    "action": action,
+                    "code": error.code,
+                    "message": error.message,
+                    "field_errors": error.field_errors,
+                    "reload_required": error.reload_required,
+                    "read_only": error.read_only,
+                })
+        elif action == "list_plugins":
             installed_plugins = self.getInstalledPlugins(plugins_dir)
             cached_update_status = self.getCachedUpdateStatuses(installed_plugins)
             versions = self.get_plugin_versions(installed_plugins, cached_update_status, plugins_dir)

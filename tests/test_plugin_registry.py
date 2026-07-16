@@ -202,6 +202,20 @@ def test_fetch_registry_merges_remote_registry_with_local_overlay(plugin_core_mo
         "2026-06-14T15:10:03Z",
     ]
     assert plugin.local_plugin_keys == ["LocalPlugin", "PublicPlugin"]
+    assert plugin.public_registry_data == {
+        "PublicPlugin": [
+            "remote-owner",
+            "public-plugin",
+            "remote description",
+            "main",
+        ],
+        "RemoteOnly": [
+            "remote-owner",
+            "remote-only",
+            "remote only",
+            "master",
+        ],
+    }
 
 
 def test_fetch_registry_falls_back_to_bundled_registry(plugin_core_module, tmp_path, monkeypatch):
