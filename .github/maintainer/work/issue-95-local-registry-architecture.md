@@ -1,6 +1,6 @@
 # Issue 95 Local Registry Management Architecture
 
-Status: implemented; automated verification passed; awaiting manual UI verification
+Status: implemented; automated and manual verification passed
 
 Decision date: 2026-07-16
 
@@ -512,4 +512,5 @@ These risks are covered by structured errors, per-entry requests, preservation o
 - `b147193` adds public-registry caching, overlay reapplication, and CRUD API actions.
 - `697d93d` adds the accessible native dialog and UI behavior tests.
 - Full verification on 2026-07-16 passed with 226 tests, Python compilation, generated-runtime freshness, registry validation, and `git diff --check`.
+- Manual verification on pietje passed for add, edit, delete, responsive layout, and theme behavior; checkpoint `7132bcd` records the acceptance.
 - `pytest-cov` is not installed in the repository environment, so no percentage coverage report was produced; focused persistence, API, integration, and UI branches are covered directly.

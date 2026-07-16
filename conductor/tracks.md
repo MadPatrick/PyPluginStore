@@ -4,7 +4,7 @@ This file tracks all major tracks for the project. Each track has its own detail
 
 ---
 
-## [~] Track: Manage the local plugin registry from the UI
+## [x] Track: Manage the local plugin registry from the UI
 *Link: [./conductor/tracks/local_registry_ui_20260716/](./conductor/tracks/local_registry_ui_20260716/)*
 
 ---

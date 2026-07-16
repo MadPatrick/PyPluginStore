@@ -1,5 +1,24 @@
 # Maintainer Decisions
 
+## 2026-07-16 - Safe UI management for registry_local.json
+
+Decision: manage local registry entries through backend-owned, revisioned CRUD actions and one accessible native dialog.
+
+Rationale:
+- Whole-document browser replacement would exceed the API bridge easily and could overwrite concurrent or malformed files.
+- Exact-byte revisions make stale writes visible before mutation.
+- Atomic replacement preserves the existing registry when serialization or filesystem writes fail.
+- A native dialog provides focus containment and Escape behavior without adding a UI framework or custom modal infrastructure.
+
+Implementation notes:
+- `LocalRegistryService` owns structured reads, validation, canonicalization, revisions, and atomic create/update/delete operations.
+- The selected public registry is cached so local mutations can immediately reapply overlays without another network request.
+- The UI preserves form values on validation or revision conflicts and uses inline deletion confirmation.
+
+Verification:
+- `pytest -q`: 226 passed.
+- Manual verification on pietje passed all documented steps.
+
 ## 2026-07-06 - Accept action-less API error responses by transaction ID
 
 Decision: the custom UI bridge should accept backend error responses with a matching `tx_id` even when the response omits `action`.

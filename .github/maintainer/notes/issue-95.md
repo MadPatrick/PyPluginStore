@@ -1,6 +1,6 @@
 # ISSUE:95 - Manage registry_local via the UI
 
-Status: implemented locally; awaiting Conductor manual verification and push.
+Status: implemented and manually verified; awaiting push and public follow-up approval.
 
 Intent:
 - Let users manage local registry entries without editing JSON.
@@ -17,7 +17,9 @@ Verification:
 - Generated `plugin.py`: current.
 - Registry validation: passed.
 - `git diff --check`: passed.
+- Manual UI verification on pietje: passed for add, edit, delete, responsive layout, and theme behavior.
 - Percentage coverage unavailable because `pytest-cov` is not installed; focused tests cover the new service, API, integration, and UI branches.
 
 Public action:
-- None pending until manual verification is confirmed. Issue commenting or closure remains approval-gated.
+- Push is approved as part of the implementation workflow.
+- Issue commenting or closure remains approval-gated.

@@ -6,6 +6,7 @@
 - Registry source order: remote public registry, bundled fallback, local ignored overlay.
 - Installed detection is tiered: matching git remote, recognized `plugin.py` externallink, exact registry key, unique repo/archive folder name with flexible and Domoticz-affix-stripped normalization, then unique `plugin.py` key/name metadata.
 - Local registry entries are explicit user intent and should win when they collide with public registry repository aliases.
+- Local registry writes must use backend-owned per-entry CRUD, exact-byte revisions, and atomic replacement; never let the browser replace the whole registry document or overwrite malformed/stale data.
 - Keep plugin folder matching and UI plugin-name cleanup aligned. When changing flexible folder-name matching in the plugin, review/update the UI cleanup logic too, and vice versa, so the visible names users compare match the install-detection names PyPluginStore accepts.
 - Custom UI bridge device discovery must include hidden Domoticz devices because users may hide the text payload device from normal overviews.
 - The custom UI bridge shares one text device for request and response data; always clear stale responses and treat response-looking payloads as stale bridge data, not inbound commands.

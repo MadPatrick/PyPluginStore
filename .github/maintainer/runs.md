@@ -1,5 +1,23 @@
 # Maintainer Runs
 
+## 2026-07-16 - ISSUE:95 local registry UI management
+
+Scope:
+- Merged and released `PR:100` as v2.17.1, closing `ISSUE:98`.
+- Implemented safe UI-based management of `registry_local.json` for `ISSUE:95`.
+- Added revisioned atomic persistence, cached public-overlay reapplication, structured CRUD API actions, and an accessible native dialog.
+- Updated README and advanced local-registry documentation.
+
+Verification:
+- `pytest -q`: 226 passed.
+- Python compilation, generated runtime freshness, registry validation, and `git diff --check`: passed.
+- Deployed `plugin.py` and `pypluginstore.html` to pietje with backup `/tmp/pypluginstore-manual-test-20260716T185205Z`.
+- Manual add, edit, delete, responsive layout, and theme verification: passed.
+
+Notes:
+- Conductor checkpoint: `7132bcd`.
+- Public comment or closure for `ISSUE:95` remains approval-gated.
+
 ## 2026-07-06 - API bridge error response CI fix
 
 Scope:
