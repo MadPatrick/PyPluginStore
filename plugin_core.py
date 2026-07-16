@@ -1,6 +1,7 @@
 
 
 import base64
+import hashlib
 import html
 import os
 import platform
@@ -13,6 +14,7 @@ import urllib.parse
 import urllib.request
 import json
 import shutil
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
 import Domoticz
@@ -148,13 +150,21 @@ class HostRuntime:
             })
             return default_state
 
-    def write_json_atomic(self, path, data):
+    def write_json_atomic(self, path, data, sort_keys=True):
         os.makedirs(os.path.dirname(path), exist_ok=True)
         tmp_path = path + ".tmp"
-        with open(tmp_path, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=2, sort_keys=True)
-            f.write("\n")
-        os.replace(tmp_path, path)
+        try:
+            with open(tmp_path, "w", encoding="utf-8") as f:
+                json.dump(data, f, indent=2, sort_keys=sort_keys)
+                f.write("\n")
+            os.replace(tmp_path, path)
+        except Exception:
+            try:
+                if os.path.isfile(tmp_path):
+                    os.remove(tmp_path)
+            except Exception:
+                pass
+            raise
 
     def write_self_update_state(self, phase, message="", previous_state=None, **fields):
         now = self.utc_timestamp()
@@ -1519,6 +1529,272 @@ class RegistryService:
         return normalized_registry, plugin_platforms, registry_entries
 
 
+@dataclass
+class LocalRegistryDocument:
+    """A byte-revisioned view of registry_local.json."""
+
+    entries: dict
+    revision: str
+    path: str
+    exists: bool
+    writable: bool
+    error_code: str = ""
+    message: str = ""
+
+
+class LocalRegistryError(Exception):
+    """A structured local-registry operation failure."""
+
+    def __init__(
+        self,
+        code,
+        message,
+        field_errors=None,
+        reload_required=False,
+        read_only=False,
+    ):
+        super().__init__(message)
+        self.code = code
+        self.message = message
+        self.field_errors = dict(field_errors or {})
+        self.reload_required = reload_required
+        self.read_only = read_only
+
+
+class LocalRegistryService:
+    """Read, validate, and atomically mutate registry_local.json."""
+
+    MISSING_REVISION_BYTES = b"PyPluginStore:missing-local-registry:v1"
+    FIELD_LIMITS = {
+        "key": 128,
+        "repository_source": 1000,
+        "description": 500,
+        "branch": 255,
+    }
+    CONTROL_CHARACTERS = re.compile(r"[\x00-\x1f\x7f]")
+
+    def __init__(self, plugin):
+        self.plugin = plugin
+
+    def revision_for_bytes(self, contents):
+        """Return a stable SHA-256 revision for exact file bytes."""
+        return "sha256:" + hashlib.sha256(contents).hexdigest()
+
+    def read_document(self):
+        """Read the local registry without treating malformed data as empty."""
+        path = self.plugin.get_local_registry_file()
+        try:
+            with open(path, "rb") as registry_file:
+                contents = registry_file.read()
+        except FileNotFoundError:
+            return LocalRegistryDocument(
+                entries={},
+                revision=self.revision_for_bytes(self.MISSING_REVISION_BYTES),
+                path=path,
+                exists=False,
+                writable=True,
+            )
+        except Exception as error:
+            return LocalRegistryDocument(
+                entries={},
+                revision="",
+                path=path,
+                exists=True,
+                writable=False,
+                error_code="registry_read_failed",
+                message=str(error),
+            )
+
+        revision = self.revision_for_bytes(contents)
+        try:
+            entries = json.loads(contents.decode("utf-8"))
+            if not isinstance(entries, dict):
+                raise ValueError("Local registry must contain a JSON object.")
+        except json.JSONDecodeError as error:
+            message = "{} at line {} column {}.".format(
+                error.msg,
+                error.lineno,
+                error.colno,
+            )
+            return LocalRegistryDocument(
+                entries={},
+                revision=revision,
+                path=path,
+                exists=True,
+                writable=False,
+                error_code="invalid_local_registry",
+                message=message,
+            )
+        except (UnicodeDecodeError, ValueError) as error:
+            return LocalRegistryDocument(
+                entries={},
+                revision=revision,
+                path=path,
+                exists=True,
+                writable=False,
+                error_code="invalid_local_registry",
+                message=str(error),
+            )
+
+        return LocalRegistryDocument(
+            entries=entries,
+            revision=revision,
+            path=path,
+            exists=True,
+            writable=True,
+        )
+
+    def require_current_document(self, expected_revision):
+        """Return the current writable document or raise a structured error."""
+        document = self.read_document()
+        if not document.writable:
+            raise LocalRegistryError(
+                document.error_code,
+                document.message,
+                read_only=True,
+            )
+        if str(expected_revision or "") != document.revision:
+            raise LocalRegistryError(
+                "registry_conflict",
+                "registry_local.json changed after it was loaded.",
+                reload_required=True,
+            )
+        return document
+
+    def has_control_characters(self, value):
+        return self.CONTROL_CHARACTERS.search(value) is not None
+
+    def repository_source_is_valid(self, source):
+        if re.match(r"^[^/@\s:]+@[^/\s:]+:.+$", source):
+            return True
+
+        parsed = urllib.parse.urlparse(source)
+        if parsed.scheme in ("http", "https"):
+            if parsed.username is not None or parsed.password is not None:
+                return False
+            return bool(parsed.hostname and parsed.path.strip("/"))
+        if parsed.scheme == "ssh":
+            return bool(parsed.hostname and parsed.path.strip("/"))
+        if parsed.scheme == "file":
+            return bool(parsed.path.strip("/"))
+
+        host, path_parts = self.plugin.split_supported_repo_reference(source)
+        return bool(host and len(path_parts) >= 2)
+
+    def validate_entry(self, entry):
+        """Validate and return the canonical persisted entry fields."""
+        if not isinstance(entry, dict):
+            raise LocalRegistryError(
+                "invalid_local_registry_entry",
+                "Local registry entry must be an object.",
+            )
+
+        values = {
+            "key": str(entry.get("key") or "").strip(),
+            "repository_source": str(
+                entry.get("repository_source") or ""
+            ).strip(),
+            "description": str(entry.get("description") or "").strip(),
+            "branch": str(entry.get("branch") or "master").strip() or "master",
+        }
+        field_errors = {}
+
+        try:
+            self.plugin.get_host().validate_plugin_key(values["key"])
+        except ValueError:
+            field_errors["key"] = "Enter a valid plugin key."
+
+        for field, limit in self.FIELD_LIMITS.items():
+            value = values[field]
+            if len(value) > limit:
+                field_errors[field] = "Use at most {} characters.".format(limit)
+            elif self.has_control_characters(value):
+                field_errors[field] = "Control characters are not allowed."
+
+        if not values["repository_source"]:
+            field_errors["repository_source"] = "Repository source is required."
+        elif not self.repository_source_is_valid(values["repository_source"]):
+            field_errors["repository_source"] = "Enter a valid repository source."
+
+        if field_errors:
+            raise LocalRegistryError(
+                "invalid_local_registry_entry",
+                "Check the highlighted local registry fields.",
+                field_errors=field_errors,
+            )
+
+        return values
+
+    def write_entries(self, entries):
+        try:
+            self.plugin.get_host().write_json_atomic(
+                self.plugin.get_local_registry_file(),
+                entries,
+                sort_keys=False,
+            )
+        except Exception as error:
+            raise LocalRegistryError(
+                "registry_write_failed",
+                "Could not write registry_local.json: " + str(error),
+            ) from error
+        return self.read_document()
+
+    def upsert(self, expected_revision, original_key, entry):
+        values = self.validate_entry(entry)
+        original_key = str(original_key or "").strip()
+        if original_key and values["key"] != original_key:
+            raise LocalRegistryError(
+                "invalid_local_registry_entry",
+                "Plugin key cannot be renamed.",
+                field_errors={"key": "Plugin key cannot be renamed."},
+            )
+
+        document = self.require_current_document(expected_revision)
+        if original_key:
+            if original_key not in document.entries:
+                raise LocalRegistryError(
+                    "local_registry_entry_not_found",
+                    "Local registry entry was not found.",
+                    reload_required=True,
+                )
+        elif values["key"] in document.entries:
+            raise LocalRegistryError(
+                "local_registry_entry_exists",
+                "A local registry entry with this key already exists.",
+                field_errors={"key": "This plugin key already exists locally."},
+            )
+
+        next_entries = dict(document.entries)
+        next_entries[values["key"]] = {
+            "owner": values["repository_source"],
+            "description": values["description"],
+            "branch": values["branch"],
+        }
+        return self.write_entries(next_entries)
+
+    def delete(self, expected_revision, plugin_key):
+        try:
+            plugin_key = self.plugin.get_host().validate_plugin_key(plugin_key)
+        except ValueError as error:
+            raise LocalRegistryError(
+                "invalid_local_registry_entry",
+                "Enter a valid plugin key.",
+                field_errors={"key": "Enter a valid plugin key."},
+            ) from error
+
+        document = self.require_current_document(expected_revision)
+        if plugin_key not in document.entries:
+            raise LocalRegistryError(
+                "local_registry_entry_not_found",
+                "Local registry entry was not found.",
+                reload_required=True,
+            )
+
+        next_entries = dict(document.entries)
+        del next_entries[plugin_key]
+        return self.write_entries(next_entries)
+
+
 class UpdateStatusService:
     def __init__(self, plugin):
         self.plugin = plugin
@@ -1810,6 +2086,7 @@ class BasePlugin:
         self.installed_plugin_folders = {}
         self.installed_plugin_match_details = {}
         self.registry_service = RegistryService(self)
+        self.local_registry_service = LocalRegistryService(self)
         self.update_status_service = UpdateStatusService(self)
         self.install_update_strategy = GitInstallUpdateStrategy(self)
 
