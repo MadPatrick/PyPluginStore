@@ -8010,6 +8010,376 @@ class GitInstallUpdateStrategy:
         return None
 
 
+@dataclass(frozen=True)
+class ReleaseManagementDecision:
+    """One explicit, auditable route through release or Git management."""
+
+    route: str
+    status: str
+    reason: str = ""
+    release: object = None
+    trigger: str = "manual"
+    requires_confirmation: bool = False
+
+
+class ReleaseManagementCoordinator:
+    """Select release-first operations while retaining the Git strategy."""
+
+    OPERATIONS = {"install", "update", "status"}
+    INSTALLED_MODES = {"absent", "git", "release"}
+    TRIGGERS = {"manual", "automatic"}
+
+    def __init__(self, plugin, git_strategy=None, release_strategy=None):
+        self.plugin = plugin
+        self.git_strategy = git_strategy or GitInstallUpdateStrategy(plugin)
+        self.release_strategy = release_strategy
+
+    def _decision(
+        self,
+        route,
+        status,
+        *,
+        reason="",
+        release=None,
+        trigger="manual",
+        requires_confirmation=False,
+    ):
+        return ReleaseManagementDecision(
+            route=route,
+            status=status,
+            reason=reason,
+            release=release,
+            trigger=trigger,
+            requires_confirmation=requires_confirmation,
+        )
+
+    def _git_decision(
+        self, operation, installed_mode, git_status, *, reason="", trigger="manual"
+    ):
+        if operation == "status":
+            status = {
+                "current": "git_current",
+                "available": "git_available",
+            }.get(git_status, "git_unknown")
+            return self._decision(
+                "git_status", status, reason=reason, trigger=trigger
+            )
+        if operation == "install" or installed_mode == "absent":
+            route = "git_install"
+        else:
+            route = "git_update"
+        return self._decision(
+            route, "git_available", reason=reason, trigger=trigger
+        )
+
+    def _metadata_unavailable_decision(
+        self,
+        entry,
+        operation,
+        installed_mode,
+        channel_preference,
+        release_was_activated,
+        git_status,
+        reason,
+        trigger,
+    ):
+        policy = entry.delivery
+        release_required = (
+            channel_preference == "release"
+            or policy.preferred == "release"
+            or installed_mode == "release"
+            or (
+                release_was_activated
+                and channel_preference != "keep_git"
+            )
+        )
+        git_selected = (
+            channel_preference == "keep_git"
+            or policy.preferred == "git"
+            or policy.preferred == "release_if_indexed"
+        )
+        if release_required or not policy.git_supported or not git_selected:
+            return self._decision(
+                "blocked",
+                "release_metadata_unavailable",
+                reason=reason,
+                trigger=trigger,
+            )
+        return self._git_decision(
+            operation,
+            installed_mode,
+            git_status,
+            reason=reason,
+            trigger=trigger,
+        )
+
+    def _release_update_decision(
+        self,
+        release,
+        installed_release,
+        trigger,
+        downgrade_confirmed,
+    ):
+        if installed_release is None:
+            return self._decision(
+                "blocked",
+                "verification_failed",
+                reason="release_install_metadata_missing",
+                trigger=trigger,
+            )
+
+        installed_revision = getattr(
+            installed_release, "release_revision", None
+        )
+        if type(installed_revision) is not int:
+            return self._decision(
+                "blocked",
+                "verification_failed",
+                reason="release_install_metadata_invalid",
+                trigger=trigger,
+            )
+
+        if release.revision > installed_revision:
+            installed_release_id = getattr(
+                installed_release, "release_id", ""
+            )
+            if installed_release_id not in release.supersedes:
+                return self._decision(
+                    "blocked",
+                    "verification_failed",
+                    reason="predecessor_gap",
+                    trigger=trigger,
+                )
+            return self._decision(
+                "release_update",
+                "available",
+                release=release,
+                trigger=trigger,
+            )
+
+        if release.revision < installed_revision:
+            if trigger != "manual":
+                return self._decision(
+                    "blocked",
+                    "verification_failed",
+                    reason="release_downgrade",
+                    trigger=trigger,
+                )
+            if not downgrade_confirmed:
+                return self._decision(
+                    "confirmation_required",
+                    "confirmation_required",
+                    reason="release_downgrade",
+                    release=release,
+                    trigger=trigger,
+                    requires_confirmation=True,
+                )
+            return self._decision(
+                "release_update",
+                "available",
+                reason="release_downgrade",
+                release=release,
+                trigger=trigger,
+            )
+
+        immutable_fields_match = (
+            release.release_id
+            == getattr(installed_release, "release_id", "")
+            and release.commit
+            == getattr(installed_release, "commit", "")
+            and release.source_revision
+            == getattr(installed_release, "source_revision", "")
+            and release.artifact.tree_sha256
+            == getattr(installed_release, "artifact_tree_sha256", "")
+            and release.artifact.provenance
+            == getattr(installed_release, "artifact_provenance", "")
+        )
+        if not immutable_fields_match:
+            return self._decision(
+                "blocked",
+                "verification_failed",
+                reason="release_mutation",
+                trigger=trigger,
+            )
+
+        installed_artifact_sha256 = getattr(
+            installed_release, "artifact_sha256", ""
+        )
+        if (
+            release.artifact.provenance != "forge_source_archive"
+            and release.artifact.sha256 != installed_artifact_sha256
+        ):
+            return self._decision(
+                "blocked",
+                "verification_failed",
+                reason="release_mutation",
+                trigger=trigger,
+            )
+        reason = ""
+        if release.artifact.sha256 != installed_artifact_sha256:
+            reason = "equivalent_recompressed_source"
+        return self._decision(
+            "none", "current", reason=reason, release=release, trigger=trigger
+        )
+
+    def decide(
+        self,
+        entry,
+        *,
+        operation,
+        installed_mode,
+        release=None,
+        tombstone=None,
+        metadata_authorized=True,
+        metadata_reason="",
+        installed_release=None,
+        channel_preference=None,
+        trigger="manual",
+        downgrade_confirmed=False,
+        release_was_activated=False,
+        git_status="unknown",
+    ):
+        """Return the sole permitted route for the supplied trusted state."""
+        if operation not in self.OPERATIONS:
+            raise ValueError("Release management operation is unsupported.")
+        if installed_mode not in self.INSTALLED_MODES:
+            raise ValueError("Installed management mode is unsupported.")
+        if trigger not in self.TRIGGERS:
+            raise ValueError("Release management trigger must be manual or automatic.")
+        if channel_preference is not None:
+            channel_preference = _require_channel_preference(
+                channel_preference
+            )
+
+        policy = entry.delivery
+        if channel_preference == "keep_git":
+            if not policy.git_supported:
+                return self._decision(
+                    "blocked",
+                    "release_metadata_unavailable",
+                    reason="git_channel_unsupported",
+                    trigger=trigger,
+                )
+            return self._git_decision(
+                operation,
+                installed_mode,
+                git_status,
+                trigger=trigger,
+            )
+
+        unavailable_reason = ""
+        if tombstone is not None:
+            unavailable_reason = "release_decertified"
+            release = None
+        elif not metadata_authorized:
+            unavailable_reason = metadata_reason or "release_metadata_unavailable"
+            release = None
+        elif release is None:
+            unavailable_reason = "release_entry_missing"
+
+        if policy.preferred == "git" and channel_preference != "release":
+            return self._git_decision(
+                operation,
+                installed_mode,
+                git_status,
+                reason=("release_decertified" if tombstone is not None else ""),
+                trigger=trigger,
+            )
+
+        if release is None:
+            return self._metadata_unavailable_decision(
+                entry,
+                operation,
+                installed_mode,
+                channel_preference,
+                release_was_activated,
+                git_status,
+                unavailable_reason,
+                trigger,
+            )
+
+        if operation == "install" or installed_mode == "absent":
+            return self._decision(
+                "release_install",
+                "available",
+                release=release,
+                trigger=trigger,
+            )
+
+        if installed_mode == "git":
+            if not release.artifact.migration_eligible:
+                return self._decision(
+                    "blocked",
+                    "migration_waiting_for_release",
+                    reason="release_not_migration_eligible",
+                    trigger=trigger,
+                )
+            return self._decision(
+                "release_migration",
+                "migration_available",
+                release=release,
+                trigger=trigger,
+            )
+
+        return self._release_update_decision(
+            release,
+            installed_release,
+            trigger,
+            downgrade_confirmed,
+        )
+
+    def execute(self, entry, decision, queue_on_lock=True):
+        """Execute exactly the selected route without cross-channel fallback."""
+        if not isinstance(decision, ReleaseManagementDecision):
+            raise ValueError("decision must be a ReleaseManagementDecision.")
+        if decision.route == "git_install":
+            return self.git_strategy.install(entry)
+        if decision.route == "git_update":
+            return self.git_strategy.update(
+                entry, queue_on_lock=queue_on_lock
+            )
+        if decision.route == "git_status":
+            return self.git_strategy.check_for_update(entry)
+        if decision.route in {
+            "release_install",
+            "release_update",
+            "release_migration",
+        }:
+            if self.release_strategy is None:
+                return False, "Release management is not configured."
+            operation = {
+                "release_install": "install",
+                "release_update": "update",
+                "release_migration": "migrate",
+            }[decision.route]
+            return getattr(self.release_strategy, operation)(
+                entry, decision.release, decision.trigger
+            )
+        if decision.route == "none":
+            return True, decision.reason or "Plugin is current."
+        if decision.route in {"blocked", "confirmation_required"}:
+            return False, decision.reason or decision.status
+        raise ValueError("Release management decision route is unsupported.")
+
+    def install(self, entry, trigger="manual"):
+        """Preserve the legacy seam until runtime release context is wired."""
+        if trigger not in self.TRIGGERS:
+            raise ValueError("Release management trigger must be manual or automatic.")
+        return self.git_strategy.install(entry)
+
+    def update(self, entry, queue_on_lock=True, trigger="manual"):
+        """Preserve the legacy seam until runtime release context is wired."""
+        if trigger not in self.TRIGGERS:
+            raise ValueError("Release management trigger must be manual or automatic.")
+        return self.git_strategy.update(entry, queue_on_lock=queue_on_lock)
+
+    def check_for_update(self, entry, trigger="manual"):
+        """Preserve the legacy seam until runtime release context is wired."""
+        if trigger not in self.TRIGGERS:
+            raise ValueError("Release management trigger must be manual or automatic.")
+        return self.git_strategy.check_for_update(entry)
+
+
 class BasePlugin:
     enabled = False
     pluginState = "Not Ready"
@@ -8039,7 +8409,7 @@ class BasePlugin:
         self.registry_service = RegistryService(self)
         self.local_registry_service = LocalRegistryService(self)
         self.update_status_service = UpdateStatusService(self)
-        self.install_update_strategy = GitInstallUpdateStrategy(self)
+        self.install_update_strategy = ReleaseManagementCoordinator(self)
 
     def get_host(self):
         parameters = globals().get("Parameters", {})
@@ -10070,26 +10440,59 @@ class BasePlugin:
                 for plugin_key in self.get_managed_installed_plugin_keys(plugins_dir):
                     entry = self.get_registry_entry(plugin_key)
                     if entry is not None:
-                        self.UpdatePythonPlugin(entry.author, entry.repository, plugin_key)
+                        self.UpdatePythonPlugin(
+                            entry.author,
+                            entry.repository,
+                            plugin_key,
+                            trigger="automatic",
+                        )
 
             if Parameters["Mode4"] == 'AllNotify':
                 Domoticz.Log("Collecting Updates for All Plugins!!!")
                 for plugin_key in self.get_managed_installed_plugin_keys(plugins_dir):
                     entry = self.get_registry_entry(plugin_key)
                     if entry is not None:
-                        self.CheckForUpdatePythonPlugin(entry.author, entry.repository, plugin_key)
+                        self.CheckForUpdatePythonPlugin(
+                            entry.author,
+                            entry.repository,
+                            plugin_key,
+                            trigger="automatic",
+                        )
 
-    def InstallPythonPlugin(self, ppAuthor, ppRepository, ppKey, ppBranch):
+    def InstallPythonPlugin(
+        self, ppAuthor, ppRepository, ppKey, ppBranch, trigger="manual"
+    ):
         entry = self.get_registry_entry_for_operation(ppKey, ppAuthor, ppRepository, ppBranch)
-        return self.install_update_strategy.install(entry)
+        if trigger == "manual":
+            return self.install_update_strategy.install(entry)
+        return self.install_update_strategy.install(entry, trigger=trigger)
 
-    def UpdatePythonPlugin(self, ppAuthor, ppRepository, ppKey, queue_on_lock=True):
+    def UpdatePythonPlugin(
+        self,
+        ppAuthor,
+        ppRepository,
+        ppKey,
+        queue_on_lock=True,
+        trigger="manual",
+    ):
         entry = self.get_registry_entry_for_operation(ppKey, ppAuthor, ppRepository)
-        return self.install_update_strategy.update(entry, queue_on_lock=queue_on_lock)
+        if trigger == "manual":
+            return self.install_update_strategy.update(
+                entry, queue_on_lock=queue_on_lock
+            )
+        return self.install_update_strategy.update(
+            entry, queue_on_lock=queue_on_lock, trigger=trigger
+        )
 
-    def CheckForUpdatePythonPlugin(self, ppAuthor, ppRepository, ppKey):
+    def CheckForUpdatePythonPlugin(
+        self, ppAuthor, ppRepository, ppKey, trigger="manual"
+    ):
         entry = self.get_registry_entry_for_operation(ppKey, ppAuthor, ppRepository)
-        return self.install_update_strategy.check_for_update(entry)
+        if trigger == "manual":
+            return self.install_update_strategy.check_for_update(entry)
+        return self.install_update_strategy.check_for_update(
+            entry, trigger=trigger
+        )
 
     def fnSelectedNotify(self, plugin_key):
         Domoticz.Debug("fnSelectedNotify called")
