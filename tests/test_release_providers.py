@@ -652,6 +652,172 @@ def test_forgejo_requests_include_standard_api_headers(
     )
 
 
+@pytest.mark.parametrize("single_object", [False, True])
+def test_gitea_accepts_polymorphic_ref_response_but_requires_exact_match(
+    release_providers_module, single_object
+):
+    adapter, repository, policy, transport, expected = gitea_case(
+        release_providers_module
+    )
+    refs = transport.responses[expected["requests"][-1]]
+    exact_ref = refs[0]
+    if single_object:
+        transport.responses[expected["requests"][-1]] = exact_ref
+    else:
+        prefix_match = copy.deepcopy(exact_ref)
+        prefix_match["ref"] = "refs/tags/v1.4.0-rc.1"
+        refs.insert(0, prefix_match)
+
+    candidate = adapter.resolve(
+        repository, policy, transport, now=NOW
+    )
+
+    assert candidate.commit == expected["commit"]
+
+
+def test_gitea_rejects_ambiguous_exact_tag_refs(release_providers_module):
+    adapter, repository, policy, transport, expected = gitea_case(
+        release_providers_module
+    )
+    refs = transport.responses[expected["requests"][-1]]
+    refs.append(copy.deepcopy(refs[0]))
+
+    with pytest.raises(ValueError, match="ambiguous"):
+        adapter.resolve(repository, policy, transport, now=NOW)
+
+
+def test_gitea_peels_annotated_tag_object(release_providers_module):
+    adapter, repository, policy, transport, expected = gitea_case(
+        release_providers_module
+    )
+    tag_sha = "a" * 40
+    refs = transport.responses[expected["requests"][-1]]
+    refs[0]["object"] = {"type": "tag", "sha": tag_sha}
+    tag_url = (
+        "https://gitea.example/api/v1/repos/team/example/git/tags/"
+        + tag_sha
+    )
+    transport.responses[tag_url] = {
+        "sha": tag_sha,
+        "object": {"type": "commit", "sha": expected["commit"]},
+    }
+
+    candidate = adapter.resolve(
+        repository, policy, transport, now=NOW
+    )
+
+    assert candidate.commit == expected["commit"]
+    assert transport.requests[-1] == tag_url
+
+
+def test_gitea_uses_returned_uuid_attachment_url_without_synthesis(
+    release_providers_module,
+):
+    adapter, repository, policy, transport, expected = gitea_case(
+        release_providers_module,
+        artifact="asset:domoticz-plugin.zip",
+    )
+    releases = transport.responses[expected["requests"][0]]
+    stable_release = next(
+        release for release in releases if release["tag_name"] == "v1.4.0"
+    )
+    asset = next(
+        item
+        for item in stable_release["assets"]
+        if item["name"] == "domoticz-plugin.zip"
+    )
+    uuid_url = (
+        "https://gitea.example/attachments/"
+        "01234567-89ab-cdef-0123-456789abcdef"
+    )
+    asset["browser_download_url"] = uuid_url
+
+    candidate = adapter.resolve(
+        repository, policy, transport, now=NOW
+    )
+
+    assert candidate.artifact_url == uuid_url
+
+
+def test_gitea_requires_explicit_provider_bases_before_requests(
+    release_providers_module,
+):
+    adapter, repository, policy, transport, _ = gitea_case(
+        release_providers_module
+    )
+    del repository["api_base"]
+
+    with pytest.raises(ValueError, match="explicit"):
+        adapter.resolve(repository, policy, transport, now=NOW)
+
+    assert transport.requests == []
+
+
+def test_gitea_release_listing_paginates_until_a_short_page(
+    release_providers_module,
+):
+    adapter, repository, policy, fixture_transport, expected = gitea_case(
+        release_providers_module
+    )
+    first_url = expected["requests"][0]
+    second_url = first_url.replace("page=1", "page=2")
+    fixture_releases = fixture_transport.responses[first_url]
+    release_candidate = next(
+        release
+        for release in fixture_releases
+        if release["tag_name"] == "v1.5.0-rc.1"
+    )
+    stable = next(
+        release
+        for release in fixture_releases
+        if release["tag_name"] == "v1.4.0"
+    )
+    transport = FixtureTransport(
+        {
+            first_url: [copy.deepcopy(release_candidate) for _ in range(50)],
+            second_url: [copy.deepcopy(stable)],
+            expected["requests"][-1]: fixture_transport.responses[
+                expected["requests"][-1]
+            ],
+        }
+    )
+
+    candidate = adapter.resolve(
+        repository, policy, transport, now=NOW
+    )
+
+    assert candidate.tag == "v1.4.0"
+    assert transport.requests[:2] == [first_url, second_url]
+
+
+def test_gitea_requests_include_standard_api_headers(
+    release_providers_module,
+):
+    adapter, repository, policy, fixture_transport, _ = gitea_case(
+        release_providers_module
+    )
+
+    class HeaderRecordingTransport(FixtureTransport):
+        def __init__(self, responses):
+            super().__init__(responses)
+            self.options = []
+
+        def get_json(self, url, **kwargs):
+            self.options.append(copy.deepcopy(kwargs))
+            return super().get_json(url, **kwargs)
+
+    transport = HeaderRecordingTransport(fixture_transport.responses)
+
+    adapter.resolve(repository, policy, transport, now=NOW)
+
+    assert transport.options
+    assert all(
+        options["headers"]["Accept"] == "application/json"
+        and options["headers"]["User-Agent"]
+        for options in transport.options
+    )
+
+
 def test_forgejo_and_gitea_use_distinct_adapter_classes(
     release_providers_module,
 ):
