@@ -15,8 +15,8 @@
 - [x] Task: Implement the shared release-provider interface and normalized candidate model `9c9fe43`
 - [x] Task: Implement GitHub stable release resolution, source-ZIP preference, and attached-asset provenance checks `54cf8f8`
 - [x] Task: Implement GitLab release-list filtering with reviewed tag policy, encoded project paths, source-ZIP preference, and attached-asset provenance checks `c0fad49`
-- [~] Task: Implement Forgejo/Codeberg stable release and asset/source-ZIP resolution
-- [ ] Task: Implement a distinct Gitea stable release and asset/source-ZIP adapter
+- [x] Task: Implement Forgejo/Codeberg stable release and asset/source-ZIP resolution `8dbb9d7`
+- [~] Task: Implement a distinct Gitea stable release and asset/source-ZIP adapter
 - [ ] Task: Implement generic HTTPS manifest resolution
 - [ ] Task: Add SSRF-safe bounded downloads, commit-addressed source archives, transport digest/length checks, canonical-tree identity, asset mutation detection, caching, and report-only index generation
 - [ ] Task: Extend registry validation and weekly PR automation for `release_index.json`
