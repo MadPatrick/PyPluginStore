@@ -19,8 +19,8 @@
 - [x] Task: Implement a distinct Gitea stable release and asset/source-ZIP adapter `589bb61`
 - [x] Task: Implement generic HTTPS manifest resolution `5848a14`
 - [x] Task: Add SSRF-safe bounded downloads, commit-addressed source archives, transport digest/length checks, canonical-tree identity, asset mutation detection, caching, and report-only index generation `a873a68`
-- [~] Task: Extend registry validation and weekly PR automation for `release_index.json`
-- [ ] Task: Conductor - User Manual Verification 'Multi-Forge Release Resolution' (Protocol in workflow.md)
+- [x] Task: Extend registry validation and weekly PR automation for `release_index.json` `4fa2a2d`
+- [~] Task: Conductor - User Manual Verification 'Multi-Forge Release Resolution' (waived by user; automated checkpoint pending)
 
 ## Phase 3: Hardened ZIP Staging and Rollback
 
