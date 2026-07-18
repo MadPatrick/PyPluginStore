@@ -25,8 +25,8 @@
 ## Phase 3: Hardened ZIP Staging and Rollback
 
 - [x] Task: Add failing archive tests for traversal, absolute/UNC/drive paths, links/devices, control bytes, encryption, duplicate/case collisions, Windows reserved paths, ambiguous roots, manager metadata, bombs, size limits, and malformed ZIPs `caf99ba`
-- [~] Task: Implement the SSRF-safe bounded streaming downloader and member-by-member safe ZIP extractor
-- [ ] Task: Add canonical cross-platform tree hashing, wrapper/source-path resolution, flexible `plugin.py` identity certification, and compilation validation
+- [x] Task: Implement the SSRF-safe bounded streaming downloader and member-by-member safe ZIP extractor `00abc9e`
+- [~] Task: Add canonical cross-platform tree hashing, wrapper/source-path resolution, flexible `plugin.py` identity certification, and compilation validation
 - [ ] Task: Add same-filesystem manager-owned transaction journals, staging, backup, two-rename replacement, and immediate rollback
 - [ ] Task: Add idempotent queued replacement for Windows locked-file behavior
 - [ ] Task: Conductor - User Manual Verification 'Hardened ZIP Staging and Rollback' (Protocol in workflow.md)
