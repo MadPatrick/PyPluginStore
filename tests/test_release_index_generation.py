@@ -1,0 +1,1496 @@
+import copy
+import hashlib
+import io
+import json
+import zipfile
+from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+
+import pytest
+
+from conftest import REPO_ROOT, load_module_from_path
+
+
+NOW = datetime(2026, 7, 18, 12, 0, 0, tzinfo=timezone.utc)
+VALIDITY_SECONDS = 7 * 24 * 60 * 60
+COMMIT_1 = "1" * 40
+COMMIT_2 = "2" * 40
+
+
+@dataclass(frozen=True)
+class Candidate:
+    provider: str
+    repository_identity: str
+    release_id: str
+    version: str
+    tag: str
+    released_at: str
+    source_revision: str
+    commit: str
+    artifact_kind: str
+    artifact_provenance: str
+    artifact_url: str
+    artifact_size: object
+    provider_sha256: str
+    source_path: str
+    migration_eligible: bool
+
+
+@dataclass(frozen=True)
+class Download:
+    data: bytes
+    size: int
+    sha256: str
+    final_url: str
+    redirects: int = 0
+    verified: bool = False
+
+
+class RecordingProvider:
+    def __init__(self, outcomes):
+        self.outcomes = {
+            identity: list(values)
+            for identity, values in outcomes.items()
+        }
+        self.calls = []
+
+    def resolve(self, repository, policy, transport, now):
+        identity = repository["repository_identity"]
+        self.calls.append(
+            {
+                "repository": copy.deepcopy(repository),
+                "policy": copy.deepcopy(policy),
+                "transport": transport,
+                "now": now,
+            }
+        )
+        if identity not in self.outcomes or not self.outcomes[identity]:
+            raise AssertionError("Unexpected provider resolution: " + identity)
+        outcome = self.outcomes[identity].pop(0)
+        if isinstance(outcome, BaseException):
+            raise outcome
+        return outcome
+
+
+class ExplodingProvider:
+    def __init__(self):
+        self.calls = []
+
+    def resolve(self, repository, policy, transport, now):
+        self.calls.append(repository["repository_identity"])
+        raise AssertionError("provider cache was not used")
+
+
+class RecordingHttpClient:
+    def __init__(self, artifacts):
+        self.artifacts = {
+            url: list(values)
+            for url, values in artifacts.items()
+        }
+        self.calls = []
+
+    def download(
+        self,
+        url,
+        *,
+        expected_sha256=None,
+        expected_size=None,
+        allowed_origins=(),
+    ):
+        self.calls.append(
+            {
+                "url": url,
+                "expected_sha256": expected_sha256,
+                "expected_size": expected_size,
+                "allowed_origins": list(allowed_origins),
+            }
+        )
+        if url not in self.artifacts or not self.artifacts[url]:
+            raise AssertionError("Unexpected artifact download: " + url)
+        outcome = self.artifacts[url].pop(0)
+        if isinstance(outcome, BaseException):
+            raise outcome
+        data = bytes(outcome)
+        digest = hashlib.sha256(data).hexdigest()
+        if expected_sha256 and digest != expected_sha256:
+            raise ValueError("provider digest mismatch")
+        if expected_size is not None and len(data) != expected_size:
+            raise ValueError("provider length mismatch")
+        return Download(
+            data=data,
+            size=len(data),
+            sha256=digest,
+            final_url=url,
+            verified=bool(expected_sha256 or expected_size),
+        )
+
+
+class ExplodingHttpClient:
+    def __init__(self):
+        self.calls = []
+
+    def download(self, url, **kwargs):
+        self.calls.append(url)
+        raise AssertionError("artifact certification cache was not used")
+
+
+@pytest.fixture
+def release_index_generation_module():
+    module_path = (
+        REPO_ROOT / ".github" / "scripts" / "generate_release_index.py"
+    )
+    if not module_path.is_file():
+        class MissingReleaseIndexGeneration:
+            def __getattr__(self, name):
+                raise AssertionError(
+                    "Missing release index generation contract: " + name
+                )
+
+        return MissingReleaseIndexGeneration()
+    return load_module_from_path(
+        "release_index_generation_under_test",
+        module_path,
+    )
+
+
+def registry_entry(
+    owner="owner",
+    repository="example-plugin",
+    provider="github",
+    *,
+    source_path=".",
+    artifact="source_zip",
+    allowed_origins=None,
+    preferred="release_if_indexed",
+):
+    release = {
+        "provider": provider,
+        "channel": "stable",
+        "tag_pattern": r"^v[0-9]+\.[0-9]+\.[0-9]+$",
+        "artifact": artifact,
+        "source_path": source_path,
+        "mutable_paths": [],
+    }
+    if allowed_origins:
+        release["allowed_origins"] = list(allowed_origins)
+    delivery = {
+        "schema_version": 1,
+        "preferred": preferred,
+        "git_supported": True,
+    }
+    if preferred != "git":
+        delivery["release"] = release
+    return {
+        "owner": owner,
+        "repository": repository,
+        "description": "Example plugin",
+        "branch": "main",
+        "delivery": delivery,
+    }
+
+
+def registry_bytes(entries=None, *, indent=2):
+    entries = entries or {"ExamplePlugin": registry_entry()}
+    return (
+        json.dumps(entries, indent=indent, sort_keys=False) + "\n"
+    ).encode("utf-8")
+
+
+def candidate(
+    *,
+    provider="github",
+    repository_identity="github.com/owner/example-plugin",
+    release_id="github:owner/example-plugin:v1.0.0",
+    version="1.0.0",
+    tag="v1.0.0",
+    commit=COMMIT_1,
+    artifact_kind="source_zip",
+    artifact_provenance="forge_source_archive",
+    artifact_url=None,
+    artifact_size=None,
+    provider_sha256="",
+    source_path=".",
+    migration_eligible=True,
+    source_revision=None,
+):
+    if artifact_url is None:
+        artifact_url = (
+            "https://downloads.example.test/"
+            + repository_identity.replace("/", "-")
+            + "/"
+            + commit
+            + ".zip"
+        )
+    if source_revision is None:
+        source_revision = commit
+    return Candidate(
+        provider=provider,
+        repository_identity=repository_identity,
+        release_id=release_id,
+        version=version,
+        tag=tag,
+        released_at="2026-07-18T10:00:00Z",
+        source_revision=source_revision,
+        commit=commit,
+        artifact_kind=artifact_kind,
+        artifact_provenance=artifact_provenance,
+        artifact_url=artifact_url,
+        artifact_size=artifact_size,
+        provider_sha256=provider_sha256,
+        source_path=source_path,
+        migration_eligible=migration_eligible,
+    )
+
+
+def zip_archive(
+    files=None,
+    *,
+    root_prefix="example-plugin-" + COMMIT_1,
+    compression=zipfile.ZIP_DEFLATED,
+    timestamp=(2026, 7, 18, 10, 0, 0),
+    reverse=False,
+):
+    files = files or {
+        "plugin.py": b"print('plugin')\n",
+        "README.md": b"Example plugin\n",
+    }
+    items = list(files.items())
+    if reverse:
+        items.reverse()
+    output = io.BytesIO()
+    with zipfile.ZipFile(output, "w") as archive:
+        for relative_path, contents in items:
+            info = zipfile.ZipInfo(root_prefix + "/" + relative_path)
+            info.date_time = timestamp
+            info.compress_type = compression
+            info.create_system = 3
+            info.external_attr = 0o100644 << 16
+            archive.writestr(info, contents)
+    return output.getvalue()
+
+
+def canonical_tree_sha256(files=None):
+    files = files or {
+        "plugin.py": b"print('plugin')\n",
+        "README.md": b"Example plugin\n",
+    }
+    records = []
+    for path, contents in files.items():
+        digest = hashlib.sha256(contents).hexdigest()
+        records.append(
+            path.encode("utf-8")
+            + b"\0"
+            + str(len(contents)).encode("ascii")
+            + b"\0"
+            + digest.encode("ascii")
+            + b"\n"
+        )
+    return hashlib.sha256(b"".join(sorted(records))).hexdigest()
+
+
+def artifact_document(
+    archive,
+    *,
+    tree_sha256=None,
+    root_prefix="example-plugin-" + COMMIT_1,
+    kind="source_zip",
+    provenance="forge_source_archive",
+    migration_eligible=True,
+    url=None,
+    source_path=".",
+):
+    return {
+        "kind": kind,
+        "provenance": provenance,
+        "migration_eligible": migration_eligible,
+        "url": url
+        or (
+            "https://downloads.example.test/github.com-owner-example-plugin/"
+            + COMMIT_1
+            + ".zip"
+        ),
+        "sha256": hashlib.sha256(archive).hexdigest(),
+        "size": len(archive),
+        "tree_sha256": tree_sha256 or canonical_tree_sha256(),
+        "root_prefix": root_prefix,
+        "source_path": source_path,
+    }
+
+
+def release_entry(
+    archive,
+    *,
+    revision=1,
+    release_id="github:owner/example-plugin:v1.0.0",
+    supersedes=None,
+    provider="github",
+    repository_identity="github.com/owner/example-plugin",
+    version="1.0.0",
+    tag="v1.0.0",
+    commit=COMMIT_1,
+    source_revision=None,
+    artifact=None,
+):
+    document = {
+        "revision": revision,
+        "release_id": release_id,
+        "supersedes": list(supersedes or []),
+        "provider": provider,
+        "repository_identity": repository_identity,
+        "version": version,
+        "tag": tag,
+        "released_at": "2026-07-18T10:00:00Z",
+        "commit": commit,
+        "artifact": artifact or artifact_document(archive),
+    }
+    if source_revision:
+        document["source_revision"] = source_revision
+    return document
+
+
+def previous_index(
+    registry_contents,
+    plugins,
+    *,
+    sequence=4,
+    tombstones=None,
+):
+    return {
+        "schema_version": 1,
+        "sequence": sequence,
+        "generated_at": "2026-07-17T12:00:00Z",
+        "expires_at": "2026-07-24T12:00:00Z",
+        "registry_sha256": hashlib.sha256(registry_contents).hexdigest(),
+        "plugins": copy.deepcopy(plugins),
+        "tombstones": copy.deepcopy(tombstones or {}),
+    }
+
+
+def make_generator(
+    module,
+    providers,
+    http_client,
+    *,
+    cache=None,
+    now=NOW,
+):
+    return module.ReleaseIndexGenerator(
+        providers=providers,
+        http_client=http_client,
+        clock=lambda: now,
+        validity_seconds=VALIDITY_SECONDS,
+        cache=cache,
+    )
+
+
+def status(result, plugin_key="ExamplePlugin"):
+    return result.report["plugins"][plugin_key]["status"]
+
+
+def generate_single(
+    module,
+    selected_candidate,
+    archive,
+    *,
+    registry_contents=None,
+    previous=None,
+    cache=None,
+):
+    registry_contents = registry_contents or registry_bytes()
+    provider = RecordingProvider(
+        {
+            selected_candidate.repository_identity: [selected_candidate],
+        }
+    )
+    http_client = RecordingHttpClient(
+        {selected_candidate.artifact_url: [archive]}
+    )
+    generator = make_generator(
+        module,
+        {selected_candidate.provider: provider},
+        http_client,
+        cache=cache,
+    )
+    result = generator.generate(
+        registry_bytes=registry_contents,
+        previous_index=previous,
+        report_only=True,
+    )
+    return result, provider, http_client
+
+
+def test_index_serialization_is_deterministic_sorted_and_bound_to_exact_registry_bytes(
+    release_index_generation_module,
+    plugin_core_module,
+):
+    entries = {
+        "ZuluPlugin": registry_entry(
+            owner="zulu",
+            repository="plugin",
+        ),
+        "AlphaPlugin": registry_entry(
+            owner="alpha",
+            repository="plugin",
+        ),
+    }
+    contents = registry_bytes(entries)
+    zulu = candidate(
+        repository_identity="github.com/zulu/plugin",
+        release_id="github:zulu/plugin:v1.0.0",
+        artifact_url="https://downloads.example.test/zulu.zip",
+    )
+    alpha = candidate(
+        repository_identity="github.com/alpha/plugin",
+        release_id="github:alpha/plugin:v1.0.0",
+        artifact_url="https://downloads.example.test/alpha.zip",
+    )
+    archive = zip_archive(root_prefix="plugin-" + COMMIT_1)
+
+    def one_generation():
+        provider = RecordingProvider(
+            {
+                zulu.repository_identity: [zulu],
+                alpha.repository_identity: [alpha],
+            }
+        )
+        http_client = RecordingHttpClient(
+            {
+                zulu.artifact_url: [archive],
+                alpha.artifact_url: [archive],
+            }
+        )
+        return make_generator(
+            release_index_generation_module,
+            {"github": provider},
+            http_client,
+        ).generate(registry_bytes=contents, report_only=True)
+
+    first = one_generation()
+    second = one_generation()
+
+    assert first.index_bytes == second.index_bytes
+    assert first.document == second.document
+    assert first.document["schema_version"] == 1
+    assert first.document["sequence"] == 1
+    assert first.document["generated_at"] == "2026-07-18T12:00:00Z"
+    assert first.document["expires_at"] == "2026-07-25T12:00:00Z"
+    assert first.document["registry_sha256"] == hashlib.sha256(
+        contents
+    ).hexdigest()
+    assert list(first.document["plugins"]) == [
+        "AlphaPlugin",
+        "ZuluPlugin",
+    ]
+    assert first.index_bytes == (
+        json.dumps(
+            first.document,
+            indent=2,
+            sort_keys=True,
+            ensure_ascii=False,
+        )
+        + "\n"
+    ).encode("utf-8")
+    parsed = plugin_core_module.ReleaseIndex.from_document(
+        first.document,
+        registry_bytes=contents,
+        now=NOW,
+    )
+    assert list(parsed.plugins) == ["AlphaPlugin", "ZuluPlugin"]
+
+    reformatted_contents = registry_bytes(entries, indent=4)
+    reformatted = make_generator(
+        release_index_generation_module,
+        {
+            "github": RecordingProvider(
+                {
+                    zulu.repository_identity: [zulu],
+                    alpha.repository_identity: [alpha],
+                }
+            )
+        },
+        RecordingHttpClient(
+            {
+                zulu.artifact_url: [archive],
+                alpha.artifact_url: [archive],
+            }
+        ),
+    ).generate(registry_bytes=reformatted_contents, report_only=True)
+    assert reformatted.document["registry_sha256"] == hashlib.sha256(
+        reformatted_contents
+    ).hexdigest()
+    assert reformatted.document["registry_sha256"] != first.document[
+        "registry_sha256"
+    ]
+
+
+def test_source_archive_certification_records_transport_and_canonical_tree_identity(
+    release_index_generation_module,
+):
+    selected = candidate()
+    archive = zip_archive()
+
+    result, _, http_client = generate_single(
+        release_index_generation_module,
+        selected,
+        archive,
+    )
+
+    entry = result.document["plugins"]["ExamplePlugin"]
+    artifact = entry["artifact"]
+    assert entry["revision"] == 1
+    assert entry["supersedes"] == []
+    assert entry["commit"] == COMMIT_1
+    assert "source_revision" not in entry
+    assert artifact == {
+        "kind": "source_zip",
+        "provenance": "forge_source_archive",
+        "migration_eligible": True,
+        "url": selected.artifact_url,
+        "sha256": hashlib.sha256(archive).hexdigest(),
+        "size": len(archive),
+        "tree_sha256": canonical_tree_sha256(),
+        "root_prefix": "example-plugin-" + COMMIT_1,
+        "source_path": ".",
+    }
+    assert http_client.calls == [
+        {
+            "url": selected.artifact_url,
+            "expected_sha256": None,
+            "expected_size": None,
+            "allowed_origins": [],
+        }
+    ]
+    assert status(result) == "certified_new"
+    assert result.report["summary"] == {"certified_new": 1}
+
+
+def test_reviewed_allowed_origins_are_forwarded_to_artifact_download(
+    release_index_generation_module,
+):
+    contents = registry_bytes(
+        {
+            "ExamplePlugin": registry_entry(
+                allowed_origins=["https://cdn.example.test"]
+            )
+        }
+    )
+    selected = candidate()
+    archive = zip_archive()
+
+    _, _, http_client = generate_single(
+        release_index_generation_module,
+        selected,
+        archive,
+        registry_contents=contents,
+    )
+
+    assert http_client.calls[0]["allowed_origins"] == [
+        "https://cdn.example.test"
+    ]
+
+
+def test_github_api_commit_source_allows_only_the_codeload_redirect(
+    release_index_generation_module,
+):
+    selected = candidate(
+        artifact_url=(
+            "https://api.github.com/repos/owner/example-plugin/zipball/"
+            + COMMIT_1
+        )
+    )
+
+    _, _, http_client = generate_single(
+        release_index_generation_module,
+        selected,
+        zip_archive(),
+    )
+
+    assert http_client.calls[0]["allowed_origins"] == [
+        "https://codeload.github.com"
+    ]
+
+
+def test_new_releases_get_monotonic_revision_and_complete_lineage(
+    release_index_generation_module,
+):
+    contents = registry_bytes()
+    archive_1 = zip_archive()
+    first_candidate = candidate()
+    first, _, _ = generate_single(
+        release_index_generation_module,
+        first_candidate,
+        archive_1,
+        registry_contents=contents,
+    )
+
+    second_candidate = candidate(
+        release_id="github:owner/example-plugin:v2.0.0",
+        version="2.0.0",
+        tag="v2.0.0",
+        commit=COMMIT_2,
+        artifact_url="https://downloads.example.test/v2.zip",
+    )
+    archive_2 = zip_archive(root_prefix="example-plugin-" + COMMIT_2)
+    second, _, _ = generate_single(
+        release_index_generation_module,
+        second_candidate,
+        archive_2,
+        registry_contents=contents,
+        previous=first.document,
+    )
+
+    third_candidate = candidate(
+        release_id="github:owner/example-plugin:v3.0.0",
+        version="3.0.0",
+        tag="v3.0.0",
+        commit="3" * 40,
+        artifact_url="https://downloads.example.test/v3.zip",
+    )
+    archive_3 = zip_archive(root_prefix="example-plugin-" + "3" * 40)
+    third, _, _ = generate_single(
+        release_index_generation_module,
+        third_candidate,
+        archive_3,
+        registry_contents=contents,
+        previous=second.document,
+    )
+
+    first_entry = first.document["plugins"]["ExamplePlugin"]
+    second_entry = second.document["plugins"]["ExamplePlugin"]
+    third_entry = third.document["plugins"]["ExamplePlugin"]
+    assert (first_entry["revision"], first_entry["supersedes"]) == (1, [])
+    assert (second_entry["revision"], second_entry["supersedes"]) == (
+        2,
+        [first_candidate.release_id],
+    )
+    assert (third_entry["revision"], third_entry["supersedes"]) == (
+        3,
+        [first_candidate.release_id, second_candidate.release_id],
+    )
+    assert second.document["sequence"] == 2
+    assert third.document["sequence"] == 3
+    assert status(second) == "certified_update"
+    assert status(third) == "certified_update"
+
+
+def test_generated_source_recompression_refreshes_transport_without_new_revision(
+    release_index_generation_module,
+):
+    contents = registry_bytes()
+    original_archive = zip_archive(
+        compression=zipfile.ZIP_STORED,
+        timestamp=(2026, 7, 17, 10, 0, 0),
+    )
+    recompressed_archive = zip_archive(
+        compression=zipfile.ZIP_DEFLATED,
+        timestamp=(2026, 7, 18, 10, 0, 0),
+        reverse=True,
+    )
+    assert hashlib.sha256(original_archive).digest() != hashlib.sha256(
+        recompressed_archive
+    ).digest()
+    previous_entry = release_entry(
+        original_archive,
+        revision=7,
+        supersedes=[
+            "github:owner/example-plugin:v0.8.0",
+            "github:owner/example-plugin:v0.9.0",
+        ],
+    )
+    previous = previous_index(
+        contents,
+        {"ExamplePlugin": previous_entry},
+    )
+
+    result, _, _ = generate_single(
+        release_index_generation_module,
+        candidate(),
+        recompressed_archive,
+        registry_contents=contents,
+        previous=previous,
+    )
+
+    current = result.document["plugins"]["ExamplePlugin"]
+    assert current["revision"] == 7
+    assert current["release_id"] == previous_entry["release_id"]
+    assert current["supersedes"] == previous_entry["supersedes"]
+    assert current["commit"] == previous_entry["commit"]
+    assert current["artifact"]["tree_sha256"] == previous_entry[
+        "artifact"
+    ]["tree_sha256"]
+    assert current["artifact"]["sha256"] == hashlib.sha256(
+        recompressed_archive
+    ).hexdigest()
+    assert current["artifact"]["size"] == len(recompressed_archive)
+    assert status(result) == "transport_refreshed"
+    assert result.report["plugins"]["ExamplePlugin"][
+        "revision_changed"
+    ] is False
+
+
+def test_identical_candidate_and_archive_report_unchanged(
+    release_index_generation_module,
+):
+    contents = registry_bytes()
+    archive = zip_archive()
+    previous_entry = release_entry(archive, revision=7)
+    previous = previous_index(
+        contents,
+        {"ExamplePlugin": previous_entry},
+    )
+
+    result, _, _ = generate_single(
+        release_index_generation_module,
+        candidate(),
+        archive,
+        registry_contents=contents,
+        previous=previous,
+    )
+
+    assert result.document["plugins"]["ExamplePlugin"] == previous_entry
+    assert status(result) == "unchanged"
+    assert result.report["summary"] == {"unchanged": 1}
+
+
+def test_changed_source_tree_at_same_commit_is_quarantined(
+    release_index_generation_module,
+):
+    contents = registry_bytes()
+    original_archive = zip_archive()
+    changed_files = {
+        "plugin.py": b"print('plugin')\n",
+        "README.md": b"unexpected changed tree\n",
+    }
+    changed_archive = zip_archive(files=changed_files)
+    previous_entry = release_entry(original_archive, revision=7)
+    previous = previous_index(
+        contents,
+        {"ExamplePlugin": previous_entry},
+    )
+
+    result, _, _ = generate_single(
+        release_index_generation_module,
+        candidate(),
+        changed_archive,
+        registry_contents=contents,
+        previous=previous,
+    )
+
+    assert result.document["plugins"]["ExamplePlugin"] == previous_entry
+    assert status(result) == "quarantined_mutation"
+    report = result.report["plugins"]["ExamplePlugin"]
+    assert report["reason"] == "source_tree_changed"
+    assert report["observed_tree_sha256"] == canonical_tree_sha256(
+        changed_files
+    )
+    assert report["accepted_tree_sha256"] == previous_entry["artifact"][
+        "tree_sha256"
+    ]
+    assert result.document["tombstones"] == {}
+
+
+@pytest.mark.parametrize(
+    ("provider", "provenance", "kind", "migration_eligible"),
+    [
+        pytest.param(
+            "github",
+            "attached_asset",
+            "asset_zip",
+            False,
+            id="attached-asset",
+        ),
+        pytest.param(
+            "generic",
+            "generic_manifest",
+            "asset_zip",
+            False,
+            id="generic-artifact",
+        ),
+    ],
+)
+def test_attached_and_generic_recompression_is_quarantined_as_mutation(
+    release_index_generation_module,
+    provider,
+    provenance,
+    kind,
+    migration_eligible,
+):
+    owner = (
+        "owner"
+        if provider == "github"
+        else "downloads.example.test/team"
+    )
+    contents = registry_bytes(
+        {
+            "ExamplePlugin": registry_entry(
+                owner=owner,
+                provider=provider,
+                artifact="asset_zip",
+            )
+        }
+    )
+    identity = (
+        "github.com/owner/example-plugin"
+        if provider == "github"
+        else "downloads.example.test/team/example-plugin"
+    )
+    release_identity = (
+        "github:owner/example-plugin:v1.0.0"
+        if provider == "github"
+        else "generic:downloads.example.test/team/example-plugin:v1.0.0"
+    )
+    original_archive = zip_archive(
+        compression=zipfile.ZIP_STORED,
+        timestamp=(2026, 7, 17, 10, 0, 0),
+    )
+    recompressed_archive = zip_archive(
+        compression=zipfile.ZIP_DEFLATED,
+        timestamp=(2026, 7, 18, 10, 0, 0),
+        reverse=True,
+    )
+    artifact_url = "https://downloads.example.test/asset.zip"
+    previous_artifact = artifact_document(
+        original_archive,
+        kind=kind,
+        provenance=provenance,
+        migration_eligible=migration_eligible,
+        url=artifact_url,
+    )
+    previous_entry = release_entry(
+        original_archive,
+        revision=7,
+        release_id=release_identity,
+        provider=provider,
+        repository_identity=identity,
+        source_revision="immutable-release-1" if provider == "generic" else None,
+        artifact=previous_artifact,
+    )
+    if provider == "generic":
+        previous_entry["commit"] = ""
+    selected = candidate(
+        provider=provider,
+        repository_identity=identity,
+        release_id=release_identity,
+        commit="" if provider == "generic" else COMMIT_1,
+        source_revision=(
+            "immutable-release-1" if provider == "generic" else COMMIT_1
+        ),
+        artifact_kind=kind,
+        artifact_provenance=provenance,
+        artifact_url=artifact_url,
+        artifact_size=len(recompressed_archive),
+        provider_sha256=hashlib.sha256(recompressed_archive).hexdigest(),
+        migration_eligible=migration_eligible,
+    )
+    previous = previous_index(
+        contents,
+        {"ExamplePlugin": previous_entry},
+    )
+
+    result, _, _ = generate_single(
+        release_index_generation_module,
+        selected,
+        recompressed_archive,
+        registry_contents=contents,
+        previous=previous,
+    )
+
+    assert result.document["plugins"]["ExamplePlugin"] == previous_entry
+    assert status(result) == "quarantined_mutation"
+    assert result.report["plugins"]["ExamplePlugin"]["reason"] == (
+        "artifact_bytes_changed"
+    )
+    assert result.document["tombstones"] == {}
+
+
+def test_same_release_identity_with_changed_commit_is_quarantined(
+    release_index_generation_module,
+):
+    contents = registry_bytes()
+    original_archive = zip_archive()
+    previous_entry = release_entry(original_archive, revision=7)
+    previous = previous_index(
+        contents,
+        {"ExamplePlugin": previous_entry},
+    )
+    selected = candidate(
+        commit=COMMIT_2,
+        artifact_url="https://downloads.example.test/changed-commit.zip",
+    )
+    changed_commit_archive = zip_archive(
+        root_prefix="example-plugin-" + COMMIT_2
+    )
+
+    result, _, _ = generate_single(
+        release_index_generation_module,
+        selected,
+        changed_commit_archive,
+        registry_contents=contents,
+        previous=previous,
+    )
+
+    assert result.document["plugins"]["ExamplePlugin"] == previous_entry
+    assert status(result) == "quarantined_mutation"
+    assert result.report["plugins"]["ExamplePlugin"]["reason"] == (
+        "release_identity_changed_commit"
+    )
+
+
+def test_provider_release_regression_retains_complete_current_lineage(
+    release_index_generation_module,
+):
+    contents = registry_bytes()
+    archive = zip_archive()
+    previous_entry = release_entry(
+        archive,
+        revision=3,
+        release_id="github:owner/example-plugin:v3.0.0",
+        supersedes=[
+            "github:owner/example-plugin:v1.0.0",
+            "github:owner/example-plugin:v2.0.0",
+        ],
+        version="3.0.0",
+        tag="v3.0.0",
+        commit="3" * 40,
+    )
+    previous = previous_index(
+        contents,
+        {"ExamplePlugin": previous_entry},
+    )
+    regressed = candidate(
+        release_id="github:owner/example-plugin:v2.0.0",
+        version="2.0.0",
+        tag="v2.0.0",
+        commit=COMMIT_2,
+        artifact_url="https://downloads.example.test/v2.zip",
+    )
+
+    result, _, _ = generate_single(
+        release_index_generation_module,
+        regressed,
+        zip_archive(root_prefix="example-plugin-" + COMMIT_2),
+        registry_contents=contents,
+        previous=previous,
+    )
+
+    assert result.document["plugins"]["ExamplePlugin"] == previous_entry
+    assert status(result) == "quarantined_mutation"
+    assert result.report["plugins"]["ExamplePlugin"]["reason"] == (
+        "release_lineage_regression"
+    )
+
+
+def test_candidate_and_certification_cache_avoid_repeated_provider_and_archive_calls(
+    release_index_generation_module,
+    tmp_path,
+):
+    contents = registry_bytes()
+    selected = candidate()
+    archive = zip_archive()
+    cache_path = tmp_path / "candidate-cache.json"
+    first_cache = release_index_generation_module.ReleaseCandidateCache(
+        path=str(cache_path),
+        ttl_seconds=3600,
+        clock=lambda: NOW,
+    )
+    first, provider, http_client = generate_single(
+        release_index_generation_module,
+        selected,
+        archive,
+        registry_contents=contents,
+        cache=first_cache,
+    )
+    assert len(provider.calls) == 1
+    assert len(http_client.calls) == 1
+    assert cache_path.is_file()
+
+    second_cache = release_index_generation_module.ReleaseCandidateCache(
+        path=str(cache_path),
+        ttl_seconds=3600,
+        clock=lambda: NOW + timedelta(minutes=5),
+    )
+    provider_from_cache = ExplodingProvider()
+    http_from_cache = ExplodingHttpClient()
+    second = make_generator(
+        release_index_generation_module,
+        {"github": provider_from_cache},
+        http_from_cache,
+        cache=second_cache,
+        now=NOW,
+    ).generate(registry_bytes=contents, report_only=True)
+
+    assert second.index_bytes == first.index_bytes
+    assert provider_from_cache.calls == []
+    assert http_from_cache.calls == []
+    assert status(second) == "certified_new"
+    assert second.report["plugins"]["ExamplePlugin"]["cache_hit"] is True
+
+
+def test_expired_candidate_cache_is_not_used(
+    release_index_generation_module,
+    tmp_path,
+):
+    contents = registry_bytes()
+    selected = candidate()
+    archive = zip_archive()
+    cache_path = tmp_path / "candidate-cache.json"
+    first_cache = release_index_generation_module.ReleaseCandidateCache(
+        path=str(cache_path),
+        ttl_seconds=60,
+        clock=lambda: NOW,
+    )
+    generate_single(
+        release_index_generation_module,
+        selected,
+        archive,
+        registry_contents=contents,
+        cache=first_cache,
+    )
+
+    provider = RecordingProvider(
+        {selected.repository_identity: [selected]}
+    )
+    http_client = RecordingHttpClient(
+        {selected.artifact_url: [archive]}
+    )
+    expired_cache = release_index_generation_module.ReleaseCandidateCache(
+        path=str(cache_path),
+        ttl_seconds=60,
+        clock=lambda: NOW + timedelta(minutes=2),
+    )
+    result = make_generator(
+        release_index_generation_module,
+        {"github": provider},
+        http_client,
+        cache=expired_cache,
+        now=NOW + timedelta(minutes=2),
+    ).generate(registry_bytes=contents, report_only=True)
+
+    assert len(provider.calls) == 1
+    assert len(http_client.calls) == 1
+    assert result.report["plugins"]["ExamplePlugin"]["cache_hit"] is False
+
+
+def test_transient_provider_failure_retains_previous_entry_and_reports_it(
+    release_index_generation_module,
+):
+    contents = registry_bytes()
+    archive = zip_archive()
+    previous_entry = release_entry(archive, revision=7)
+    previous = previous_index(
+        contents,
+        {"ExamplePlugin": previous_entry},
+    )
+    failure = release_index_generation_module.TransientProviderError(
+        "provider rate limit"
+    )
+    provider = RecordingProvider(
+        {"github.com/owner/example-plugin": [failure]}
+    )
+    http_client = RecordingHttpClient({})
+    generator = make_generator(
+        release_index_generation_module,
+        {"github": provider},
+        http_client,
+    )
+
+    result = generator.generate(
+        registry_bytes=contents,
+        previous_index=previous,
+        report_only=True,
+    )
+
+    assert result.document["sequence"] == previous["sequence"] + 1
+    assert result.document["plugins"]["ExamplePlugin"] == previous_entry
+    assert result.document["tombstones"] == {}
+    assert status(result) == "retained_provider_failure"
+    assert result.report["plugins"]["ExamplePlugin"]["transient"] is True
+    assert "rate limit" in result.report["plugins"]["ExamplePlugin"][
+        "detail"
+    ]
+    assert http_client.calls == []
+
+
+def test_missing_candidate_retains_previous_entry_without_silent_tombstone(
+    release_index_generation_module,
+):
+    contents = registry_bytes()
+    archive = zip_archive()
+    previous_entry = release_entry(archive, revision=7)
+    previous = previous_index(
+        contents,
+        {"ExamplePlugin": previous_entry},
+    )
+    provider = RecordingProvider(
+        {"github.com/owner/example-plugin": [None]}
+    )
+    generator = make_generator(
+        release_index_generation_module,
+        {"github": provider},
+        RecordingHttpClient({}),
+    )
+
+    result = generator.generate(
+        registry_bytes=contents,
+        previous_index=previous,
+        report_only=True,
+    )
+
+    assert result.document["plugins"]["ExamplePlugin"] == previous_entry
+    assert result.document["tombstones"] == {}
+    assert status(result) == "retained_no_candidate"
+
+
+def test_missing_candidate_without_prior_certification_reports_no_release(
+    release_index_generation_module,
+):
+    contents = registry_bytes()
+    provider = RecordingProvider(
+        {"github.com/owner/example-plugin": [None]}
+    )
+    generator = make_generator(
+        release_index_generation_module,
+        {"github": provider},
+        RecordingHttpClient({}),
+    )
+
+    result = generator.generate(
+        registry_bytes=contents,
+        report_only=True,
+    )
+
+    assert result.document["plugins"] == {}
+    assert result.document["tombstones"] == {}
+    assert status(result) == "no_release"
+    assert result.report["summary"] == {"no_release": 1}
+
+
+def test_policy_disable_does_not_silently_remove_previously_accepted_release(
+    release_index_generation_module,
+):
+    contents = registry_bytes(
+        {
+            "ExamplePlugin": registry_entry(preferred="git"),
+        }
+    )
+    archive = zip_archive()
+    previous_entry = release_entry(archive, revision=7)
+    previous = previous_index(
+        contents,
+        {"ExamplePlugin": previous_entry},
+    )
+    generator = make_generator(
+        release_index_generation_module,
+        {"github": ExplodingProvider()},
+        ExplodingHttpClient(),
+    )
+
+    result = generator.generate(
+        registry_bytes=contents,
+        previous_index=previous,
+        report_only=True,
+    )
+
+    assert result.document["plugins"]["ExamplePlugin"] == previous_entry
+    assert result.document["tombstones"] == {}
+    assert status(result) == "retained_policy_disabled"
+
+
+def test_explicit_tombstone_request_decertifies_prior_release_with_reason(
+    release_index_generation_module,
+):
+    contents = registry_bytes()
+    archive = zip_archive()
+    previous_entry = release_entry(archive, revision=7)
+    previous = previous_index(
+        contents,
+        {"ExamplePlugin": previous_entry},
+    )
+    provider = ExplodingProvider()
+    generator = make_generator(
+        release_index_generation_module,
+        {"github": provider},
+        ExplodingHttpClient(),
+    )
+
+    result = generator.generate(
+        registry_bytes=contents,
+        previous_index=previous,
+        tombstone_requests={
+            "ExamplePlugin": {
+                "reason": "Release packaging is no longer maintained."
+            }
+        },
+        report_only=True,
+    )
+
+    assert result.document["plugins"] == {}
+    assert result.document["tombstones"] == {
+        "ExamplePlugin": {
+            "repository_identity": previous_entry["repository_identity"],
+            "last_revision": previous_entry["revision"],
+            "release_id": previous_entry["release_id"],
+            "reason": "Release packaging is no longer maintained.",
+            "removed_at": "2026-07-18T12:00:00Z",
+        }
+    }
+    assert status(result) == "tombstoned"
+    assert result.report["summary"] == {"tombstoned": 1}
+    assert provider.calls == []
+
+
+@pytest.mark.parametrize(
+    "tombstone_request",
+    [
+        pytest.param(
+            {"UnknownPlugin": {"reason": "Unknown"}},
+            id="unknown-plugin",
+        ),
+        pytest.param(
+            {"ExamplePlugin": {"reason": ""}},
+            id="empty-reason",
+        ),
+        pytest.param(
+            {"ExamplePlugin": {}},
+            id="missing-reason",
+        ),
+    ],
+)
+def test_tombstones_require_explicit_valid_request_for_prior_release(
+    release_index_generation_module, tombstone_request
+):
+    contents = registry_bytes()
+    archive = zip_archive()
+    previous = previous_index(
+        contents,
+        {"ExamplePlugin": release_entry(archive, revision=7)},
+    )
+    generator = make_generator(
+        release_index_generation_module,
+        {"github": ExplodingProvider()},
+        ExplodingHttpClient(),
+    )
+
+    with pytest.raises(ValueError):
+        generator.generate(
+            registry_bytes=contents,
+            previous_index=previous,
+            tombstone_requests=tombstone_request,
+            report_only=True,
+        )
+
+
+def test_certification_failure_retains_previous_entry_and_reports_failure(
+    release_index_generation_module,
+):
+    contents = registry_bytes()
+    original_archive = zip_archive()
+    previous_entry = release_entry(original_archive, revision=7)
+    previous = previous_index(
+        contents,
+        {"ExamplePlugin": previous_entry},
+    )
+    selected = candidate(
+        release_id="github:owner/example-plugin:v2.0.0",
+        version="2.0.0",
+        tag="v2.0.0",
+        commit=COMMIT_2,
+        artifact_url="https://downloads.example.test/v2.zip",
+    )
+    provider = RecordingProvider(
+        {selected.repository_identity: [selected]}
+    )
+    http_client = RecordingHttpClient(
+        {selected.artifact_url: [ValueError("archive rejected")]}
+    )
+    generator = make_generator(
+        release_index_generation_module,
+        {"github": provider},
+        http_client,
+    )
+
+    result = generator.generate(
+        registry_bytes=contents,
+        previous_index=previous,
+        report_only=True,
+    )
+
+    assert result.document["plugins"]["ExamplePlugin"] == previous_entry
+    assert status(result) == "certification_failed"
+    assert "archive rejected" in result.report["plugins"][
+        "ExamplePlugin"
+    ]["detail"]
+    assert result.document["tombstones"] == {}
+
+
+def test_report_only_file_run_never_changes_registry_or_tracked_index(
+    release_index_generation_module,
+    tmp_path,
+):
+    contents = registry_bytes()
+    original_archive = zip_archive()
+    previous_entry = release_entry(original_archive, revision=1)
+    previous = previous_index(
+        contents,
+        {"ExamplePlugin": previous_entry},
+    )
+    registry_path = tmp_path / "registry.json"
+    index_path = tmp_path / "release_index.json"
+    registry_path.write_bytes(contents)
+    previous_bytes = (
+        json.dumps(previous, indent=2, sort_keys=True) + "\n"
+    ).encode("utf-8")
+    index_path.write_bytes(previous_bytes)
+    selected = candidate(
+        release_id="github:owner/example-plugin:v2.0.0",
+        version="2.0.0",
+        tag="v2.0.0",
+        commit=COMMIT_2,
+        artifact_url="https://downloads.example.test/v2.zip",
+    )
+    archive = zip_archive(root_prefix="example-plugin-" + COMMIT_2)
+    provider = RecordingProvider(
+        {selected.repository_identity: [selected]}
+    )
+    http_client = RecordingHttpClient(
+        {selected.artifact_url: [archive]}
+    )
+    generator = make_generator(
+        release_index_generation_module,
+        {"github": provider},
+        http_client,
+    )
+    before_paths = sorted(path.name for path in tmp_path.iterdir())
+
+    result = generator.run(
+        registry_path=str(registry_path),
+        index_path=str(index_path),
+        report_only=True,
+    )
+
+    assert registry_path.read_bytes() == contents
+    assert index_path.read_bytes() == previous_bytes
+    assert sorted(path.name for path in tmp_path.iterdir()) == before_paths
+    assert result.index_bytes != previous_bytes
+    assert result.document["sequence"] == previous["sequence"] + 1
+    assert result.wrote_index is False
+    assert status(result) == "certified_update"
+
+
+def test_report_is_sorted_and_summarizes_each_scanner_outcome(
+    release_index_generation_module,
+):
+    entries = {
+        "ZuluNoRelease": registry_entry(
+            owner="zulu",
+            repository="none",
+        ),
+        "AlphaCertified": registry_entry(
+            owner="alpha",
+            repository="plugin",
+        ),
+    }
+    contents = registry_bytes(entries)
+    selected = candidate(
+        repository_identity="github.com/alpha/plugin",
+        release_id="github:alpha/plugin:v1.0.0",
+        artifact_url="https://downloads.example.test/alpha.zip",
+    )
+    provider = RecordingProvider(
+        {
+            "github.com/alpha/plugin": [selected],
+            "github.com/zulu/none": [None],
+        }
+    )
+    generator = make_generator(
+        release_index_generation_module,
+        {"github": provider},
+        RecordingHttpClient(
+            {selected.artifact_url: [zip_archive(root_prefix="plugin-" + COMMIT_1)]}
+        ),
+    )
+
+    result = generator.generate(
+        registry_bytes=contents,
+        report_only=True,
+    )
+
+    assert list(result.report["plugins"]) == [
+        "AlphaCertified",
+        "ZuluNoRelease",
+    ]
+    assert result.report["plugins"]["AlphaCertified"]["status"] == (
+        "certified_new"
+    )
+    assert result.report["plugins"]["ZuluNoRelease"]["status"] == (
+        "no_release"
+    )
+    assert result.report["summary"] == {
+        "certified_new": 1,
+        "no_release": 1,
+    }
+    assert result.report["sequence"] == result.document["sequence"]
+    assert result.report["report_only"] is True
+
+
+def test_default_construction_uses_a_separate_bounded_strict_json_transport(
+    release_index_generation_module,
+    monkeypatch,
+):
+    module = release_index_generation_module
+
+    class ArtifactClient:
+        def download(self, url, **kwargs):
+            raise AssertionError("artifact client should not be used for provider JSON")
+
+    class JsonClient:
+        def __init__(self):
+            self.calls = []
+
+        def download(self, url, **kwargs):
+            self.calls.append((url, copy.deepcopy(kwargs)))
+            data = b'[{"tag":"v1.0.0"}]'
+            return Download(
+                data=data,
+                size=len(data),
+                sha256=hashlib.sha256(data).hexdigest(),
+                final_url=url,
+            )
+
+    artifact_client = ArtifactClient()
+    json_client = JsonClient()
+    json_transport = module.SecureJsonTransport(json_client, max_bytes=128)
+    providers = {"github": object()}
+    monkeypatch.setattr(module, "default_provider_adapters", lambda: providers)
+    monkeypatch.setattr(
+        module,
+        "default_secure_http_client",
+        lambda: artifact_client,
+    )
+    monkeypatch.setattr(
+        module,
+        "default_secure_json_transport",
+        lambda: json_transport,
+    )
+
+    generator = module.ReleaseIndexGenerator()
+
+    assert generator.providers is providers
+    assert generator.http_client is artifact_client
+    assert generator.provider_transport is json_transport
+    assert generator.provider_transport.get_json(
+        "https://api.example.test/releases",
+        headers={"Accept": "application/json"},
+    ) == [{"tag": "v1.0.0"}]
+    assert json_client.calls == [
+        (
+            "https://api.example.test/releases",
+            {
+                "headers": {"Accept": "application/json"},
+                "expected_sha256": None,
+                "expected_size": None,
+                "allowed_origins": [],
+            },
+        )
+    ]
