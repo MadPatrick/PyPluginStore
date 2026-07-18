@@ -1,0 +1,8 @@
+{
+  "ref": "refs/tags/v1.4.0",
+  "object": {
+    "type": "tag",
+    "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "url": "https://api.github.com/repos/octo/example/git/tags/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  }
+}
