@@ -57,6 +57,21 @@ GITEA_API_HEADERS = {
 GITEA_RELEASE_PAGE_SIZE = 50
 GITEA_RELEASE_MAX_PAGES = 20
 GITEA_TAG_MAX_DEREFERENCES = 8
+GENERIC_MANIFEST_HEADERS = {
+    "Accept": "application/json",
+    "User-Agent": "PyPluginStore-Release-Scanner",
+}
+GENERIC_MANIFEST_REQUIRED_KEYS = {
+    "schema_version",
+    "release_id",
+    "version",
+    "released_at",
+    "url",
+    "sha256",
+    "size",
+    "source_revision",
+}
+GENERIC_MANIFEST_OPTIONAL_KEYS = {"commit", "source_path"}
 
 
 def _require_string(value, label, allow_empty=False):
@@ -229,7 +244,7 @@ class ReleaseCandidate:
             self.source_revision, "source_revision"
         )
         commit = _require_git_object_id(self.commit, allow_empty=True)
-        if commit and source_revision != commit:
+        if provider != "generic" and commit and source_revision != commit:
             raise ValueError("A Git source revision must equal its commit ID.")
 
         if self.artifact_kind not in ARTIFACT_KINDS:
@@ -1261,4 +1276,111 @@ class GiteaReleaseAdapter(ReleaseProviderAdapter):
             commit=commit,
             source_path=policy.get("source_path", "."),
             **artifact,
+        )
+
+
+class GenericManifestAdapter(ReleaseProviderAdapter):
+    """Normalize one immutable release described by a reviewed HTTPS manifest."""
+
+    provider = "generic"
+
+    def _get_json(self, transport, url):
+        return _transport_get_json(transport, url, GENERIC_MANIFEST_HEADERS)
+
+    def resolve(self, repository, policy, transport, *, now=None):
+        """Return a provider-neutral candidate from a strict v1 manifest."""
+        if not isinstance(repository, dict):
+            raise ValueError("Generic repository configuration must be an object.")
+        identity = _require_repository_identity(
+            repository.get("repository_identity")
+        )
+        if not isinstance(policy, dict):
+            raise ValueError("Generic release policy must be an object.")
+        if policy.get("channel") != "stable":
+            raise ValueError(
+                "Generic manifest adapter currently supports only stable releases."
+            )
+
+        manifest_url = _require_https_url(policy.get("manifest_url"))
+        manifest_host = urllib.parse.urlsplit(manifest_url).netloc.lower()
+        identity_host = identity.split("/", 1)[0]
+        if manifest_host != identity_host:
+            raise ValueError(
+                "Generic manifest host does not match repository_identity."
+            )
+
+        manifest = self._get_json(transport, manifest_url)
+        if not isinstance(manifest, dict):
+            raise ValueError("Generic release manifest must be an object.")
+        manifest_keys = set(manifest)
+        if not GENERIC_MANIFEST_REQUIRED_KEYS.issubset(manifest_keys):
+            raise ValueError("Generic release manifest is missing required fields.")
+        if not manifest_keys.issubset(
+            GENERIC_MANIFEST_REQUIRED_KEYS | GENERIC_MANIFEST_OPTIONAL_KEYS
+        ):
+            raise ValueError("Generic release manifest contains unknown fields.")
+        if type(manifest.get("schema_version")) is not int:
+            raise ValueError("Generic manifest schema_version must be an integer.")
+        if manifest["schema_version"] != 1:
+            raise ValueError("Generic manifest schema_version is unsupported.")
+
+        release_id = _require_string(manifest.get("release_id"), "release_id")
+        release_prefix = "generic:" + identity + ":"
+        if (
+            not release_id.startswith(release_prefix)
+            or not release_id[len(release_prefix):]
+        ):
+            raise ValueError(
+                "Generic manifest release_id does not match repository_identity."
+            )
+        version = _require_string(manifest.get("version"), "version")
+        released_at = _require_string(
+            manifest.get("released_at"), "released_at"
+        )
+        released_at_value = _parse_utc_timestamp(released_at)
+        if now is not None:
+            if not isinstance(now, datetime) or now.tzinfo is None:
+                raise ValueError("now must be a timezone-aware datetime.")
+            if released_at_value > now.astimezone(timezone.utc):
+                raise ValueError("Generic manifest release is dated in the future.")
+
+        artifact_url = _require_https_url(manifest.get("url"))
+        artifact_size = manifest.get("size")
+        if type(artifact_size) is not int or artifact_size <= 0:
+            raise ValueError("Generic manifest size must be a positive integer.")
+        provider_sha256 = _require_sha256(manifest.get("sha256"))
+        source_revision = _require_string(
+            manifest.get("source_revision"), "source_revision"
+        )
+        commit = _require_git_object_id(
+            manifest.get("commit", ""), allow_empty=True
+        )
+
+        manifest_source_path = manifest.get(
+            "source_path", policy.get("source_path", ".")
+        )
+        source_path = _require_source_path(manifest_source_path)
+        if "source_path" in policy:
+            policy_source_path = _require_source_path(policy["source_path"])
+            if source_path != policy_source_path:
+                raise ValueError(
+                    "Generic manifest source_path differs from reviewed policy."
+                )
+
+        return ReleaseCandidate(
+            provider=self.provider,
+            repository_identity=identity,
+            release_id=release_id,
+            version=version,
+            tag="",
+            released_at=released_at,
+            source_revision=source_revision,
+            commit=commit,
+            artifact_kind="asset_zip",
+            artifact_provenance="generic_manifest",
+            artifact_url=artifact_url,
+            artifact_size=artifact_size,
+            provider_sha256=provider_sha256,
+            source_path=source_path,
+            migration_eligible=False,
         )

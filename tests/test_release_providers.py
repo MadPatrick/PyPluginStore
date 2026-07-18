@@ -1077,3 +1077,114 @@ def test_generic_manifest_location_must_use_https(release_providers_module):
         adapter.resolve(repository, policy, transport, now=NOW)
 
     assert transport.requests == []
+
+
+def test_generic_manifest_is_bound_to_configured_repository_identity(
+    release_providers_module,
+):
+    manifest = load_fixture("generic_manifest.json")
+    manifest["release_id"] = "generic:downloads.example.test/other:v1.4.0"
+    adapter, repository, policy, transport = generic_case(
+        release_providers_module, manifest=manifest
+    )
+
+    with pytest.raises(ValueError, match="repository_identity"):
+        adapter.resolve(repository, policy, transport, now=NOW)
+
+
+def test_generic_manifest_host_is_validated_before_request(
+    release_providers_module,
+):
+    adapter, repository, policy, transport = generic_case(
+        release_providers_module,
+        manifest_url="https://other.example.test/release-manifest.json",
+    )
+
+    with pytest.raises(ValueError, match="host"):
+        adapter.resolve(repository, policy, transport, now=NOW)
+
+    assert transport.requests == []
+
+
+def test_generic_manifest_rejects_unknown_v1_fields(
+    release_providers_module,
+):
+    manifest = load_fixture("generic_manifest.json")
+    manifest["unreviewed_extension"] = True
+    adapter, repository, policy, transport = generic_case(
+        release_providers_module, manifest=manifest
+    )
+
+    with pytest.raises(ValueError, match="unknown"):
+        adapter.resolve(repository, policy, transport, now=NOW)
+
+
+def test_generic_manifest_source_path_must_match_reviewed_policy(
+    release_providers_module,
+):
+    adapter, repository, policy, transport = generic_case(
+        release_providers_module
+    )
+    policy["source_path"] = "."
+
+    with pytest.raises(ValueError, match="source_path"):
+        adapter.resolve(repository, policy, transport, now=NOW)
+
+
+def test_generic_manifest_rejects_future_release_timestamp(
+    release_providers_module,
+):
+    manifest = load_fixture("generic_manifest.json")
+    manifest["released_at"] = "2026-07-19T09:00:00Z"
+    adapter, repository, policy, transport = generic_case(
+        release_providers_module, manifest=manifest
+    )
+
+    with pytest.raises(ValueError, match="future"):
+        adapter.resolve(repository, policy, transport, now=NOW)
+
+
+def test_generic_optional_commit_is_provenance_not_migration_approval(
+    release_providers_module,
+):
+    manifest = load_fixture("generic_manifest.json")
+    manifest["commit"] = "5" * 40
+    adapter, repository, policy, transport = generic_case(
+        release_providers_module, manifest=manifest
+    )
+
+    candidate = adapter.resolve(repository, policy, transport, now=NOW)
+
+    assert candidate.commit == "5" * 40
+    assert candidate.source_revision == "release-2026-07-17-v1.4.0"
+    assert candidate.migration_eligible is False
+
+
+def test_generic_manifest_requests_json_with_standard_headers(
+    release_providers_module,
+):
+    adapter, repository, policy, fixture_transport = generic_case(
+        release_providers_module
+    )
+
+    class HeaderRecordingTransport(FixtureTransport):
+        def __init__(self, responses):
+            super().__init__(responses)
+            self.options = []
+
+        def get_json(self, url, **kwargs):
+            self.options.append(copy.deepcopy(kwargs))
+            return super().get_json(url, **kwargs)
+
+    transport = HeaderRecordingTransport(fixture_transport.responses)
+
+    adapter.resolve(repository, policy, transport, now=NOW)
+
+    assert transport.options == [
+        {
+            "headers": {
+                "Accept": "application/json",
+                "User-Agent": "PyPluginStore-Release-Scanner",
+            }
+        }
+    ]
