@@ -8,18 +8,20 @@ on:
   workflow_dispatch: # Allow manual trigger from the GitHub Actions UI
 
 permissions:
-  contents: write
-  pull-requests: write
+  contents: read
 
 jobs:
   scan-and-pr:
+    permissions:
+      contents: write
+      pull-requests: write
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: '3.11'
 
@@ -31,7 +33,7 @@ jobs:
           python .github/scripts/scan_github_plugins.py
 
       - name: Create Pull Request
-        uses: peter-evans/create-pull-request@v6
+        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           commit-message: "feat: update Domoticz Python plugin registry"
