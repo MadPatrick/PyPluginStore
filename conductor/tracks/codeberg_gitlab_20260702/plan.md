@@ -7,12 +7,12 @@
 - [x] Task: Regenerate `plugin.py` 8a55c7c
 - [x] Task: Conductor - User Manual Verification 'Runtime Host Support' (waived by user instruction) 845f564
 
-## Phase 2: Registry Automation Support
+## Phase 2: Registry Automation Support [checkpoint: 626ed72]
 
 - [x] Task: Add tests for validation and scanner behavior on Codeberg and GitLab entries 8a55c7c
 - [x] Task: Update validation and scheduled scanner scripts for supported hosts 8a55c7c
 - [x] Task: Update workflow naming and scan entrypoint if needed 8a55c7c
-- [ ] Task: Conductor - User Manual Verification 'Registry Automation Support' (Protocol in workflow.md)
+- [x] Task: Conductor - User Manual Verification 'Registry Automation Support' (waived by user instruction) 626ed72
 
 ## Phase 3: Verification
 
