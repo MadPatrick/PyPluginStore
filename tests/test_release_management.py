@@ -1,0 +1,998 @@
+from types import SimpleNamespace
+
+import pytest
+
+
+COMMIT_1 = "1" * 40
+COMMIT_2 = "2" * 40
+TREE_1 = "a" * 64
+TREE_2 = "b" * 64
+ARTIFACT_1 = "c" * 64
+ARTIFACT_2 = "d" * 64
+
+
+class RecordingGitStrategy:
+    def __init__(self):
+        self.calls = []
+
+    def install(self, entry):
+        self.calls.append(("install", entry.key))
+        return True, "git install"
+
+    def update(self, entry, queue_on_lock=True):
+        self.calls.append(("update", entry.key, queue_on_lock))
+        return True, "git update"
+
+    def check_for_update(self, entry):
+        self.calls.append(("check_for_update", entry.key))
+        return "git status"
+
+
+class RecordingReleaseStrategy:
+    def __init__(self, result=(True, "release operation")):
+        self.calls = []
+        self.result = result
+
+    def install(self, entry, release, trigger):
+        self.calls.append(
+            ("install", entry.key, release.release_id, trigger)
+        )
+        return self.result
+
+    def update(self, entry, release, trigger):
+        self.calls.append(
+            ("update", entry.key, release.release_id, trigger)
+        )
+        return self.result
+
+    def migrate(self, entry, release, trigger):
+        self.calls.append(
+            ("migrate", entry.key, release.release_id, trigger)
+        )
+        return self.result
+
+
+def release_descriptor(
+    plugin_core_module,
+    *,
+    revision=7,
+    release_id="github:owner/example-plugin:v1.4.0",
+    supersedes=None,
+    version="1.4.0",
+    tag="v1.4.0",
+    commit=COMMIT_1,
+    tree_sha256=TREE_1,
+    artifact_sha256=ARTIFACT_1,
+    artifact_size=1000,
+    root_prefix="example-plugin-v1.4.0",
+    provenance="forge_source_archive",
+    migration_eligible=True,
+):
+    kind = "source_zip" if provenance == "forge_source_archive" else "asset_zip"
+    return plugin_core_module.ReleaseDescriptor.from_document(
+        {
+            "revision": revision,
+            "release_id": release_id,
+            "supersedes": list(supersedes or []),
+            "provider": "github",
+            "repository_identity": "github.com/owner/example-plugin",
+            "version": version,
+            "tag": tag,
+            "released_at": "2026-07-18T07:00:00Z",
+            "commit": commit,
+            "artifact": {
+                "kind": kind,
+                "provenance": provenance,
+                "migration_eligible": migration_eligible,
+                "url": (
+                    "https://downloads.example.test/"
+                    + artifact_sha256
+                    + "/plugin.zip"
+                ),
+                "sha256": artifact_sha256,
+                "size": artifact_size,
+                "tree_sha256": tree_sha256,
+                "root_prefix": root_prefix,
+                "source_path": ".",
+            },
+        }
+    )
+
+
+def installed_release_state(descriptor):
+    return SimpleNamespace(
+        release_revision=descriptor.revision,
+        release_id=descriptor.release_id,
+        commit=descriptor.commit,
+        source_revision=descriptor.source_revision,
+        artifact_sha256=descriptor.artifact.sha256,
+        artifact_tree_sha256=descriptor.artifact.tree_sha256,
+        artifact_provenance=descriptor.artifact.provenance,
+        index_sequence=42,
+    )
+
+
+def delivery_policy(plugin_core_module, preferred, git_supported=True):
+    release = None
+    if preferred in ("release", "release_if_indexed"):
+        release = {
+            "provider": "github",
+            "channel": "stable",
+            "tag_pattern": r"^v[0-9]+\.[0-9]+\.[0-9]+$",
+            "artifact": "source_zip",
+            "source_path": ".",
+            "mutable_paths": [],
+        }
+    document = {
+        "schema_version": 1,
+        "preferred": preferred,
+        "git_supported": git_supported,
+    }
+    if release is not None:
+        document["release"] = release
+    return plugin_core_module.DeliveryPolicy.from_document(document)
+
+
+def registry_entry(
+    plugin_core_module,
+    *,
+    preferred="release_if_indexed",
+    git_supported=True,
+    implicit=False,
+):
+    policy = (
+        plugin_core_module.DeliveryPolicy.implicit()
+        if implicit
+        else delivery_policy(
+            plugin_core_module,
+            preferred,
+            git_supported=git_supported,
+        )
+    )
+    return plugin_core_module.RegistryEntry(
+        "ExamplePlugin",
+        "owner",
+        "example-plugin",
+        "Example plugin",
+        "main",
+        delivery=policy,
+    )
+
+
+def release_tombstone(plugin_core_module):
+    return plugin_core_module.ReleaseTombstone.from_document(
+        {
+            "repository_identity": "github.com/owner/example-plugin",
+            "last_revision": 7,
+            "release_id": "github:owner/example-plugin:v1.4.0",
+            "reason": "Release packaging was withdrawn.",
+            "removed_at": "2026-07-18T09:00:00Z",
+        }
+    )
+
+
+def make_coordinator(plugin_core_module, release_result=(True, "release operation")):
+    plugin = plugin_core_module.BasePlugin()
+    git_strategy = RecordingGitStrategy()
+    release_strategy = RecordingReleaseStrategy(release_result)
+    coordinator = plugin_core_module.ReleaseManagementCoordinator(
+        plugin,
+        git_strategy=git_strategy,
+        release_strategy=release_strategy,
+    )
+    return coordinator, git_strategy, release_strategy
+
+
+def decide(
+    coordinator,
+    entry,
+    *,
+    operation,
+    installed_mode,
+    release=None,
+    tombstone=None,
+    metadata_authorized=True,
+    metadata_reason="",
+    installed_release=None,
+    preference=None,
+    trigger="manual",
+    downgrade_confirmed=False,
+    release_was_activated=False,
+    git_status="unknown",
+):
+    return coordinator.decide(
+        entry,
+        operation=operation,
+        installed_mode=installed_mode,
+        release=release,
+        tombstone=tombstone,
+        metadata_authorized=metadata_authorized,
+        metadata_reason=metadata_reason,
+        installed_release=installed_release,
+        channel_preference=preference,
+        trigger=trigger,
+        downgrade_confirmed=downgrade_confirmed,
+        release_was_activated=release_was_activated,
+        git_status=git_status,
+    )
+
+
+@pytest.mark.parametrize(
+    (
+        "preferred",
+        "git_supported",
+        "preference",
+        "has_release",
+        "expected_route",
+        "expected_status",
+    ),
+    [
+        (
+            "release_if_indexed",
+            True,
+            None,
+            True,
+            "release_install",
+            "available",
+        ),
+        ("release", True, None, True, "release_install", "available"),
+        (
+            "release_if_indexed",
+            True,
+            None,
+            False,
+            "git_install",
+            "git_available",
+        ),
+        (
+            "release",
+            True,
+            None,
+            False,
+            "blocked",
+            "release_metadata_unavailable",
+        ),
+        ("git", True, None, True, "git_install", "git_available"),
+        (
+            "release_if_indexed",
+            True,
+            "keep_git",
+            True,
+            "git_install",
+            "git_available",
+        ),
+        (
+            "release_if_indexed",
+            True,
+            "release",
+            True,
+            "release_install",
+            "available",
+        ),
+        (
+            "release_if_indexed",
+            True,
+            "release",
+            False,
+            "blocked",
+            "release_metadata_unavailable",
+        ),
+        (
+            "release",
+            False,
+            "keep_git",
+            True,
+            "blocked",
+            "release_metadata_unavailable",
+        ),
+    ],
+)
+def test_activation_honors_registry_policy_and_explicit_channel_choice(
+    plugin_core_module,
+    preferred,
+    git_supported,
+    preference,
+    has_release,
+    expected_route,
+    expected_status,
+):
+    coordinator, _, _ = make_coordinator(plugin_core_module)
+    entry = registry_entry(
+        plugin_core_module,
+        preferred=preferred,
+        git_supported=git_supported,
+    )
+    target = release_descriptor(plugin_core_module) if has_release else None
+
+    decision = decide(
+        coordinator,
+        entry,
+        operation="install",
+        installed_mode="absent",
+        release=target,
+        preference=preference,
+    )
+
+    assert decision.route == expected_route
+    assert decision.status == expected_status
+    assert decision.trigger == "manual"
+    if expected_route.startswith("release_"):
+        assert decision.release is target
+
+
+@pytest.mark.parametrize(
+    (
+        "preferred",
+        "installed_mode",
+        "preference",
+        "release_was_activated",
+        "expected_route",
+    ),
+    [
+        ("release_if_indexed", "absent", None, False, "git_install"),
+        ("release_if_indexed", "git", None, False, "git_update"),
+        ("release_if_indexed", "git", "keep_git", True, "git_update"),
+        ("release_if_indexed", "git", None, True, "blocked"),
+        ("release_if_indexed", "release", None, True, "blocked"),
+        ("release", "absent", None, False, "blocked"),
+        ("release_if_indexed", "absent", "release", False, "blocked"),
+    ],
+)
+def test_unavailable_metadata_never_changes_an_activated_release_to_git(
+    plugin_core_module,
+    preferred,
+    installed_mode,
+    preference,
+    release_was_activated,
+    expected_route,
+):
+    coordinator, _, _ = make_coordinator(plugin_core_module)
+    entry = registry_entry(plugin_core_module, preferred=preferred)
+    operation = "install" if installed_mode == "absent" else "update"
+
+    decision = decide(
+        coordinator,
+        entry,
+        operation=operation,
+        installed_mode=installed_mode,
+        metadata_authorized=False,
+        metadata_reason="expired",
+        preference=preference,
+        release_was_activated=release_was_activated,
+        git_status="available",
+    )
+
+    assert decision.route == expected_route
+    if expected_route == "blocked":
+        assert decision.status == "release_metadata_unavailable"
+        assert decision.reason == "expired"
+
+
+@pytest.mark.parametrize(
+    (
+        "installed_mode",
+        "preference",
+        "expected_route",
+        "expected_status",
+    ),
+    [
+        ("absent", None, "git_install", "git_available"),
+        ("git", None, "git_update", "git_available"),
+        (
+            "absent",
+            "release",
+            "blocked",
+            "release_metadata_unavailable",
+        ),
+        (
+            "release",
+            None,
+            "blocked",
+            "release_metadata_unavailable",
+        ),
+    ],
+)
+def test_decertification_is_explicit_and_never_a_silent_release_fallback(
+    plugin_core_module,
+    installed_mode,
+    preference,
+    expected_route,
+    expected_status,
+):
+    coordinator, _, _ = make_coordinator(plugin_core_module)
+    entry = registry_entry(plugin_core_module)
+
+    decision = decide(
+        coordinator,
+        entry,
+        operation="install" if installed_mode == "absent" else "update",
+        installed_mode=installed_mode,
+        tombstone=release_tombstone(plugin_core_module),
+        preference=preference,
+        release_was_activated=installed_mode == "release",
+        git_status="available",
+    )
+
+    assert decision.route == expected_route
+    assert decision.status == expected_status
+    assert decision.reason == "release_decertified"
+
+
+def test_fresh_index_missing_previously_activated_entry_still_fails_closed(
+    plugin_core_module,
+):
+    coordinator, _, _ = make_coordinator(plugin_core_module)
+    entry = registry_entry(plugin_core_module)
+    current = release_descriptor(plugin_core_module)
+
+    decision = decide(
+        coordinator,
+        entry,
+        operation="update",
+        installed_mode="release",
+        release=None,
+        metadata_authorized=True,
+        installed_release=installed_release_state(current),
+        release_was_activated=True,
+        git_status="available",
+    )
+
+    assert decision.route == "blocked"
+    assert decision.status == "release_metadata_unavailable"
+    assert decision.reason == "release_entry_missing"
+
+
+def test_higher_release_requires_complete_predecessor_lineage(
+    plugin_core_module,
+):
+    coordinator, _, _ = make_coordinator(plugin_core_module)
+    entry = registry_entry(plugin_core_module)
+    current = release_descriptor(plugin_core_module)
+    installed = installed_release_state(current)
+    accepted_target = release_descriptor(
+        plugin_core_module,
+        revision=8,
+        release_id="github:owner/example-plugin:v1.5.0",
+        supersedes=[current.release_id],
+        version="1.5.0",
+        tag="v1.5.0",
+        commit=COMMIT_2,
+        tree_sha256=TREE_2,
+        artifact_sha256=ARTIFACT_2,
+        root_prefix="example-plugin-v1.5.0",
+    )
+    gap_target = release_descriptor(
+        plugin_core_module,
+        revision=8,
+        release_id="github:owner/example-plugin:v1.5.0",
+        supersedes=[],
+        version="1.5.0",
+        tag="v1.5.0",
+        commit=COMMIT_2,
+        tree_sha256=TREE_2,
+        artifact_sha256=ARTIFACT_2,
+        root_prefix="example-plugin-v1.5.0",
+    )
+
+    accepted = decide(
+        coordinator,
+        entry,
+        operation="update",
+        installed_mode="release",
+        release=accepted_target,
+        installed_release=installed,
+        release_was_activated=True,
+    )
+    rejected = decide(
+        coordinator,
+        entry,
+        operation="update",
+        installed_mode="release",
+        release=gap_target,
+        installed_release=installed,
+        release_was_activated=True,
+    )
+
+    assert accepted.route == "release_update"
+    assert accepted.status == "available"
+    assert rejected.route == "blocked"
+    assert rejected.status == "verification_failed"
+    assert rejected.reason == "predecessor_gap"
+
+
+@pytest.mark.parametrize(
+    ("change", "expected_reason"),
+    [
+        ({"commit": COMMIT_2}, "release_mutation"),
+        ({"tree_sha256": TREE_2}, "release_mutation"),
+        (
+            {
+                "release_id": "github:owner/example-plugin:v1.4.0-repacked",
+            },
+            "release_mutation",
+        ),
+    ],
+)
+def test_equal_revision_rejects_identity_commit_or_tree_mutation(
+    plugin_core_module, change, expected_reason
+):
+    coordinator, _, _ = make_coordinator(plugin_core_module)
+    entry = registry_entry(plugin_core_module)
+    current = release_descriptor(plugin_core_module)
+    installed = installed_release_state(current)
+    target = release_descriptor(plugin_core_module, **change)
+
+    decision = decide(
+        coordinator,
+        entry,
+        operation="update",
+        installed_mode="release",
+        release=target,
+        installed_release=installed,
+        release_was_activated=True,
+    )
+
+    assert decision.route == "blocked"
+    assert decision.status == "verification_failed"
+    assert decision.reason == expected_reason
+
+
+def test_recompressed_source_zip_with_same_commit_and_tree_is_already_current(
+    plugin_core_module,
+):
+    coordinator, _, _ = make_coordinator(plugin_core_module)
+    entry = registry_entry(plugin_core_module)
+    current = release_descriptor(plugin_core_module)
+    installed = installed_release_state(current)
+    recompressed = release_descriptor(
+        plugin_core_module,
+        artifact_sha256=ARTIFACT_2,
+        artifact_size=1200,
+        root_prefix="different-provider-wrapper",
+    )
+
+    decision = decide(
+        coordinator,
+        entry,
+        operation="update",
+        installed_mode="release",
+        release=recompressed,
+        installed_release=installed,
+        release_was_activated=True,
+    )
+
+    assert decision.route == "none"
+    assert decision.status == "current"
+    assert decision.reason == "equivalent_recompressed_source"
+
+
+def test_equal_revision_attached_asset_digest_change_is_a_mutation(
+    plugin_core_module,
+):
+    coordinator, _, _ = make_coordinator(plugin_core_module)
+    entry = registry_entry(plugin_core_module)
+    current = release_descriptor(
+        plugin_core_module,
+        provenance="attached_asset",
+        migration_eligible=False,
+    )
+    installed = installed_release_state(current)
+    changed = release_descriptor(
+        plugin_core_module,
+        provenance="attached_asset",
+        migration_eligible=False,
+        artifact_sha256=ARTIFACT_2,
+    )
+
+    decision = decide(
+        coordinator,
+        entry,
+        operation="update",
+        installed_mode="release",
+        release=changed,
+        installed_release=installed,
+        release_was_activated=True,
+    )
+
+    assert decision.route == "blocked"
+    assert decision.status == "verification_failed"
+    assert decision.reason == "release_mutation"
+
+
+@pytest.mark.parametrize(
+    ("trigger", "confirmed", "expected_route", "requires_confirmation"),
+    [
+        ("automatic", False, "blocked", False),
+        ("manual", False, "confirmation_required", True),
+        ("manual", True, "release_update", False),
+    ],
+)
+def test_release_downgrade_requires_explicit_manual_confirmation(
+    plugin_core_module,
+    trigger,
+    confirmed,
+    expected_route,
+    requires_confirmation,
+):
+    coordinator, _, _ = make_coordinator(plugin_core_module)
+    entry = registry_entry(plugin_core_module)
+    current = release_descriptor(
+        plugin_core_module,
+        revision=8,
+        release_id="github:owner/example-plugin:v1.5.0",
+        supersedes=["github:owner/example-plugin:v1.4.0"],
+        version="1.5.0",
+        tag="v1.5.0",
+        commit=COMMIT_2,
+        tree_sha256=TREE_2,
+        artifact_sha256=ARTIFACT_2,
+        root_prefix="example-plugin-v1.5.0",
+    )
+    installed = installed_release_state(current)
+    older_target = release_descriptor(plugin_core_module)
+
+    decision = decide(
+        coordinator,
+        entry,
+        operation="update",
+        installed_mode="release",
+        release=older_target,
+        installed_release=installed,
+        trigger=trigger,
+        downgrade_confirmed=confirmed,
+        release_was_activated=True,
+    )
+
+    assert decision.route == expected_route
+    assert decision.requires_confirmation is requires_confirmation
+    assert decision.reason == "release_downgrade"
+    if trigger == "automatic":
+        assert decision.status == "verification_failed"
+
+
+@pytest.mark.parametrize(
+    ("git_status", "expected_status"),
+    [("current", "git_current"), ("available", "git_available")],
+)
+def test_git_channel_status_remains_available_through_coordinator(
+    plugin_core_module, git_status, expected_status
+):
+    coordinator, _, _ = make_coordinator(plugin_core_module)
+    entry = registry_entry(plugin_core_module, preferred="git")
+
+    decision = decide(
+        coordinator,
+        entry,
+        operation="status",
+        installed_mode="git",
+        git_status=git_status,
+    )
+
+    assert decision.route == "git_status"
+    assert decision.status == expected_status
+
+
+def test_git_install_routes_to_release_migration_only_for_eligible_artifact(
+    plugin_core_module,
+):
+    coordinator, _, _ = make_coordinator(plugin_core_module)
+    entry = registry_entry(plugin_core_module)
+    eligible = release_descriptor(plugin_core_module)
+    ineligible = release_descriptor(
+        plugin_core_module,
+        provenance="attached_asset",
+        migration_eligible=False,
+    )
+
+    migration = decide(
+        coordinator,
+        entry,
+        operation="update",
+        installed_mode="git",
+        release=eligible,
+        git_status="available",
+    )
+    waiting = decide(
+        coordinator,
+        entry,
+        operation="update",
+        installed_mode="git",
+        release=ineligible,
+        git_status="available",
+    )
+
+    assert migration.route == "release_migration"
+    assert migration.status == "migration_available"
+    assert waiting.route == "blocked"
+    assert waiting.status == "migration_waiting_for_release"
+    assert waiting.reason == "release_not_migration_eligible"
+
+
+@pytest.mark.parametrize("trigger", ["manual", "automatic"])
+def test_migration_preserves_explicit_manual_or_automatic_trigger(
+    plugin_core_module, trigger
+):
+    coordinator, git_strategy, release_strategy = make_coordinator(
+        plugin_core_module
+    )
+    entry = registry_entry(plugin_core_module)
+    target = release_descriptor(plugin_core_module)
+    decision = decide(
+        coordinator,
+        entry,
+        operation="update",
+        installed_mode="git",
+        release=target,
+        trigger=trigger,
+    )
+
+    result = coordinator.execute(entry, decision)
+
+    assert decision.route == "release_migration"
+    assert decision.trigger == trigger
+    assert release_strategy.calls == [
+        ("migrate", "ExamplePlugin", target.release_id, trigger)
+    ]
+    assert git_strategy.calls == []
+    assert result == (True, "release operation")
+
+
+def test_coordinator_rejects_ambiguous_trigger_values(plugin_core_module):
+    coordinator, _, _ = make_coordinator(plugin_core_module)
+
+    with pytest.raises(ValueError):
+        decide(
+            coordinator,
+            registry_entry(plugin_core_module),
+            operation="update",
+            installed_mode="git",
+            release=release_descriptor(plugin_core_module),
+            trigger="scheduled",
+        )
+
+
+@pytest.mark.parametrize(
+    (
+        "operation",
+        "installed_mode",
+        "has_release",
+        "expected_call",
+    ),
+    [
+        ("install", "absent", True, "release_install"),
+        ("install", "absent", False, "git_install"),
+        ("update", "release", True, "release_update"),
+        ("update", "git", True, "release_migration"),
+        ("update", "git", False, "git_update"),
+    ],
+)
+def test_execute_routes_new_install_update_and_migration_to_one_strategy(
+    plugin_core_module,
+    operation,
+    installed_mode,
+    has_release,
+    expected_call,
+):
+    coordinator, git_strategy, release_strategy = make_coordinator(
+        plugin_core_module
+    )
+    entry = registry_entry(plugin_core_module)
+    current = release_descriptor(plugin_core_module)
+    installed = (
+        installed_release_state(current)
+        if installed_mode == "release"
+        else None
+    )
+    target = None
+    if has_release:
+        target = (
+            release_descriptor(
+                plugin_core_module,
+                revision=8,
+                release_id="github:owner/example-plugin:v1.5.0",
+                supersedes=[current.release_id],
+                version="1.5.0",
+                tag="v1.5.0",
+                commit=COMMIT_2,
+                tree_sha256=TREE_2,
+                artifact_sha256=ARTIFACT_2,
+                root_prefix="example-plugin-v1.5.0",
+            )
+            if installed_mode == "release"
+            else current
+        )
+    decision = decide(
+        coordinator,
+        entry,
+        operation=operation,
+        installed_mode=installed_mode,
+        release=target,
+        installed_release=installed,
+        trigger="automatic",
+        git_status="available",
+        preference=("keep_git" if not has_release and installed_mode == "git" else None),
+        release_was_activated=installed_mode == "release",
+    )
+
+    result = coordinator.execute(
+        entry,
+        decision,
+        queue_on_lock=False,
+    )
+
+    assert decision.route == expected_call
+    if expected_call == "git_install":
+        assert git_strategy.calls == [("install", "ExamplePlugin")]
+        assert release_strategy.calls == []
+        assert result == (True, "git install")
+    elif expected_call == "git_update":
+        assert git_strategy.calls == [
+            ("update", "ExamplePlugin", False)
+        ]
+        assert release_strategy.calls == []
+        assert result == (True, "git update")
+    else:
+        expected_release_operation = {
+            "release_install": "install",
+            "release_update": "update",
+            "release_migration": "migrate",
+        }[expected_call]
+        assert release_strategy.calls == [
+            (
+                expected_release_operation,
+                "ExamplePlugin",
+                target.release_id,
+                "automatic",
+            )
+        ]
+        assert git_strategy.calls == []
+        assert result == (True, "release operation")
+
+
+def test_failed_release_operation_never_falls_back_to_git(
+    plugin_core_module,
+):
+    coordinator, git_strategy, release_strategy = make_coordinator(
+        plugin_core_module,
+        release_result=(False, "artifact digest mismatch"),
+    )
+    entry = registry_entry(plugin_core_module)
+    target = release_descriptor(plugin_core_module)
+    decision = decide(
+        coordinator,
+        entry,
+        operation="install",
+        installed_mode="absent",
+        release=target,
+        trigger="automatic",
+    )
+
+    result = coordinator.execute(entry, decision)
+
+    assert result == (False, "artifact digest mismatch")
+    assert release_strategy.calls == [
+        (
+            "install",
+            "ExamplePlugin",
+            target.release_id,
+            "automatic",
+        )
+    ]
+    assert git_strategy.calls == []
+
+
+def test_execute_preserves_existing_git_status_wrapper_signature(
+    plugin_core_module,
+):
+    coordinator, git_strategy, release_strategy = make_coordinator(
+        plugin_core_module
+    )
+    entry = registry_entry(plugin_core_module, preferred="git")
+    decision = decide(
+        coordinator,
+        entry,
+        operation="status",
+        installed_mode="git",
+        git_status="available",
+        trigger="automatic",
+    )
+
+    result = coordinator.execute(entry, decision)
+
+    assert result == "git status"
+    assert git_strategy.calls == [
+        ("check_for_update", "ExamplePlugin")
+    ]
+    assert release_strategy.calls == []
+
+
+def test_blocked_release_managed_operation_calls_neither_strategy(
+    plugin_core_module,
+):
+    coordinator, git_strategy, release_strategy = make_coordinator(
+        plugin_core_module
+    )
+    entry = registry_entry(plugin_core_module)
+    decision = decide(
+        coordinator,
+        entry,
+        operation="update",
+        installed_mode="release",
+        metadata_authorized=False,
+        metadata_reason="expired",
+        release_was_activated=True,
+    )
+
+    result = coordinator.execute(entry, decision)
+
+    assert result[0] is False
+    assert "expired" in result[1].lower()
+    assert git_strategy.calls == []
+    assert release_strategy.calls == []
+
+
+def test_base_plugin_wraps_existing_git_strategy_in_release_coordinator(
+    plugin_core_module,
+):
+    plugin = plugin_core_module.BasePlugin()
+
+    assert isinstance(
+        plugin.install_update_strategy,
+        plugin_core_module.ReleaseManagementCoordinator,
+    )
+    assert isinstance(
+        plugin.install_update_strategy.git_strategy,
+        plugin_core_module.GitInstallUpdateStrategy,
+    )
+
+
+def test_update_and_status_wrappers_carry_explicit_trigger_without_changing_git_seam(
+    plugin_core_module,
+):
+    plugin = plugin_core_module.BasePlugin()
+    plugin.plugin_data = {
+        "ExamplePlugin": [
+            "owner",
+            "example-plugin",
+            "Example plugin",
+            "main",
+            "",
+        ]
+    }
+    calls = []
+
+    class Wrapper:
+        def update(self, entry, queue_on_lock=True, trigger="manual"):
+            calls.append(("update", entry.key, queue_on_lock, trigger))
+            return True, ""
+
+        def check_for_update(self, entry, trigger="manual"):
+            calls.append(("status", entry.key, trigger))
+            return None
+
+    plugin.install_update_strategy = Wrapper()
+
+    assert plugin.UpdatePythonPlugin(
+        "owner",
+        "example-plugin",
+        "ExamplePlugin",
+        queue_on_lock=False,
+        trigger="automatic",
+    ) == (True, "")
+    plugin.CheckForUpdatePythonPlugin(
+        "owner",
+        "example-plugin",
+        "ExamplePlugin",
+        trigger="automatic",
+    )
+    plugin.UpdatePythonPlugin(
+        "owner",
+        "example-plugin",
+        "ExamplePlugin",
+    )
+
+    assert calls == [
+        ("update", "ExamplePlugin", False, "automatic"),
+        ("status", "ExamplePlugin", "automatic"),
+        ("update", "ExamplePlugin", True, "manual"),
+    ]
