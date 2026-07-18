@@ -1,6 +1,7 @@
 # Maintainer Patterns
 
 - Generated runtime file: edit `plugin_core.py`, then run `python .github/scripts/generate_plugin.py`.
+- Network-backed registry validation must use per-entry timeouts; one slow remote should produce a clear invalid result, not block release checks.
 - Weekly registry discovery must require a non-empty root-level `plugin.py` before adding a repository; Domoticz-adjacent integrations, docs, Home Assistant bridges, MCP servers, scripts, and UI repos are not PyPluginStore plugins without that file.
 - Git ownership repairs should prefer non-destructive, memory-only configuration overrides (`safe.directory` via `-c`) over disk-level permissions changes (`chown`), especially in Docker volume-mount environments, to avoid permission fights and file management friction on the host.
 - Registry source order: remote public registry, bundled fallback, local ignored overlay.
@@ -15,3 +16,7 @@
 - Startup update checks must write their result to `self.update_status`; the custom UI only renders green update buttons from the cached status map.
 - Runtime/local files should be ignored rather than committed when they contain host-specific state.
 - Contributor PRs often include useful product intent with mechanical diff issues; preserve the intent and rework in a smaller local patch.
+- GitHub Actions should default to read-only, elevate permissions only on the trusted publishing job, avoid persisted checkout credentials for untrusted code, and pin every external action to a reviewed full commit SHA.
+- Public forge release discovery belongs in repository automation; runtime hosts should consume one provider-neutral, digest-pinned index instead of calling GitHub, GitLab, Forgejo, or Gitea APIs.
+- Release artifacts never silently fall back to a branch update after verification failure. Automatic Git-to-release migration requires source provenance, safe ancestry, a clean checkout, and no unknown local files.
+- Sequence and expiry in an unsigned update index are operational staleness guards, not cryptographic rollback/freeze protection; document the trust boundary and reserve signed metadata for that claim.

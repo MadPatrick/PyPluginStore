@@ -1,5 +1,57 @@
 # Maintainer Runs
 
+## 2026-07-18 - Maintenance recovery, CI hardening, and release-first design
+
+Scope:
+- Reconciled the interrupted autostash against `v2.18.0`, preserving the July 16
+  maintainer state and the unique registry-validator timeout history.
+- Hardened all GitHub Actions workflows with read-only defaults, per-job write
+  grants, immutable action pins, non-persisted pull-request checkout credentials,
+  and generated-file verification on pull requests.
+- Researched release-first plugin management for GitHub, GitLab,
+  Forgejo/Codeberg, Gitea, and generic HTTPS sources.
+- Prepared the provider-neutral release-index architecture and safe Git-to-release
+  upgrade migration track for `ISSUE:64`.
+
+Verification:
+- `pytest -q -p no:cacheprovider`: 231 passed.
+- `actionlint` 1.7.12: passed.
+- Generated `plugin.py` parity: passed.
+- Registry validation: passed for all 256 entries.
+- JSON validation and `git diff --check`: passed.
+
+Notes:
+- Local implementation commits: `53366d2` (Actions hardening) and `23642ff`
+  (release-first architecture and migration track).
+- Changed the repository default workflow token from write to read and disabled
+  workflow pull-request review approval.
+- Full-SHA repository enforcement remains deferred until these pinned workflow
+  definitions are on `master`; the proposed branch ruleset is documented to start
+  in evaluation.
+- No push, issue/PR comment, label, close, merge, or ruleset activation was taken.
+- The recovery stash and three pre-existing untracked maintainer notes remain
+  intact for explicit cleanup after review.
+
+## 2026-07-18 - Read-only maintenance triage
+
+Scope:
+- Reviewed current repository and GitHub state for `adrighem/PyPluginStore`.
+- Latest release: `v2.18.0`.
+- Active public items:
+  - Open issues: `ISSUE:64`, `ISSUE:87`.
+  - Open pull requests: none.
+- Latest Linux, Windows, CodeQL, release, and weekly scan workflow runs passed.
+- Dependabot, code scanning, and secret scanning alerts are clear.
+
+Verification:
+- `pytest -q`: 225 passed in the non-mutating suite.
+- Generated `plugin.py` parity: passed.
+- Registry validation: passed for all 256 entries.
+
+Notes:
+- No public GitHub actions were taken.
+- Pending local work is to harden `.github/workflows/generate_plugin.yml` and prepare the release-first plugin-management architecture and Git-to-release upgrade migration path, retaining Git support.
+
 ## 2026-07-16 - ISSUE:95 local registry UI management
 
 Scope:
@@ -17,6 +69,31 @@ Verification:
 Notes:
 - Conductor checkpoint: `7132bcd`.
 - Public comment or closure for `ISSUE:95` remains approval-gated.
+
+## 2026-07-06 - Maintenance triage and validator timeout hardening
+
+Scope:
+- Reviewed current GitHub state for `adrighem/PyPluginStore`.
+- Active public items:
+  - Open issues: `ISSUE:64`, `ISSUE:87`, `ISSUE:91`.
+  - Open pull requests: `PR:90` Release Please for `v2.16.0`.
+- `gh-helper` found no unread inbox, no Dependabot alerts, and no code scanning alerts.
+- `PR:90` is mergeable and generated-only release metadata, but required PR workflows `Validate Plugins` and `Generate Plugin XML Header` are `action_required`; CodeQL passed and the same validation workflow passed on `master`.
+
+Prepared local changes:
+- Added a 30 second timeout around `git ls-remote` in `.github/scripts/validate_plugins.py` so one slow remote cannot block registry validation indefinitely.
+- Added regression coverage for passing the timeout and returning `False` cleanly on `subprocess.TimeoutExpired`.
+
+Verification:
+- `pytest tests/test_registry_scripts.py -q`: 67 passed.
+- `pytest -q`: 178 passed.
+- `python .github/scripts/validate_plugins.py`: passed for 254 plugins.
+- `git diff --check`: passed.
+
+Notes:
+- Installed open-source-maintainer reference files and triage script are still missing on disk, so this run used `gh-helper`, direct `gh`, local tests, and repository analysis.
+- No public GitHub actions were taken.
+- Recommended next public action is to commit/push the local validator hardening if it should be included before `v2.16.0`, then let Release Please refresh `PR:90`, approve/run the pending PR workflows, and merge it if they pass.
 
 ## 2026-07-06 - API bridge error response CI fix
 
