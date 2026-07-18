@@ -19,5 +19,5 @@ This file tracks all major tracks for the project. Each track has its own detail
 
 ---
 
-## [ ] Track: Release-first plugin installation and updates
+## [~] Track: Release-first plugin installation and updates
 *Link: [./conductor/tracks/release_first_plugin_management_20260718/](./conductor/tracks/release_first_plugin_management_20260718/)*
