@@ -7,6 +7,7 @@ import pytest
 ARTIFACT_SHA256 = "1" * 64
 TREE_SHA256 = "2" * 64
 PRESERVED_SHA256 = "3" * 64
+PLUGIN_SHA256 = "4" * 64
 
 
 def install_metadata_document(**overrides):
@@ -23,6 +24,10 @@ def install_metadata_document(**overrides):
         "commit": "0123456789abcdef0123456789abcdef01234567",
         "artifact_sha256": ARTIFACT_SHA256,
         "artifact_tree_sha256": TREE_SHA256,
+        "artifact_provenance": "forge_source_archive",
+        "artifact_files": {
+            "plugin.py": {"sha256": PLUGIN_SHA256, "size": 4096},
+        },
         "preserved_files": {
             "config/settings.json": PRESERVED_SHA256,
         },
@@ -57,6 +62,10 @@ def test_install_metadata_parses_release_identity_and_audit_hashes(
     assert metadata.commit == "0123456789abcdef0123456789abcdef01234567"
     assert metadata.artifact_sha256 == ARTIFACT_SHA256
     assert metadata.artifact_tree_sha256 == TREE_SHA256
+    assert metadata.artifact_provenance == "forge_source_archive"
+    assert metadata.artifact_files == {
+        "plugin.py": {"sha256": PLUGIN_SHA256, "size": 4096},
+    }
     assert metadata.preserved_files == {
         "config/settings.json": PRESERVED_SHA256,
     }
@@ -107,6 +116,19 @@ def invalid_install_metadata_documents():
     add("mutable-commit", commit="main")
     add("invalid-artifact-hash", artifact_sha256="A" * 64)
     add("invalid-tree-hash", artifact_tree_sha256="short")
+    add("invalid-provenance", artifact_provenance="mutable_branch")
+    add(
+        "unsafe-artifact-path",
+        artifact_files={"../plugin.py": {"sha256": PLUGIN_SHA256, "size": 1}},
+    )
+    add(
+        "invalid-artifact-file-hash",
+        artifact_files={"plugin.py": {"sha256": "A" * 64, "size": 1}},
+    )
+    add(
+        "invalid-artifact-file-size",
+        artifact_files={"plugin.py": {"sha256": PLUGIN_SHA256, "size": True}},
+    )
     add(
         "unsafe-preserved-path",
         preserved_files={"../settings.json": PRESERVED_SHA256},

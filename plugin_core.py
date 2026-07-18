@@ -2836,6 +2836,24 @@ def _require_audit_path(value, label):
     return path
 
 
+def _require_artifact_file_path(value, label):
+    """Validate one portable regular-file path from a pristine artifact."""
+    path = _normalize_relative_metadata_path(value, label, allow_root=False)
+    if unicodedata.normalize("NFC", path) != path:
+        raise ValueError(label + " must use NFC Unicode normalization.")
+    parts = path.split("/")
+    for part in parts:
+        if part.endswith((".", " ")) or ":" in part:
+            raise ValueError(label + " is not portable across supported hosts.")
+        if part.split(".", 1)[0].casefold() in WINDOWS_RESERVED_PATH_NAMES:
+            raise ValueError(label + " contains a Windows-reserved name.")
+    if parts[0].casefold() in (".git", ".pypluginstore") or path.casefold() == (
+        ".pypluginstore.json"
+    ):
+        raise ValueError(label + " is manager-reserved.")
+    return path
+
+
 @dataclass
 class InstallMetadata:
     """Validated audit record stored in a release-managed plugin folder."""
@@ -2852,6 +2870,8 @@ class InstallMetadata:
     commit: str
     artifact_sha256: str
     artifact_tree_sha256: str
+    artifact_provenance: str
+    artifact_files: dict
     preserved_files: dict
     index_sequence: int
     installed_at: str
@@ -2876,6 +2896,8 @@ class InstallMetadata:
                 "commit",
                 "artifact_sha256",
                 "artifact_tree_sha256",
+                "artifact_provenance",
+                "artifact_files",
                 "preserved_files",
                 "index_sequence",
                 "installed_at",
@@ -2951,6 +2973,38 @@ class InstallMetadata:
                 raw_digest, "preserved_files digest"
             )
 
+        artifact_provenance = _require_nonempty_string(
+            document["artifact_provenance"], "artifact_provenance"
+        )
+        if artifact_provenance not in RELEASE_ARTIFACT_PROVENANCE:
+            raise ValueError("artifact_provenance is unsupported.")
+        artifact_files_document = document["artifact_files"]
+        if not isinstance(artifact_files_document, dict) or not artifact_files_document:
+            raise ValueError("artifact_files must be a non-empty object.")
+        artifact_files = {}
+        artifact_collision_keys = set()
+        for raw_path, raw_record in artifact_files_document.items():
+            path = _require_artifact_file_path(raw_path, "artifact_files path")
+            collision_key = path.casefold()
+            if collision_key in artifact_collision_keys:
+                raise ValueError("artifact_files contains colliding paths.")
+            artifact_collision_keys.add(collision_key)
+            raw_record = _require_document(
+                raw_record,
+                "artifact_files record",
+                ("sha256", "size"),
+            )
+            artifact_files[path] = {
+                "sha256": _require_sha256(
+                    raw_record["sha256"], "artifact_files digest"
+                ),
+                "size": _require_positive_integer(
+                    raw_record["size"], "artifact_files size"
+                ),
+            }
+        if "plugin.py" not in {path.casefold() for path in artifact_files}:
+            raise ValueError("artifact_files must include root plugin.py.")
+
         return cls(
             schema=INSTALL_METADATA_SCHEMA_VERSION,
             plugin_key=_require_plugin_key(document["plugin_key"]),
@@ -2972,6 +3026,8 @@ class InstallMetadata:
             artifact_tree_sha256=_require_sha256(
                 document["artifact_tree_sha256"], "artifact_tree_sha256"
             ),
+            artifact_provenance=artifact_provenance,
+            artifact_files=artifact_files,
             preserved_files=preserved_files,
             index_sequence=_require_positive_integer(
                 document["index_sequence"], "index_sequence"
@@ -2995,6 +3051,11 @@ class InstallMetadata:
             "commit": self.commit,
             "artifact_sha256": self.artifact_sha256,
             "artifact_tree_sha256": self.artifact_tree_sha256,
+            "artifact_provenance": self.artifact_provenance,
+            "artifact_files": {
+                path: dict(record)
+                for path, record in self.artifact_files.items()
+            },
             "preserved_files": dict(self.preserved_files),
             "index_sequence": self.index_sequence,
             "installed_at": self.installed_at,

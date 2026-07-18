@@ -302,15 +302,26 @@ Release-managed plugin folders contain `.pypluginstore.json`:
   "commit": "0123456789abcdef0123456789abcdef01234567",
   "artifact_sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
   "artifact_tree_sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+  "artifact_provenance": "forge_source_archive",
+  "artifact_files": {
+    "plugin.py": {
+      "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+      "size": 4096
+    }
+  },
   "preserved_files": {},
   "index_sequence": 42,
   "installed_at": "2026-07-18T08:00:00Z"
 }
 ```
 
-The file is written into staging only after validation and moves into place with
-the release. Atomic writes are required for later metadata changes. Invalid or
-unknown metadata never grants permission to delete or overwrite another folder.
+The per-file artifact manifest records every pristine regular file before local
+overlays. It is required to distinguish modified packaged files from reviewed
+mutable data during later updates and rollback; the aggregate tree digest alone
+cannot provide that inventory. The file is written into staging only after
+validation and moves into place with the release. Atomic writes are required for
+later metadata changes. Invalid or unknown metadata never grants permission to
+delete or overwrite another folder.
 
 ## Safe ZIP Pipeline
 
