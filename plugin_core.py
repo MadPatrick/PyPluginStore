@@ -5496,6 +5496,7 @@ class ChannelPreferenceService:
 
 
 RELEASE_TRANSACTION_SCHEMA_VERSION = 1
+RELEASE_PENDING_TRANSACTIONS_SCHEMA_VERSION = 1
 RELEASE_TRANSACTION_OPERATIONS = {
     "release_install",
     "release_update",
@@ -6095,6 +6096,152 @@ class ReleaseTransactionManager:
             if os.path.lexists(temporary):
                 os.unlink(temporary)
                 self._fsync_directory(journal_dir)
+
+    def _pending_transactions_path(self):
+        _manager, _plugins, state_root = self._manager_paths(create=False)
+        return os.path.join(state_root, "pending_transactions.json")
+
+    def _pending_transaction_identity(self, transaction):
+        return {
+            "operation_id": transaction.operation_id,
+            "plugin_key": transaction.plugin_key,
+            "operation": transaction.operation,
+            "expected_current": transaction.expected_current,
+            "target": transaction.target,
+            "dependency_snapshot": transaction.dependency_snapshot,
+            "dependency_state": transaction.dependency_state,
+            "staged_snapshot": transaction.staged_snapshot,
+            "paths": transaction.paths.to_document(),
+            "created_at": transaction.created_at,
+        }
+
+    def _load_pending_transactions_locked(self):
+        pending_path = self._pending_transactions_path()
+        if not os.path.lexists(pending_path):
+            return []
+        if os.path.islink(pending_path) or not os.path.isfile(pending_path):
+            raise ValueError(
+                "Pending release transactions path is not a regular file."
+            )
+        with open(pending_path, "rb") as pending_file:
+            document = _load_json_object(
+                pending_file.read(),
+                "pending release transactions",
+            )
+        document = _require_document(
+            document,
+            "pending release transactions",
+            ("schema_version", "operations"),
+        )
+        if (
+            type(document["schema_version"]) is not int
+            or document["schema_version"]
+            != RELEASE_PENDING_TRANSACTIONS_SCHEMA_VERSION
+        ):
+            raise ValueError(
+                "Pending release transactions schema is unsupported."
+            )
+        raw_operations = document["operations"]
+        if not isinstance(raw_operations, list):
+            raise ValueError(
+                "Pending release transaction operations must be a list."
+            )
+        operations = []
+        operation_ids = set()
+        for raw_operation in raw_operations:
+            if not isinstance(raw_operation, dict):
+                raise ValueError(
+                    "Pending release transaction descriptor must be an object."
+                )
+            operation_id = _require_plugin_key(
+                raw_operation.get("operation_id"),
+                "operation_id",
+            )
+            if operation_id in operation_ids:
+                raise ValueError(
+                    "Pending release transactions contain a duplicate operation."
+                )
+            plugin_key = raw_operation.get("plugin_key", "")
+            expected_paths = self._paths(plugin_key, operation_id)
+            transaction = ReleaseTransaction.from_document(
+                raw_operation,
+                expected_paths,
+            )
+            self._validate_descriptors(
+                transaction.operation,
+                transaction.expected_current,
+                transaction.target,
+            )
+            if transaction.phase != "queued_locked":
+                raise ValueError(
+                    "Pending release transaction is not queued_locked."
+                )
+            journal_transaction = self._load_transaction(operation_id)
+            if (
+                self._pending_transaction_identity(journal_transaction)
+                != self._pending_transaction_identity(transaction)
+            ):
+                raise ValueError(
+                    "Pending release transaction differs from its journal."
+                )
+            operation_ids.add(operation_id)
+            operations.append(transaction)
+        return operations
+
+    def _write_pending_transactions_locked(self, transactions):
+        pending_path = self._pending_transactions_path()
+        pending_dir = os.path.dirname(pending_path)
+        temporary = pending_path + ".tmp"
+        if os.path.lexists(pending_path) and (
+            os.path.islink(pending_path) or not os.path.isfile(pending_path)
+        ):
+            raise ValueError(
+                "Pending release transactions path is not a regular file."
+            )
+        if os.path.lexists(temporary):
+            if os.path.islink(temporary) or not os.path.isfile(temporary):
+                raise ValueError(
+                    "Pending release transactions temporary path is unsafe."
+                )
+            os.unlink(temporary)
+            self._fsync_directory(pending_dir)
+        document = {
+            "schema_version": RELEASE_PENDING_TRANSACTIONS_SCHEMA_VERSION,
+            "operations": [
+                transaction.to_document()
+                for transaction in sorted(
+                    transactions,
+                    key=lambda item: item.operation_id,
+                )
+            ],
+        }
+        contents = (
+            json.dumps(document, indent=2, sort_keys=True) + "\n"
+        ).encode("utf-8")
+        try:
+            with open(temporary, "xb") as pending_file:
+                pending_file.write(contents)
+                pending_file.flush()
+                os.fsync(pending_file.fileno())
+            os.replace(temporary, pending_path)
+            self._fsync_directory(pending_dir)
+        finally:
+            if os.path.lexists(temporary):
+                os.unlink(temporary)
+                self._fsync_directory(pending_dir)
+
+    def _sync_pending_transactions_locked(self):
+        _manager, _plugins, state_root = self._manager_paths(create=True)
+        transaction_dir = os.path.join(state_root, "transactions")
+        queued = []
+        for name in sorted(os.listdir(transaction_dir)):
+            if not name.endswith(".json"):
+                continue
+            transaction = self._load_transaction(name[:-5])
+            if transaction.phase == "queued_locked":
+                queued.append(transaction)
+        self._write_pending_transactions_locked(queued)
+        return queued
 
     def _load_transaction(self, operation_id):
         operation_id = _require_plugin_key(operation_id, "operation_id")
@@ -6767,7 +6914,8 @@ class ReleaseTransactionManager:
             return transaction
         original_phase = (
             transaction.rollback_from
-            if transaction.phase == "rollback_pending"
+            if transaction.phase in ("rollback_pending", "queued_locked")
+            and transaction.rollback_from
             else transaction.phase
         )
         if transaction.phase != "rollback_pending":
@@ -6964,6 +7112,34 @@ class ReleaseTransactionManager:
             )
             return self._set_phase(transaction, "restart_pending")
         except Exception as error:
+            host = self.plugin.get_host()
+            locked_file = bool(
+                transaction.phase
+                in {
+                    "code_backup_pending",
+                    "dependencies_backup_pending",
+                    "dependencies_activation_pending",
+                    "code_activation_pending",
+                }
+                and host.is_locked_file_error(error)
+            )
+            if locked_file:
+                transaction.rollback_from = transaction.phase
+                self._set_phase(
+                    transaction,
+                    "queued_locked",
+                    error="Plugin files are locked; activation is queued.",
+                )
+                self._sync_pending_transactions_locked()
+                self._rollback_locked(transaction, str(error))
+                transaction.rollback_from = ""
+                self._set_phase(
+                    transaction,
+                    "queued_locked",
+                    error="Plugin files are locked; activation is queued.",
+                )
+                self._sync_pending_transactions_locked()
+                return transaction
             self._rollback_locked(transaction, str(error))
             raise
 
@@ -7011,6 +7187,8 @@ class ReleaseTransactionManager:
             return self._set_phase(transaction, "release_managed")
 
     def _recover_transaction_locked(self, transaction):
+        if transaction.phase == "queued_locked":
+            return transaction
         if transaction.phase in RELEASE_TRANSACTION_FINAL_PHASES:
             return transaction
         if transaction.phase == "release_activated":
@@ -7047,14 +7225,65 @@ class ReleaseTransactionManager:
 
     def recover_pending(self, blocking=True):
         with self.operation_lock(blocking=blocking):
+            pending_transactions = self._load_pending_transactions_locked()
+            pending_operation_ids = {
+                transaction.operation_id
+                for transaction in pending_transactions
+            }
+            pending_by_operation = {
+                transaction.operation_id: transaction
+                for transaction in pending_transactions
+            }
             _manager, _plugins, state_root = self._manager_paths(create=True)
             transaction_dir = os.path.join(state_root, "transactions")
+            queued = []
             for name in sorted(os.listdir(transaction_dir)):
                 if not name.endswith(".json"):
                     continue
                 operation_id = name[:-5]
                 transaction = self._load_transaction(operation_id)
-                self._recover_transaction_locked(transaction)
+                if transaction.phase == "queued_locked":
+                    if operation_id not in pending_by_operation:
+                        pending_by_operation[operation_id] = transaction
+                        pending_operation_ids.add(operation_id)
+                        self._write_pending_transactions_locked(
+                            list(pending_by_operation.values())
+                        )
+                    if transaction.rollback_from:
+                        self._rollback_locked(
+                            transaction,
+                            "Recovered a locked activation before retry.",
+                        )
+                        transaction.rollback_from = ""
+                        self._set_phase(
+                            transaction,
+                            "queued_locked",
+                            error="Plugin files are locked; activation is queued.",
+                        )
+                    queued.append(transaction)
+                    continue
+                recovered = self._recover_transaction_locked(transaction)
+                if (
+                    operation_id in pending_operation_ids
+                    and recovered.phase == "rolled_back"
+                ):
+                    recovered.rollback_from = ""
+                    self._set_phase(
+                        recovered,
+                        "queued_locked",
+                        error="Plugin files are locked; activation is queued.",
+                    )
+                    queued.append(recovered)
+            for transaction in queued:
+                transaction.phase = "dependencies_staged"
+                transaction.rollback_from = ""
+                transaction.error = ""
+                try:
+                    self._activate_locked(transaction)
+                except RuntimeError:
+                    if transaction.phase != "stale_target":
+                        raise
+            self._sync_pending_transactions_locked()
 
 
 class RegistryEntry:
