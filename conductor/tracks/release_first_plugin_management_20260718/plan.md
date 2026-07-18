@@ -6,12 +6,12 @@
 - [x] Task: Add release descriptor and delivery-mode models without changing Git behavior `602573a`
 - [x] Task: Add generation-directory registry/index caching, a durable highest-sequence watermark, bundled bootstrap/expiry rules, atomic pointer recovery, and crash-injection tests under the unsigned-v1 trust model `db4d87d`
 - [x] Task: Add install metadata parsing, artifact/preserved-file audit hashes, and atomic `.pypluginstore.json` writes `a56a101`
-- [~] Task: Add manager-owned atomic channel preferences so an explicit keep-Git choice survives updates without modifying plugin checkouts
-- [ ] Task: Conductor - User Manual Verification 'Contracts and Backward-Compatible Metadata' (Protocol in workflow.md)
+- [x] Task: Add manager-owned atomic channel preferences so an explicit keep-Git choice survives updates without modifying plugin checkouts `72eebcd`
+- [x] Task: Conductor - User Manual Verification 'Contracts and Backward-Compatible Metadata' (waived by user; automated checkpoint `78eae1c`)
 
 ## Phase 2: Multi-Forge Release Resolution
 
-- [ ] Task: Add fixture-driven failing tests for GitHub, GitLab, Forgejo/Codeberg, Gitea, and generic manifest candidates
+- [~] Task: Add fixture-driven failing tests for GitHub, GitLab, Forgejo/Codeberg, Gitea, and generic manifest candidates
 - [ ] Task: Implement the shared release-provider interface and normalized candidate model
 - [ ] Task: Implement GitHub stable release resolution, source-ZIP preference, and attached-asset provenance checks
 - [ ] Task: Implement GitLab release-list filtering with reviewed tag policy, encoded project paths, source-ZIP preference, and attached-asset provenance checks
