@@ -701,6 +701,48 @@ def test_safe_zip_extractor_rejects_truncated_valid_zip(
     assert_archive_rejected(plugin_core_module, archive_path, tmp_path)
 
 
+def test_safe_zip_extractor_rejects_symlink_archive_path(
+    plugin_core_module, tmp_path
+):
+    target = write_zip(
+        tmp_path / "target.zip",
+        [(ROOT_PREFIX + "/plugin.py", "valid")],
+    )
+    archive_path = tmp_path / "release.zip"
+    try:
+        archive_path.symlink_to(target)
+    except (NotImplementedError, OSError):
+        pytest.skip("Symbolic links are unavailable on this test host.")
+
+    assert_archive_rejected(plugin_core_module, archive_path, tmp_path)
+
+
+def test_safe_zip_extractor_rejects_archive_replaced_while_opening(
+    plugin_core_module, tmp_path, monkeypatch
+):
+    archive_path = write_zip(
+        tmp_path / "release.zip",
+        [(ROOT_PREFIX + "/plugin.py", "original")],
+    )
+    replacement = write_zip(
+        tmp_path / "replacement.zip",
+        [(ROOT_PREFIX + "/plugin.py", "replacement")],
+    )
+    real_open = plugin_core_module.os.open
+    replaced = []
+
+    def replace_then_open(path, flags, *args):
+        if path == str(archive_path) and not replaced:
+            replacement.replace(archive_path)
+            replaced.append(True)
+        return real_open(path, flags, *args)
+
+    monkeypatch.setattr(plugin_core_module.os, "open", replace_then_open)
+
+    assert_archive_rejected(plugin_core_module, archive_path, tmp_path)
+    assert replaced == [True]
+
+
 def test_safe_zip_extractor_rejects_local_central_filename_mismatch(
     plugin_core_module, tmp_path
 ):

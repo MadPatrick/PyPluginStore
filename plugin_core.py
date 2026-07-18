@@ -1,13 +1,20 @@
 
 
 import base64
+from collections.abc import Mapping
 import hashlib
 import html
+import http.client
+import ipaddress
 import json
+import math
 import os
 import platform
 import re
 import shutil
+import socket
+import ssl
+import stat
 import subprocess
 import sys
 import tempfile
@@ -16,6 +23,7 @@ import unicodedata
 import urllib.error
 import urllib.parse
 import urllib.request
+import zipfile
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
@@ -1438,6 +1446,24 @@ RELEASE_PREFERRED_MODES = {"git", "release", "release_if_indexed"}
 LOWER_SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 GIT_COMMIT_PATTERN = re.compile(r"^[0-9a-f]{40}(?:[0-9a-f]{24})?$")
 CONTROL_CHARACTER_PATTERN = re.compile(r"[\x00-\x1f\x7f]")
+RELEASE_REDIRECT_STATUSES = {301, 302, 303, 307, 308}
+RELEASE_SECRET_REQUEST_HEADERS = {
+    "authorization",
+    "proxy-authorization",
+    "cookie",
+    "cookie2",
+    "private-token",
+}
+RELEASE_HEADER_NAME_PATTERN = re.compile(
+    r"^[!#$%&'*+.^_`|~0-9A-Za-z-]+$"
+)
+RELEASE_CONTENT_LENGTH_PATTERN = re.compile(r"^[0-9]+$")
+RELEASE_INVALID_PERCENT_PATTERN = re.compile(r"%(?![0-9A-Fa-f]{2})")
+RELEASE_HOST_LABEL_PATTERN = re.compile(
+    r"^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$"
+)
+RELEASE_HTTP_CHUNK_SIZE = 64 * 1024
+RELEASE_MAX_DNS_ANSWERS = 64
 
 
 def _require_document(value, label, required_keys, optional_keys=()):
@@ -2852,6 +2878,1303 @@ def _require_artifact_file_path(value, label):
     ):
         raise ValueError(label + " is manager-reserved.")
     return path
+
+
+class ReleaseHttpError(Exception):
+    """Categorized runtime release-download failure."""
+
+    def __init__(self, reason, message="", *, status=None, url=None):
+        self.reason = str(reason)
+        self.status = status
+        self.url = url
+        super().__init__(message or self.reason)
+
+
+class SystemResolver:
+    """Resolve stream addresses using the operating-system resolver."""
+
+    def resolve(self, hostname, port):
+        answers = socket.getaddrinfo(
+            hostname,
+            port,
+            type=socket.SOCK_STREAM,
+            proto=socket.IPPROTO_TCP,
+        )
+        addresses = []
+        seen = set()
+        for family, _kind, _protocol, _canonical, socket_address in answers:
+            if family not in (socket.AF_INET, socket.AF_INET6):
+                continue
+            address = socket_address[0]
+            if address not in seen:
+                seen.add(address)
+                addresses.append(address)
+        return addresses
+
+
+class _ReleaseResponseHeaders(Mapping):
+    """Expose wire header pairs without hiding case-fold duplicates."""
+
+    def __init__(self, pairs):
+        self._pairs = tuple(pairs)
+
+    def __getitem__(self, key):
+        for name, value in self._pairs:
+            if name == key:
+                return value
+        raise KeyError(key)
+
+    def __iter__(self):
+        return (name for name, _value in self._pairs)
+
+    def __len__(self):
+        return len(self._pairs)
+
+    def items(self):
+        return iter(self._pairs)
+
+
+class _PinnedHttpsConnection(http.client.HTTPSConnection):
+    """Connect to one validated IP while authenticating the URL hostname."""
+
+    def __init__(
+        self,
+        connect_ip,
+        server_hostname,
+        port,
+        timeout,
+        context,
+    ):
+        super().__init__(
+            server_hostname,
+            port=port,
+            timeout=timeout,
+            context=context,
+        )
+        self._connect_ip = connect_ip
+        self._server_hostname = server_hostname
+
+    def connect(self):
+        if self._tunnel_host is not None:
+            raise RuntimeError("Pinned HTTPS connections do not support proxies.")
+
+        address = ipaddress.ip_address(self._connect_ip)
+        family = socket.AF_INET6 if address.version == 6 else socket.AF_INET
+        endpoint = (
+            (str(address), self.port, 0, 0)
+            if family == socket.AF_INET6
+            else (str(address), self.port)
+        )
+        raw_socket = socket.socket(family, socket.SOCK_STREAM)
+        try:
+            raw_socket.settimeout(self.timeout)
+            raw_socket.connect(endpoint)
+            self.sock = self._context.wrap_socket(
+                raw_socket,
+                server_hostname=self._server_hostname,
+            )
+        except Exception:
+            raw_socket.close()
+            self.sock = None
+            raise
+
+
+class _PinnedHttpsResponse:
+    """Adapt ``http.client`` responses to the bounded stream contract."""
+
+    def __init__(self, response, connection):
+        self._response = response
+        self._connection = connection
+        self.status = response.status
+        self.headers = _ReleaseResponseHeaders(response.getheaders())
+        self._closed = False
+
+    def iter_bytes(self, chunk_size):
+        while True:
+            chunk = self._response.read(chunk_size)
+            if not chunk:
+                return
+            yield chunk
+
+    def close(self):
+        if self._closed:
+            return
+        self._closed = True
+        try:
+            self._response.close()
+        finally:
+            self._connection.close()
+
+
+class PinnedHttpsTransport:
+    """Direct stdlib HTTPS transport that never consults proxy settings."""
+
+    def __init__(self, context=None):
+        self.context = ssl.create_default_context() if context is None else context
+        if not callable(getattr(self.context, "wrap_socket", None)):
+            raise ValueError("context must provide wrap_socket().")
+
+    def request(
+        self,
+        method,
+        url,
+        *,
+        connect_ip,
+        server_hostname,
+        host_header,
+        headers,
+        connect_timeout,
+        read_timeout,
+    ):
+        target = _validate_release_url(url)
+        if method != "GET":
+            raise ValueError("PinnedHttpsTransport only supports GET.")
+        if (
+            server_hostname != target.hostname
+            or host_header != target.host_header
+        ):
+            raise ValueError("TLS and Host identities must match the URL.")
+        try:
+            pinned_address = str(ipaddress.ip_address(connect_ip))
+        except ValueError as error:
+            raise ValueError("connect_ip must be an IP address literal.") from error
+        request_headers = _validate_release_request_headers(headers)
+        parsed = urllib.parse.urlsplit(target.url)
+        request_target = parsed.path or "/"
+        if parsed.query:
+            request_target += "?" + parsed.query
+
+        connection = _PinnedHttpsConnection(
+            pinned_address,
+            target.hostname,
+            target.port,
+            connect_timeout,
+            self.context,
+        )
+        try:
+            connection.connect()
+            connection.putrequest(
+                method,
+                request_target,
+                skip_host=True,
+                skip_accept_encoding=True,
+            )
+            connection.putheader("Host", target.host_header)
+            for name, value in request_headers.items():
+                connection.putheader(name, value)
+            connection.endheaders()
+            connection.sock.settimeout(read_timeout)
+            response = connection.getresponse()
+            return _PinnedHttpsResponse(response, connection)
+        except Exception:
+            connection.close()
+            raise
+
+
+@dataclass(frozen=True)
+class ReleaseDownload:
+    """Verified metadata for one durable runtime artifact download."""
+
+    path: str
+    size: int
+    sha256: str
+    final_url: str
+    redirects: int
+    verified: bool
+
+
+@dataclass(frozen=True)
+class _ValidatedReleaseUrl:
+    url: str
+    hostname: str
+    port: int
+    host_header: str
+    origin: tuple
+
+
+def _release_http_error(reason, message, *, status=None, url=None):
+    return ReleaseHttpError(reason, message, status=status, url=url)
+
+
+def _validate_release_url(url):
+    """Validate an absolute credential-free HTTPS request target."""
+    if not isinstance(url, str) or not url:
+        raise _release_http_error(
+            "https_required",
+            "An absolute HTTPS URL is required.",
+        )
+    if (
+        CONTROL_CHARACTER_PATTERN.search(url)
+        or any(character.isspace() for character in url)
+        or "\\" in url
+        or "#" in url
+        or RELEASE_INVALID_PERCENT_PATTERN.search(url)
+    ):
+        raise _release_http_error("invalid_url", "URL is not canonical.", url=url)
+    try:
+        parsed = urllib.parse.urlsplit(url)
+        explicit_port = parsed.port
+    except ValueError as error:
+        raise _release_http_error(
+            "invalid_url",
+            "URL authority is invalid.",
+            url=url,
+        ) from error
+    if parsed.scheme.lower() != "https":
+        raise _release_http_error(
+            "https_required",
+            "An absolute HTTPS URL is required.",
+            url=url,
+        )
+    hostname = parsed.hostname
+    if (
+        not parsed.netloc
+        or not hostname
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.fragment
+        or "*" in hostname
+        or hostname.startswith(".")
+        or hostname.endswith(".")
+        or parsed.netloc.endswith(":")
+    ):
+        raise _release_http_error(
+            "invalid_url",
+            "URL must have a canonical credential-free authority.",
+            url=url,
+        )
+    port = 443 if explicit_port is None else explicit_port
+    if not 1 <= port <= 65535:
+        raise _release_http_error("invalid_url", "URL port is invalid.", url=url)
+    try:
+        ascii_hostname = hostname.encode("idna").decode("ascii").lower()
+    except UnicodeError as error:
+        raise _release_http_error(
+            "invalid_url",
+            "URL hostname is invalid.",
+            url=url,
+        ) from error
+    try:
+        ipaddress.ip_address(ascii_hostname)
+        hostname_is_ip = True
+    except ValueError:
+        hostname_is_ip = False
+    if (
+        not ascii_hostname
+        or CONTROL_CHARACTER_PATTERN.search(ascii_hostname)
+        or "%" in ascii_hostname
+        or len(ascii_hostname) > 253
+        or (
+            not hostname_is_ip
+            and any(
+                not RELEASE_HOST_LABEL_PATTERN.fullmatch(label)
+                for label in ascii_hostname.split(".")
+            )
+        )
+    ):
+        raise _release_http_error(
+            "invalid_url",
+            "URL hostname is invalid.",
+            url=url,
+        )
+
+    host_name = (
+        "[" + ascii_hostname + "]" if ":" in ascii_hostname else ascii_hostname
+    )
+    host_header = host_name
+    if explicit_port is not None:
+        host_header += ":" + str(explicit_port)
+    return _ValidatedReleaseUrl(
+        url=url,
+        hostname=ascii_hostname,
+        port=port,
+        host_header=host_header,
+        origin=("https", ascii_hostname, port),
+    )
+
+
+def _validate_release_origin_allowlist(allowed_origins):
+    """Return exact HTTPS origins from reviewed configuration."""
+    if allowed_origins is None:
+        return set()
+    if isinstance(allowed_origins, (str, bytes)) or not isinstance(
+        allowed_origins,
+        (list, tuple, set, frozenset),
+    ):
+        raise _release_http_error(
+            "invalid_origin_allowlist",
+            "Origin allowlist must be a collection of exact HTTPS origins.",
+        )
+
+    validated = set()
+    for origin in allowed_origins:
+        if (
+            not isinstance(origin, str)
+            or not origin
+            or CONTROL_CHARACTER_PATTERN.search(origin)
+            or any(character.isspace() for character in origin)
+            or "\\" in origin
+            or "?" in origin
+            or "#" in origin
+        ):
+            raise _release_http_error(
+                "invalid_origin_allowlist",
+                "Origin allowlist contains an invalid value.",
+            )
+        try:
+            parsed = urllib.parse.urlsplit(origin)
+            explicit_port = parsed.port
+        except ValueError as error:
+            raise _release_http_error(
+                "invalid_origin_allowlist",
+                "Origin allowlist contains an invalid authority.",
+            ) from error
+        hostname = parsed.hostname
+        if (
+            parsed.scheme.lower() != "https"
+            or not parsed.netloc
+            or not hostname
+            or parsed.username is not None
+            or parsed.password is not None
+            or parsed.path
+            or parsed.query
+            or parsed.fragment
+            or "*" in hostname
+            or hostname.startswith(".")
+            or hostname.endswith(".")
+            or parsed.netloc.endswith(":")
+        ):
+            raise _release_http_error(
+                "invalid_origin_allowlist",
+                "Origin allowlist values must be exact HTTPS origins.",
+            )
+        port = 443 if explicit_port is None else explicit_port
+        if not 1 <= port <= 65535:
+            raise _release_http_error(
+                "invalid_origin_allowlist",
+                "Origin allowlist contains an invalid port.",
+            )
+        try:
+            ascii_hostname = hostname.encode("idna").decode("ascii").lower()
+        except UnicodeError as error:
+            raise _release_http_error(
+                "invalid_origin_allowlist",
+                "Origin allowlist contains an invalid hostname.",
+            ) from error
+        try:
+            ipaddress.ip_address(ascii_hostname)
+            hostname_is_ip = True
+        except ValueError:
+            hostname_is_ip = False
+        if (
+            not ascii_hostname
+            or "%" in ascii_hostname
+            or len(ascii_hostname) > 253
+            or (
+                not hostname_is_ip
+                and any(
+                    not RELEASE_HOST_LABEL_PATTERN.fullmatch(label)
+                    for label in ascii_hostname.split(".")
+                )
+            )
+        ):
+            raise _release_http_error(
+                "invalid_origin_allowlist",
+                "Origin allowlist contains an invalid hostname.",
+            )
+        validated.add(("https", ascii_hostname, port))
+    return validated
+
+
+def _validate_release_request_headers(headers):
+    """Validate caller headers and force an undecoded response body."""
+    if headers is None:
+        headers = {}
+    if not isinstance(headers, Mapping):
+        raise ValueError("headers must be a mapping.")
+
+    result = {}
+    seen = set()
+    for name, value in headers.items():
+        if (
+            not isinstance(name, str)
+            or not RELEASE_HEADER_NAME_PATTERN.fullmatch(name)
+        ):
+            raise ValueError("HTTP header name is invalid.")
+        lower_name = name.lower()
+        if lower_name in seen:
+            raise ValueError("HTTP header names must be unique ignoring case.")
+        seen.add(lower_name)
+        if not isinstance(value, str) or CONTROL_CHARACTER_PATTERN.search(value):
+            raise ValueError("HTTP header value is invalid.")
+        if lower_name == "host":
+            raise ValueError("Host is controlled by the pinned transport.")
+        if lower_name == "accept-encoding":
+            continue
+        result[name] = value
+    result["Accept-Encoding"] = "identity"
+    return result
+
+
+def _strip_release_cross_origin_secrets(headers):
+    """Remove credentials and ambient cookies on an approved origin change."""
+    return {
+        name: value
+        for name, value in headers.items()
+        if name.lower() not in RELEASE_SECRET_REQUEST_HEADERS
+    }
+
+
+def _release_response_headers(response, url):
+    """Normalize response headers while rejecting case-fold duplicates."""
+    headers = getattr(response, "headers", None)
+    if not isinstance(headers, Mapping):
+        raise _release_http_error(
+            "invalid_response_headers",
+            "HTTP response headers are not a mapping.",
+            url=url,
+        )
+    normalized = {}
+    for name, value in headers.items():
+        if (
+            not isinstance(name, str)
+            or not RELEASE_HEADER_NAME_PATTERN.fullmatch(name)
+        ):
+            raise _release_http_error(
+                "invalid_response_headers",
+                "HTTP response contains an invalid header name.",
+                url=url,
+            )
+        lower_name = name.lower()
+        if lower_name in normalized:
+            raise _release_http_error(
+                "invalid_response_headers",
+                "HTTP response contains duplicate headers.",
+                url=url,
+            )
+        if not isinstance(value, str) or CONTROL_CHARACTER_PATTERN.search(value):
+            raise _release_http_error(
+                "invalid_response_headers",
+                "HTTP response contains an invalid header value.",
+                url=url,
+            )
+        normalized[lower_name] = value
+    return normalized
+
+
+def _safe_close_release_response(response):
+    """Best-effort close without masking a categorized fetch failure."""
+    try:
+        close = getattr(response, "close", None)
+        if callable(close):
+            close()
+    except Exception:
+        pass
+
+
+@dataclass(frozen=True)
+class ReleaseArchiveLimits:
+    """Conservative resource limits for one untrusted release ZIP."""
+
+    max_archive_size: int = 50 * 1024 * 1024
+    max_expanded_size: int = 250 * 1024 * 1024
+    max_entries: int = 5000
+    max_file_size: int = 50 * 1024 * 1024
+    max_compression_ratio: float = 100.0
+
+    def __post_init__(self):
+        for field_name in (
+            "max_archive_size",
+            "max_expanded_size",
+            "max_entries",
+            "max_file_size",
+        ):
+            value = getattr(self, field_name)
+            if type(value) is not int or value <= 0:
+                raise ValueError(field_name + " must be a positive integer.")
+        ratio = self.max_compression_ratio
+        if (
+            type(ratio) not in (int, float)
+            or not math.isfinite(ratio)
+            or ratio <= 0
+        ):
+            raise ValueError(
+                "max_compression_ratio must be a finite positive number."
+            )
+
+
+class SafeReleaseHttpClient:
+    """Stream one bounded artifact through independently pinned HTTPS hops."""
+
+    def __init__(
+        self,
+        *,
+        resolver=None,
+        transport=None,
+        max_redirects=3,
+        connect_timeout=5.0,
+        read_timeout=30.0,
+        max_bytes=50 * 1024 * 1024,
+        stream_chunk_size=RELEASE_HTTP_CHUNK_SIZE,
+    ):
+        if type(max_redirects) is not int or max_redirects < 0:
+            raise ValueError("max_redirects must be a non-negative integer.")
+        for value, label in (
+            (connect_timeout, "connect_timeout"),
+            (read_timeout, "read_timeout"),
+        ):
+            if (
+                type(value) not in (int, float)
+                or not math.isfinite(value)
+                or value <= 0
+            ):
+                raise ValueError(label + " must be a finite positive number.")
+        if (
+            type(max_bytes) is not int
+            or max_bytes <= 0
+            or max_bytes > sys.maxsize
+        ):
+            raise ValueError("max_bytes must be a positive integer.")
+        if type(stream_chunk_size) is not int or stream_chunk_size <= 0:
+            raise ValueError("stream_chunk_size must be a positive integer.")
+        if resolver is None:
+            resolver = SystemResolver()
+        if transport is None:
+            transport = PinnedHttpsTransport()
+        if not callable(getattr(resolver, "resolve", None)):
+            raise ValueError("resolver must provide resolve().")
+        if not callable(getattr(transport, "request", None)):
+            raise ValueError("transport must provide request().")
+
+        self.resolver = resolver
+        self.transport = transport
+        self.max_redirects = max_redirects
+        self.connect_timeout = float(connect_timeout)
+        self.read_timeout = float(read_timeout)
+        self.max_bytes = max_bytes
+        self.stream_chunk_size = min(stream_chunk_size, max_bytes)
+
+    def _resolve_public_address(self, hostname, port, url):
+        """Validate the entire DNS answer, then pin its first public address."""
+        try:
+            literal = ipaddress.ip_address(hostname)
+        except ValueError:
+            literal = None
+        if literal is not None:
+            answers = [hostname]
+        else:
+            try:
+                answers = self.resolver.resolve(hostname, port)
+            except Exception as error:
+                raise _release_http_error(
+                    "dns_resolution_failed",
+                    "DNS resolution failed.",
+                    url=url,
+                ) from error
+        if isinstance(answers, (str, bytes)):
+            answers = None
+        try:
+            answer_iterator = iter(answers) if answers is not None else iter(())
+        except Exception as error:
+            raise _release_http_error(
+                "dns_resolution_failed",
+                "DNS answer is invalid.",
+                url=url,
+            ) from error
+
+        parsed_addresses = []
+        for answer_index in range(RELEASE_MAX_DNS_ANSWERS + 1):
+            try:
+                answer = next(answer_iterator)
+            except StopIteration:
+                break
+            except Exception as error:
+                raise _release_http_error(
+                    "dns_resolution_failed",
+                    "DNS answer could not be read.",
+                    url=url,
+                ) from error
+            if answer_index == RELEASE_MAX_DNS_ANSWERS:
+                raise _release_http_error(
+                    "dns_resolution_failed",
+                    "DNS answer contains too many addresses.",
+                    url=url,
+                )
+            if not isinstance(answer, str):
+                raise _release_http_error(
+                    "dns_resolution_failed",
+                    "DNS answer contains a malformed address.",
+                    url=url,
+                )
+            try:
+                address = ipaddress.ip_address(answer)
+            except ValueError as error:
+                raise _release_http_error(
+                    "dns_resolution_failed",
+                    "DNS answer contains a malformed address.",
+                    url=url,
+                ) from error
+            public_address = getattr(address, "ipv4_mapped", None) or address
+            if not public_address.is_global or public_address.is_multicast:
+                raise _release_http_error(
+                    "non_public_address",
+                    "DNS answer contains a non-public address.",
+                    url=url,
+                )
+            parsed_addresses.append(str(address))
+        if not parsed_addresses:
+            raise _release_http_error(
+                "dns_resolution_failed",
+                "DNS answer is empty.",
+                url=url,
+            )
+        return parsed_addresses[0]
+
+    def _request(self, target, headers):
+        """Open one pinned transport request without retrying unknown bytes."""
+        connect_ip = self._resolve_public_address(
+            target.hostname,
+            target.port,
+            target.url,
+        )
+        try:
+            return self.transport.request(
+                "GET",
+                target.url,
+                connect_ip=connect_ip,
+                server_hostname=target.hostname,
+                host_header=target.host_header,
+                headers=dict(headers),
+                connect_timeout=self.connect_timeout,
+                read_timeout=self.read_timeout,
+            )
+        except TimeoutError as error:
+            raise _release_http_error(
+                "timeout",
+                "HTTP request timed out.",
+                url=target.url,
+            ) from error
+        except ReleaseHttpError:
+            raise
+        except Exception as error:
+            raise _release_http_error(
+                "transport_error",
+                "HTTP transport failed.",
+                url=target.url,
+            ) from error
+
+    def _response_length(self, response_headers, target, expected_size):
+        content_encoding = response_headers.get("content-encoding")
+        if (
+            content_encoding is not None
+            and content_encoding.strip().lower() != "identity"
+        ):
+            raise _release_http_error(
+                "unsupported_content_encoding",
+                "Compressed response bodies are not accepted.",
+                url=target.url,
+            )
+
+        content_length = response_headers.get("content-length")
+        if content_length is None:
+            return None
+        if not RELEASE_CONTENT_LENGTH_PATTERN.fullmatch(content_length):
+            raise _release_http_error(
+                "invalid_content_length",
+                "Content-Length is malformed.",
+                url=target.url,
+            )
+        normalized_length = content_length.lstrip("0") or "0"
+        maximum_length = str(self.max_bytes)
+        if (
+            len(normalized_length) > len(maximum_length)
+            or (
+                len(normalized_length) == len(maximum_length)
+                and normalized_length > maximum_length
+            )
+        ):
+            raise _release_http_error(
+                "content_too_large",
+                "Declared response size exceeds the limit.",
+                url=target.url,
+            )
+        declared_size = int(normalized_length)
+        if declared_size > self.max_bytes:
+            raise _release_http_error(
+                "content_too_large",
+                "Declared response size exceeds the limit.",
+                url=target.url,
+            )
+        if expected_size is not None and declared_size != expected_size:
+            raise _release_http_error(
+                "length_mismatch",
+                "Declared response size differs from expected size.",
+                url=target.url,
+            )
+        return declared_size
+
+    def _remove_partial_download(self, destination):
+        try:
+            os.remove(destination)
+        except FileNotFoundError:
+            pass
+
+    def _write_chunk(self, output, chunk, target):
+        view = memoryview(chunk)
+        while view:
+            try:
+                written = output.write(view)
+            except Exception as error:
+                raise _release_http_error(
+                    "write_failed",
+                    "Release artifact could not be written.",
+                    url=target.url,
+                ) from error
+            if type(written) is not int or written <= 0:
+                raise _release_http_error(
+                    "write_failed",
+                    "Release artifact write did not make progress.",
+                    url=target.url,
+                )
+            view = view[written:]
+
+    def _read_download_to_path(
+        self,
+        response,
+        target,
+        response_headers,
+        destination,
+        expected_sha256,
+        expected_size,
+        redirects,
+    ):
+        """Stream, verify, and durably persist one successful response."""
+        declared_size = self._response_length(
+            response_headers,
+            target,
+            expected_size,
+        )
+        iterator = getattr(response, "iter_bytes", None)
+        if not callable(iterator):
+            raise _release_http_error(
+                "transport_error",
+                "HTTP response does not expose a byte iterator.",
+                url=target.url,
+            )
+
+        try:
+            output = open(destination, "xb", buffering=0)
+        except FileExistsError as error:
+            raise _release_http_error(
+                "destination_exists",
+                "Release download destination already exists.",
+                url=target.url,
+            ) from error
+        except Exception as error:
+            raise _release_http_error(
+                "write_failed",
+                "Release download destination could not be created.",
+                url=target.url,
+            ) from error
+
+        digest = hashlib.sha256()
+        actual_size = 0
+        try:
+            try:
+                for chunk in iterator(self.stream_chunk_size):
+                    if not isinstance(chunk, (bytes, bytearray, memoryview)):
+                        raise _release_http_error(
+                            "transport_error",
+                            "HTTP response yielded non-byte data.",
+                            url=target.url,
+                        )
+                    chunk = bytes(chunk)
+                    if actual_size + len(chunk) > self.max_bytes:
+                        raise _release_http_error(
+                            "content_too_large",
+                            "Streamed response exceeds the size limit.",
+                            url=target.url,
+                        )
+                    self._write_chunk(output, chunk, target)
+                    actual_size += len(chunk)
+                    digest.update(chunk)
+            except ReleaseHttpError:
+                raise
+            except TimeoutError as error:
+                raise _release_http_error(
+                    "timeout",
+                    "HTTP response stream timed out.",
+                    url=target.url,
+                ) from error
+            except Exception as error:
+                raise _release_http_error(
+                    "transport_error",
+                    "HTTP response stream failed.",
+                    url=target.url,
+                ) from error
+
+            if declared_size is not None and actual_size != declared_size:
+                raise _release_http_error(
+                    "length_mismatch",
+                    "Received bytes differ from Content-Length.",
+                    url=target.url,
+                )
+            if expected_size is not None and actual_size != expected_size:
+                raise _release_http_error(
+                    "length_mismatch",
+                    "Received bytes differ from expected size.",
+                    url=target.url,
+                )
+            actual_digest = digest.hexdigest()
+            if expected_sha256 and actual_digest != expected_sha256:
+                raise _release_http_error(
+                    "digest_mismatch",
+                    "Received bytes differ from expected SHA-256.",
+                    url=target.url,
+                )
+            try:
+                output.flush()
+                os.fsync(output.fileno())
+            except Exception as error:
+                raise _release_http_error(
+                    "write_failed",
+                    "Release artifact could not be made durable.",
+                    url=target.url,
+                ) from error
+            try:
+                output.close()
+            except Exception as error:
+                raise _release_http_error(
+                    "write_failed",
+                    "Release artifact could not be closed.",
+                    url=target.url,
+                ) from error
+            return ReleaseDownload(
+                path=destination,
+                size=actual_size,
+                sha256=actual_digest,
+                final_url=target.url,
+                redirects=redirects,
+                verified=bool(expected_sha256 or expected_size is not None),
+            )
+        except BaseException:
+            try:
+                output.close()
+            finally:
+                self._remove_partial_download(destination)
+            raise
+
+    def download_to_path(
+        self,
+        url,
+        destination,
+        *,
+        expected_sha256=None,
+        expected_size=None,
+        allowed_origins=(),
+        headers=None,
+    ):
+        """Download and verify one artifact into a brand-new durable file."""
+        if expected_sha256 is None:
+            expected_sha256 = ""
+        if not isinstance(expected_sha256, str) or (
+            expected_sha256
+            and not LOWER_SHA256_PATTERN.fullmatch(expected_sha256)
+        ):
+            raise ValueError("expected_sha256 must be a lowercase SHA-256 digest.")
+        if expected_size is not None and (
+            type(expected_size) is not int
+            or expected_size <= 0
+            or expected_size > self.max_bytes
+        ):
+            raise ValueError(
+                "expected_size must be a positive integer within max_bytes."
+            )
+        request_headers = _validate_release_request_headers(headers)
+        reviewed_origins = _validate_release_origin_allowlist(allowed_origins)
+        target = _validate_release_url(url)
+        try:
+            destination_path = os.fspath(destination)
+        except TypeError as error:
+            raise ValueError("destination must be a filesystem path.") from error
+        if not isinstance(destination_path, str) or not destination_path:
+            raise ValueError("destination must be a non-empty text path.")
+        if os.path.lexists(destination_path):
+            raise _release_http_error(
+                "destination_exists",
+                "Release download destination already exists.",
+                url=target.url,
+            )
+
+        approved_origins = set(reviewed_origins)
+        approved_origins.add(target.origin)
+        redirects = 0
+        while True:
+            response = self._request(target, request_headers)
+            try:
+                status = getattr(response, "status", None)
+                if type(status) is not int:
+                    raise _release_http_error(
+                        "transport_error",
+                        "HTTP response status is invalid.",
+                        url=target.url,
+                    )
+                response_headers = _release_response_headers(
+                    response,
+                    target.url,
+                )
+                if status in RELEASE_REDIRECT_STATUSES:
+                    if redirects >= self.max_redirects:
+                        raise _release_http_error(
+                            "too_many_redirects",
+                            "HTTP redirect limit exceeded.",
+                            status=status,
+                            url=target.url,
+                        )
+                    location = response_headers.get("location")
+                    if not location:
+                        raise _release_http_error(
+                            "redirect_location_missing",
+                            "HTTP redirect did not include Location.",
+                            status=status,
+                            url=target.url,
+                        )
+                    next_url = urllib.parse.urljoin(target.url, location)
+                    next_target = _validate_release_url(next_url)
+                    if next_target.origin != target.origin:
+                        if next_target.origin not in approved_origins:
+                            raise _release_http_error(
+                                "origin_not_allowed",
+                                "Redirect target origin was not reviewed.",
+                                status=status,
+                                url=next_target.url,
+                            )
+                        request_headers = _strip_release_cross_origin_secrets(
+                            request_headers
+                        )
+                    redirects += 1
+                    target = next_target
+                    continue
+                if status != 200:
+                    raise _release_http_error(
+                        "http_error",
+                        "HTTP response status is not a successful download.",
+                        status=status,
+                        url=target.url,
+                    )
+                return self._read_download_to_path(
+                    response,
+                    target,
+                    response_headers,
+                    destination_path,
+                    expected_sha256,
+                    expected_size,
+                    redirects,
+                )
+            finally:
+                _safe_close_release_response(response)
+
+
+@dataclass(frozen=True)
+class ReleaseArchiveExtraction:
+    """Inventory returned after a complete safe extraction."""
+
+    root_prefix: str
+    root_path: str
+    file_count: int
+    expanded_size: int
+
+
+@dataclass(frozen=True)
+class _SafeZipMember:
+    info: object
+    parts: tuple
+    canonical_parts: tuple
+    is_directory: bool
+
+
+class SafeZipExtractor:
+    """Inspect and stream an untrusted ZIP without using ``extractall``."""
+
+    CHUNK_SIZE = 64 * 1024
+    RESERVED_METADATA_PARTS = {
+        ".git",
+        ".hg",
+        ".svn",
+        ".bzr",
+        ".pypluginstore",
+        ".pypluginstore.json",
+    }
+    WINDOWS_FORBIDDEN_CHARACTERS = '<>:"|?*'
+
+    def __init__(self, limits):
+        if not isinstance(limits, ReleaseArchiveLimits):
+            raise ValueError("limits must be ReleaseArchiveLimits.")
+        self.limits = limits
+
+    def _portable_parts(self, path, label):
+        if not isinstance(path, str) or not path:
+            raise ValueError(label + " is empty.")
+        if (
+            path.startswith(("/", "\\"))
+            or "\\" in path
+            or re.match(r"^[A-Za-z]:", path)
+        ):
+            raise ValueError(label + " is not a relative POSIX path.")
+        parts = path.split("/")
+        if any(part in ("", ".", "..") for part in parts):
+            raise ValueError(label + " is not a normalized relative path.")
+
+        for part in parts:
+            if unicodedata.normalize("NFC", part) != part:
+                raise ValueError(label + " must use NFC Unicode normalization.")
+            if any(
+                unicodedata.category(character) == "Cc"
+                for character in part
+            ):
+                raise ValueError(label + " contains a control character.")
+            if part.endswith((".", " ")):
+                raise ValueError(label + " has a trailing dot or space.")
+            if any(
+                character in self.WINDOWS_FORBIDDEN_CHARACTERS
+                for character in part
+            ):
+                raise ValueError(label + " is not portable on Windows.")
+            windows_stem = part.split(".", 1)[0].casefold()
+            if windows_stem in WINDOWS_RESERVED_PATH_NAMES:
+                raise ValueError(label + " contains a Windows-reserved name.")
+            if part.casefold() in self.RESERVED_METADATA_PARTS:
+                raise ValueError(label + " contains manager or VCS metadata.")
+        return tuple(parts)
+
+    def _expected_root(self, expected_root_prefix):
+        parts = self._portable_parts(
+            expected_root_prefix,
+            "expected_root_prefix",
+        )
+        if len(parts) != 1:
+            raise ValueError("expected_root_prefix must be one exact wrapper.")
+        return parts[0]
+
+    def _member(self, info, expected_root_prefix):
+        original_name = getattr(info, "orig_filename", info.filename)
+        if original_name != info.filename or "\x00" in original_name:
+            raise ValueError("ZIP member contains a NUL byte.")
+        if info.flag_bits & (0x1 | 0x40):
+            raise ValueError("Encrypted ZIP members are not supported.")
+
+        is_directory = original_name.endswith("/")
+        path = original_name[:-1] if is_directory else original_name
+        parts = self._portable_parts(path, "ZIP member name")
+        if parts[0] != expected_root_prefix:
+            raise ValueError("ZIP wrapper does not match the indexed root.")
+        if len(parts) == 1 and not is_directory:
+            raise ValueError("The indexed ZIP root must be a directory.")
+
+        unix_mode = (info.external_attr >> 16) & 0xFFFF
+        file_type = stat.S_IFMT(unix_mode) if info.create_system == 3 else 0
+        if file_type not in (0, stat.S_IFREG, stat.S_IFDIR):
+            raise ValueError("ZIP member has an unsupported file type.")
+        if is_directory:
+            if file_type == stat.S_IFREG or info.file_size != 0:
+                raise ValueError("ZIP directory metadata is inconsistent.")
+        elif file_type == stat.S_IFDIR:
+            raise ValueError("ZIP file metadata is inconsistent.")
+
+        return _SafeZipMember(
+            info=info,
+            parts=parts,
+            canonical_parts=tuple(part.casefold() for part in parts),
+            is_directory=is_directory,
+        )
+
+    def _inspect(self, archive, expected_root_prefix):
+        try:
+            infos = archive.infolist()
+        except Exception as error:
+            raise ValueError("ZIP central directory is invalid.") from error
+        if not infos:
+            raise ValueError("ZIP archive is empty.")
+        if len(infos) > self.limits.max_entries:
+            raise ValueError("ZIP archive contains too many members.")
+
+        members = []
+        member_paths = set()
+        node_kinds = {}
+        component_spellings = {}
+        expanded_size = 0
+        for info in infos:
+            member = self._member(info, expected_root_prefix)
+            canonical_parts = member.canonical_parts
+
+            for index, (canonical_part, original_part) in enumerate(
+                zip(canonical_parts, member.parts)
+            ):
+                spelling_key = (canonical_parts[:index], canonical_part)
+                previous_spelling = component_spellings.get(spelling_key)
+                if (
+                    previous_spelling is not None
+                    and previous_spelling != original_part
+                ):
+                    raise ValueError("ZIP member paths collide across hosts.")
+                component_spellings[spelling_key] = original_part
+
+            if canonical_parts in member_paths:
+                raise ValueError("ZIP archive contains duplicate member paths.")
+            for prefix_length in range(1, len(canonical_parts)):
+                prefix = canonical_parts[:prefix_length]
+                if node_kinds.get(prefix) == "file":
+                    raise ValueError("ZIP file and directory paths collide.")
+                node_kinds.setdefault(prefix, "directory")
+
+            existing_kind = node_kinds.get(canonical_parts)
+            if member.is_directory:
+                if existing_kind == "file":
+                    raise ValueError("ZIP file and directory paths collide.")
+                node_kinds[canonical_parts] = "directory"
+            else:
+                if existing_kind is not None:
+                    raise ValueError("ZIP file and directory paths collide.")
+                node_kinds[canonical_parts] = "file"
+            member_paths.add(canonical_parts)
+
+            if type(info.file_size) is not int or info.file_size < 0:
+                raise ValueError("ZIP member has an invalid expanded size.")
+            if type(info.compress_size) is not int or info.compress_size < 0:
+                raise ValueError("ZIP member has an invalid compressed size.")
+            if not member.is_directory:
+                if info.file_size > self.limits.max_file_size:
+                    raise ValueError("ZIP member exceeds the per-file limit.")
+                expanded_size += info.file_size
+                if expanded_size > self.limits.max_expanded_size:
+                    raise ValueError("ZIP archive exceeds the expansion limit.")
+                if info.file_size:
+                    if info.compress_size == 0 or (
+                        info.file_size
+                        > self.limits.max_compression_ratio
+                        * info.compress_size
+                    ):
+                        raise ValueError(
+                            "ZIP member exceeds the compression-ratio limit."
+                        )
+            members.append(member)
+        return members
+
+    def _target_path(self, destination, parts):
+        target = os.path.abspath(os.path.join(destination, *parts))
+        try:
+            inside = os.path.commonpath((destination, target)) == destination
+        except ValueError:
+            inside = False
+        if not inside:
+            raise ValueError("ZIP member escapes the extraction directory.")
+        return target
+
+    def _extract_members(self, archive, members, destination):
+        file_count = 0
+        expanded_size = 0
+        for member in members:
+            target = self._target_path(destination, member.parts)
+            if member.is_directory:
+                os.makedirs(target, exist_ok=True)
+                continue
+
+            os.makedirs(os.path.dirname(target), exist_ok=True)
+            member_size = 0
+            with archive.open(member.info, "r") as source, open(
+                target, "xb"
+            ) as output:
+                while True:
+                    chunk = source.read(self.CHUNK_SIZE)
+                    if not chunk:
+                        break
+                    member_size += len(chunk)
+                    expanded_size += len(chunk)
+                    if member_size > self.limits.max_file_size:
+                        raise ValueError("ZIP member exceeds the per-file limit.")
+                    if expanded_size > self.limits.max_expanded_size:
+                        raise ValueError("ZIP archive exceeds the expansion limit.")
+                    output.write(chunk)
+            if member_size != member.info.file_size:
+                raise ValueError("ZIP member size differs from its metadata.")
+            file_count += 1
+        return file_count, expanded_size
+
+    def _remove_destination(self, destination):
+        try:
+            if os.path.isdir(destination) and not os.path.islink(destination):
+                shutil.rmtree(destination)
+            elif os.path.lexists(destination):
+                os.remove(destination)
+        except FileNotFoundError:
+            pass
+
+    def extract(
+        self,
+        archive_path,
+        destination,
+        *,
+        expected_root_prefix,
+    ):
+        """Validate then extract one ZIP into a brand-new directory."""
+        created_destination = False
+        destination_path = None
+        try:
+            root_prefix = self._expected_root(expected_root_prefix)
+            archive_path = os.path.abspath(os.fspath(archive_path))
+            destination_path = os.path.abspath(os.fspath(destination))
+            if os.path.lexists(destination_path):
+                raise ValueError("Extraction destination already exists.")
+
+            path_stat = os.lstat(archive_path)
+            if not stat.S_ISREG(path_stat.st_mode):
+                raise ValueError("Release archive must be a regular file.")
+            open_flags = os.O_RDONLY | getattr(os, "O_BINARY", 0)
+            open_flags |= getattr(os, "O_NOFOLLOW", 0)
+            descriptor = os.open(archive_path, open_flags)
+            try:
+                archive_stat = os.fstat(descriptor)
+                if not stat.S_ISREG(archive_stat.st_mode):
+                    raise ValueError("Release archive must be a regular file.")
+                if (
+                    archive_stat.st_dev != path_stat.st_dev
+                    or archive_stat.st_ino != path_stat.st_ino
+                ):
+                    raise ValueError("Release archive changed while being opened.")
+                if archive_stat.st_size > self.limits.max_archive_size:
+                    raise ValueError(
+                        "Release archive exceeds the compressed limit."
+                    )
+
+                with os.fdopen(descriptor, "rb") as archive_file:
+                    descriptor = None
+                    with zipfile.ZipFile(archive_file, "r") as archive:
+                        members = self._inspect(archive, root_prefix)
+                        os.mkdir(destination_path)
+                        created_destination = True
+                        file_count, expanded_size = self._extract_members(
+                            archive,
+                            members,
+                            destination_path,
+                        )
+            finally:
+                if descriptor is not None:
+                    os.close(descriptor)
+
+            return ReleaseArchiveExtraction(
+                root_prefix=root_prefix,
+                root_path=os.path.join(destination_path, root_prefix),
+                file_count=file_count,
+                expanded_size=expanded_size,
+            )
+        except BaseException as error:
+            if created_destination and destination_path is not None:
+                self._remove_destination(destination_path)
+            if isinstance(error, ValueError):
+                raise
+            if isinstance(error, Exception):
+                raise ValueError("Release ZIP extraction failed.") from error
+            raise
 
 
 @dataclass
