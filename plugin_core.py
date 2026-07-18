@@ -28,7 +28,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import zipfile
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta, timezone
 
 import Domoticz
@@ -6306,17 +6306,40 @@ class ReleaseTransactionManager:
             target.get("release_revision"),
             "target.release_revision",
         )
-        _require_git_commit(target.get("commit"), "target.commit")
+        target_source_revision = str(target.get("source_revision") or "")
+        if target_source_revision:
+            _require_nonempty_string(
+                target_source_revision,
+                "target.source_revision",
+            )
+        _require_git_commit(
+            target.get("commit"),
+            "target.commit",
+            required=not target_source_revision,
+        )
         _require_sha256(
             target.get("artifact_tree_sha256"),
             "target.artifact_tree_sha256",
         )
-        if expected_mode in ("release", "git"):
+        if expected_mode == "git":
             _require_git_commit(
                 expected_current.get("commit"),
                 "expected_current.commit",
             )
         if expected_mode == "release":
+            expected_source_revision = str(
+                expected_current.get("source_revision") or ""
+            )
+            if expected_source_revision:
+                _require_nonempty_string(
+                    expected_source_revision,
+                    "expected_current.source_revision",
+                )
+            _require_git_commit(
+                expected_current.get("commit"),
+                "expected_current.commit",
+                required=not expected_source_revision,
+            )
             _require_sha256(
                 expected_current.get("artifact_tree_sha256"),
                 "expected_current.artifact_tree_sha256",
@@ -6885,6 +6908,7 @@ class ReleaseTransactionManager:
             return False
         fields = (
             ("commit", metadata.commit),
+            ("source_revision", metadata.source_revision),
             ("artifact_tree_sha256", metadata.artifact_tree_sha256),
             ("release_id", metadata.release_id),
             ("release_revision", metadata.release_revision),
@@ -7227,6 +7251,48 @@ class ReleaseTransactionManager:
         with self.operation_lock():
             transaction = self._load_transaction(operation_id)
             return self._activate_locked(transaction)
+
+    def abort(self, operation_id, error):
+        """Discard a pre-activation transaction without touching live state."""
+        error = str(error or "Release operation was aborted.")
+        with self.operation_lock():
+            transaction = self._load_transaction(operation_id)
+            if transaction.phase in {
+                "code_backup_pending",
+                "code_backed_up",
+                "dependencies_backup_pending",
+                "dependencies_backed_up",
+                "dependencies_activation_pending",
+                "dependencies_activated",
+                "code_activation_pending",
+                "release_activated",
+                "restart_pending",
+                "release_managed",
+                "queued_locked",
+                "rollback_pending",
+            }:
+                raise RuntimeError(
+                    "An activation that may have changed live state must be rolled back."
+                )
+            if transaction.phase == "rolled_back":
+                return transaction
+            if not self._metadata_matches(transaction) or not self._dependency_tree_matches(
+                transaction.paths.live_dependencies,
+                transaction.dependency_state["expected"],
+                "Installed dependency snapshot",
+            ):
+                return self._set_phase(
+                    transaction,
+                    "stale_target",
+                    error="Installed state changed before the release operation aborted.",
+                )
+            staging_parent = os.path.dirname(transaction.paths.staged_code)
+            self._remove_transaction_path(staging_parent)
+            return self._set_phase(
+                transaction,
+                "rolled_back",
+                error=error,
+            )
 
     def rollback(self, operation_id):
         with self.operation_lock():
@@ -8689,6 +8755,392 @@ class GitInstallUpdateStrategy:
         return None
 
 
+class ReleaseInstallUpdateStrategy:
+    """Install one index-pinned release through the hardened transaction path."""
+
+    def __init__(
+        self,
+        plugin,
+        *,
+        transaction_manager=None,
+        dependency_service=None,
+        http_client=None,
+        extractor=None,
+        validator=None,
+        metadata_service=None,
+        preservation_service=None,
+        limits=None,
+    ):
+        if plugin is None:
+            raise ValueError("plugin is required.")
+        self.plugin = plugin
+        self.limits = limits or ReleaseArchiveLimits()
+        self.transaction_manager = (
+            transaction_manager or ReleaseTransactionManager(plugin)
+        )
+        self.dependency_service = dependency_service or (
+            ReleaseDependencySnapshotService(
+                plugin,
+                transaction_manager=self.transaction_manager,
+            )
+        )
+        self.http_client = http_client or SafeReleaseHttpClient(
+            max_bytes=self.limits.max_archive_size
+        )
+        self.extractor = extractor or SafeZipExtractor(self.limits)
+        self.validator = validator or ReleaseArtifactValidationService(
+            plugin, self.limits
+        )
+        self.metadata_service = metadata_service or InstallMetadataService(
+            plugin
+        )
+        self.preservation_service = preservation_service
+
+    def _preservation(self):
+        if self.preservation_service is None:
+            service_type = globals().get("ReleasePreservationService")
+            if service_type is None:
+                raise RuntimeError("Release preservation is not configured.")
+            self.preservation_service = service_type(self.plugin)
+        return self.preservation_service
+
+    def _operation_id(self):
+        return "release-" + hashlib.sha256(os.urandom(32)).hexdigest()[:24]
+
+    def _index_sequence(self):
+        selection = getattr(
+            self.plugin, "release_metadata_selection", None
+        )
+        sequence = getattr(selection, "sequence", 0)
+        if type(sequence) is not int or sequence <= 0:
+            raise ValueError(
+                "A trusted release index generation is required."
+            )
+        return sequence
+
+    def _target(self, release):
+        target = {
+            "management_mode": "release",
+            "release_id": release.release_id,
+            "release_revision": release.revision,
+            "commit": release.commit,
+            "artifact_tree_sha256": release.artifact.tree_sha256,
+        }
+        if release.source_revision:
+            target["source_revision"] = release.source_revision
+        return target
+
+    def _installed_metadata(self, entry):
+        plugin_dir = self.plugin.resolve_installed_plugin_dir(entry.key)
+        metadata = self.metadata_service.read(plugin_dir)
+        if metadata is None:
+            raise ValueError(
+                "Release install metadata is unavailable or invalid."
+            )
+        expected_identity = normalize_repository_identity(
+            entry.author, entry.repository
+        )
+        if (
+            metadata.plugin_key != entry.key
+            or not expected_identity
+            or metadata.repository_identity != expected_identity
+        ):
+            raise ValueError(
+                "Installed release metadata does not match the registry entry."
+            )
+        return plugin_dir, metadata
+
+    def _expected_current(self, entry, operation):
+        if operation == "release_install":
+            plugin_dir = self.plugin.get_host().resolve_plugin_dir(entry.key)
+            if os.path.lexists(plugin_dir):
+                raise ValueError("Plugin folder already exists.")
+            return {"management_mode": "absent"}, None, None
+        plugin_dir, metadata = self._installed_metadata(entry)
+        expected = {
+            "management_mode": "release",
+            "release_id": metadata.release_id,
+            "release_revision": metadata.release_revision,
+            "commit": metadata.commit,
+            "artifact_tree_sha256": metadata.artifact_tree_sha256,
+        }
+        if metadata.source_revision:
+            expected["source_revision"] = metadata.source_revision
+        return expected, plugin_dir, metadata
+
+    def _allowed_origins(self, entry):
+        release_policy = getattr(entry.delivery, "release", None)
+        return list(getattr(release_policy, "allowed_origins", []) or [])
+
+    def _move_validated_source(self, source_root, staged_code):
+        source_root = os.path.abspath(source_root)
+        staged_code = os.path.abspath(staged_code)
+        if os.path.lexists(staged_code):
+            raise ValueError("Staged release destination already exists.")
+        os.replace(source_root, staged_code)
+
+    def _installed_at(self, release):
+        now = self.plugin.get_host().utc_timestamp()
+        try:
+            if _parse_utc_timestamp(now, "installed_at") < _parse_utc_timestamp(
+                release.released_at, "release.released_at"
+            ):
+                return release.released_at
+        except ValueError:
+            pass
+        return now
+
+    def _metadata(
+        self,
+        entry,
+        release,
+        validation,
+        index_sequence,
+        preserved_files,
+    ):
+        return InstallMetadata.from_document(
+            {
+                "schema": INSTALL_METADATA_SCHEMA_VERSION,
+                "plugin_key": entry.key,
+                "management_mode": "release",
+                "repository_identity": release.repository_identity,
+                "version": release.version,
+                "tag": release.tag,
+                "release_id": release.release_id,
+                "release_revision": release.revision,
+                "released_at": release.released_at,
+                "commit": release.commit,
+                "source_revision": release.source_revision,
+                "artifact_sha256": release.artifact.sha256,
+                "artifact_tree_sha256": release.artifact.tree_sha256,
+                "artifact_provenance": release.artifact.provenance,
+                "artifact_files": validation.artifact_files,
+                "preserved_files": preserved_files,
+                "index_sequence": index_sequence,
+                "installed_at": self._installed_at(release),
+            }
+        )
+
+    def _apply_update_preservation(
+        self,
+        entry,
+        installed_dir,
+        installed_metadata,
+        staged_code,
+        trigger,
+        approved_inventory_sha256=None,
+    ):
+        if installed_metadata is None:
+            return {}
+        release_policy = getattr(entry.delivery, "release", None)
+        mutable_paths = list(
+            getattr(release_policy, "mutable_paths", []) or []
+        )
+        scanned = self._preservation().inventory(
+            installed_dir=installed_dir,
+            artifact_files=installed_metadata.artifact_files,
+            preserved_files=installed_metadata.preserved_files,
+            mutable_paths=mutable_paths,
+            operation="release_update",
+            tracked_changes=[],
+            untracked_files=[],
+        )
+        result = self._preservation().apply_overlay(
+            scanned,
+            staged_dir=staged_code,
+            trigger=trigger,
+            approved_inventory_sha256=approved_inventory_sha256,
+        )
+        return dict(result.preserved_files)
+
+    def _abort(self, operation_id, error):
+        if not operation_id:
+            return
+        try:
+            self.transaction_manager.abort(operation_id, str(error))
+        except Exception as abort_error:
+            Domoticz.Error(
+                "Release transaction cleanup failed: " + str(abort_error)
+            )
+
+    def _execute(
+        self,
+        entry,
+        release,
+        trigger,
+        operation,
+        *,
+        index_sequence,
+        approved_inventory_sha256=None,
+        compatibility_confirmed=False,
+    ):
+        if trigger not in ReleaseManagementCoordinator.TRIGGERS:
+            raise ValueError(
+                "Release management trigger must be manual or automatic."
+            )
+        if not isinstance(release, ReleaseDescriptor):
+            return False, "A validated release target is required."
+        if type(index_sequence) is not int or index_sequence <= 0:
+            return False, "A trusted release index generation is required."
+        expected_identity = normalize_repository_identity(
+            entry.author, entry.repository
+        )
+        if (
+            not expected_identity
+            or release.repository_identity != expected_identity
+        ):
+            return False, "Release repository identity does not match the registry."
+
+        operation_id = ""
+        try:
+            expected_current, installed_dir, installed_metadata = (
+                self._expected_current(entry, operation)
+            )
+            operation_id = self._operation_id()
+            transaction = self.transaction_manager.create_transaction(
+                plugin_key=entry.key,
+                operation_id=operation_id,
+                operation=operation,
+                expected_current=expected_current,
+                target=self._target(release),
+            )
+            staging_parent = os.path.dirname(transaction.paths.staged_code)
+            archive_path = os.path.join(staging_parent, "artifact.zip")
+            extraction_dir = os.path.join(staging_parent, "extracted")
+            self.http_client.download_to_path(
+                release.artifact.url,
+                archive_path,
+                expected_sha256=release.artifact.sha256,
+                expected_size=release.artifact.size,
+                allowed_origins=self._allowed_origins(entry),
+            )
+            self.extractor.extract(
+                archive_path,
+                extraction_dir,
+                expected_root_prefix=release.artifact.root_prefix,
+            )
+            validation = self.validator.validate(
+                extraction_dir=extraction_dir,
+                root_prefix=release.artifact.root_prefix,
+                source_path=release.artifact.source_path,
+                plugin_key=entry.key,
+                expected_tree_sha256=release.artifact.tree_sha256,
+                repository_identity=release.repository_identity,
+            )
+            self._move_validated_source(
+                validation.source_root,
+                transaction.paths.staged_code,
+            )
+            if os.path.lexists(extraction_dir):
+                shutil.rmtree(extraction_dir)
+            if os.path.lexists(archive_path):
+                os.unlink(archive_path)
+
+            preserved_files = {}
+            if operation == "release_update":
+                preserved_files = self._apply_update_preservation(
+                    entry,
+                    installed_dir,
+                    installed_metadata,
+                    transaction.paths.staged_code,
+                    trigger,
+                    approved_inventory_sha256,
+                )
+            metadata = self._metadata(
+                entry,
+                release,
+                validation,
+                index_sequence,
+                preserved_files,
+            )
+            self.metadata_service.write(
+                transaction.paths.staged_code, metadata
+            )
+            self.transaction_manager.mark_staged_verified(operation_id)
+            dependency_result = self.dependency_service.stage(
+                operation_id,
+                requirements_file=os.path.join(
+                    transaction.paths.staged_code, "requirements.txt"
+                ),
+                compatibility_confirmed=compatibility_confirmed,
+            )
+            if dependency_result.requires_confirmation:
+                return (
+                    False,
+                    "Shared dependency compatibility confirmation is required.",
+                )
+            activated = self.transaction_manager.activate(operation_id)
+            if activated.phase == "queued_locked":
+                return (
+                    False,
+                    "Plugin files are locked; release activation is queued for startup.",
+                )
+            return (
+                True,
+                "Release "
+                + release.version
+                + " staged successfully; restart required.",
+            )
+        except Exception as error:
+            self._abort(operation_id, error)
+            Domoticz.Error(
+                "Release operation failed for " + entry.key + ": " + str(error)
+            )
+            return False, str(error)
+
+    def execute_decision(self, entry, decision):
+        operation = {
+            "release_install": "release_install",
+            "release_update": "release_update",
+            "release_migration": "release_migration",
+        }.get(decision.route)
+        if operation is None:
+            raise ValueError("Decision does not select a release operation.")
+        if operation == "release_migration":
+            return self.migrate(
+                entry,
+                decision.release,
+                decision.trigger,
+                index_sequence=decision.index_sequence,
+            )
+        return self._execute(
+            entry,
+            decision.release,
+            decision.trigger,
+            operation,
+            index_sequence=decision.index_sequence,
+        )
+
+    def install(self, entry, release, trigger):
+        return self._execute(
+            entry,
+            release,
+            trigger,
+            "release_install",
+            index_sequence=self._index_sequence(),
+        )
+
+    def update(self, entry, release, trigger):
+        return self._execute(
+            entry,
+            release,
+            trigger,
+            "release_update",
+            index_sequence=self._index_sequence(),
+        )
+
+    def migrate(
+        self,
+        entry,
+        release,
+        trigger,
+        *,
+        index_sequence=None,
+    ):
+        del entry, release, trigger, index_sequence
+        return False, "Git-to-release migration preflight is not configured."
+
+
 @dataclass(frozen=True)
 class ReleaseManagementDecision:
     """One explicit, auditable route through release or Git management."""
@@ -8699,6 +9151,7 @@ class ReleaseManagementDecision:
     release: object = None
     trigger: str = "manual"
     requires_confirmation: bool = False
+    index_sequence: int = 0
 
 
 class ReleaseManagementCoordinator:
@@ -8711,7 +9164,9 @@ class ReleaseManagementCoordinator:
     def __init__(self, plugin, git_strategy=None, release_strategy=None):
         self.plugin = plugin
         self.git_strategy = git_strategy or GitInstallUpdateStrategy(plugin)
-        self.release_strategy = release_strategy
+        self.release_strategy = release_strategy or ReleaseInstallUpdateStrategy(
+            plugin
+        )
 
     def _decision(
         self,
@@ -9026,6 +9481,11 @@ class ReleaseManagementCoordinator:
         }:
             if self.release_strategy is None:
                 return False, "Release management is not configured."
+            execute_decision = getattr(
+                self.release_strategy, "execute_decision", None
+            )
+            if callable(execute_decision):
+                return execute_decision(entry, decision)
             operation = {
                 "release_install": "install",
                 "release_update": "update",
@@ -9040,23 +9500,59 @@ class ReleaseManagementCoordinator:
             return False, decision.reason or decision.status
         raise ValueError("Release management decision route is unsupported.")
 
+    def _runtime_decision(self, entry, operation, trigger):
+        context = self.plugin.getReleaseManagementContext(
+            entry,
+            operation=operation,
+            trigger=trigger,
+        )
+        context = dict(context)
+        index_sequence = context.pop("index_sequence", 0)
+        context_error = context.pop("error", "")
+        if context_error:
+            return self._decision(
+                "blocked",
+                "verification_failed",
+                reason=context_error,
+                trigger=trigger,
+            )
+        decision = self.decide(
+            entry,
+            operation=operation,
+            trigger=trigger,
+            **context,
+        )
+        return replace(decision, index_sequence=index_sequence)
+
     def install(self, entry, trigger="manual"):
-        """Preserve the legacy seam until runtime release context is wired."""
+        """Install through the release-first policy selected at runtime."""
         if trigger not in self.TRIGGERS:
             raise ValueError("Release management trigger must be manual or automatic.")
-        return self.git_strategy.install(entry)
+        decision = self._runtime_decision(entry, "install", trigger)
+        return self.execute(entry, decision)
 
     def update(self, entry, queue_on_lock=True, trigger="manual"):
-        """Preserve the legacy seam until runtime release context is wired."""
+        """Update or migrate through one selected management channel."""
         if trigger not in self.TRIGGERS:
             raise ValueError("Release management trigger must be manual or automatic.")
-        return self.git_strategy.update(entry, queue_on_lock=queue_on_lock)
+        decision = self._runtime_decision(entry, "update", trigger)
+        return self.execute(
+            entry,
+            decision,
+            queue_on_lock=queue_on_lock,
+        )
 
     def check_for_update(self, entry, trigger="manual"):
-        """Preserve the legacy seam until runtime release context is wired."""
+        """Refresh channel-aware status without mutating a release install."""
         if trigger not in self.TRIGGERS:
             raise ValueError("Release management trigger must be manual or automatic.")
-        return self.git_strategy.check_for_update(entry)
+        decision = self._runtime_decision(entry, "status", trigger)
+        if decision.route == "git_status":
+            return self.execute(entry, decision)
+        self.plugin.update_status[entry.key] = decision.status
+        if decision.status in {"available", "migration_available"}:
+            self.plugin.fnSelectedNotify(entry.key)
+        return None
 
 
 class BasePlugin:
@@ -9085,10 +9581,36 @@ class BasePlugin:
         self.host = None
         self.installed_plugin_folders = {}
         self.installed_plugin_match_details = {}
+        self.release_metadata_selection = ReleaseMetadataSelection(
+            sequence=0,
+            registry_bytes=b"",
+            release_index_bytes=b"",
+            release_index=None,
+            release_authorized=False,
+            reason="Release metadata has not been loaded.",
+        )
+        self.release_metadata_store = None
+        self.release_metadata_store_root = ""
         self.registry_service = RegistryService(self)
         self.local_registry_service = LocalRegistryService(self)
         self.update_status_service = UpdateStatusService(self)
-        self.install_update_strategy = ReleaseManagementCoordinator(self)
+        self.channel_preference_service = ChannelPreferenceService(self)
+        self.install_metadata_service = InstallMetadataService(self)
+        self.release_transaction_manager = ReleaseTransactionManager(self)
+        self.release_dependency_service = ReleaseDependencySnapshotService(
+            self,
+            transaction_manager=self.release_transaction_manager,
+        )
+        self.release_install_update_strategy = ReleaseInstallUpdateStrategy(
+            self,
+            transaction_manager=self.release_transaction_manager,
+            dependency_service=self.release_dependency_service,
+            metadata_service=self.install_metadata_service,
+        )
+        self.install_update_strategy = ReleaseManagementCoordinator(
+            self,
+            release_strategy=self.release_install_update_strategy,
+        )
 
     def get_host(self):
         parameters = globals().get("Parameters", {})
@@ -9117,11 +9639,169 @@ class BasePlugin:
     def get_registry_url(self):
         return "https://raw.githubusercontent.com/adrighem/PyPluginStore/refs/heads/master/registry.json"
 
+    def get_release_index_url(self):
+        return "https://raw.githubusercontent.com/adrighem/PyPluginStore/refs/heads/master/release_index.json"
+
     def get_bundled_registry_file(self):
         return os.path.join(self.get_plugin_home_folder(), "registry.json")
 
+    def get_bundled_release_index_file(self):
+        return os.path.join(
+            self.get_plugin_home_folder(), "release_index.json"
+        )
+
+    def get_release_metadata_root(self):
+        return os.path.join(
+            self.get_plugin_home_folder(),
+            ".pypluginstore",
+            "metadata",
+        )
+
+    def getReleaseMetadataStore(self):
+        metadata_root = os.path.abspath(self.get_release_metadata_root())
+        if (
+            self.release_metadata_store is None
+            or self.release_metadata_store_root != metadata_root
+        ):
+            self.release_metadata_store = ReleaseMetadataStore(
+                metadata_root,
+                bundled_registry_path=self.get_bundled_registry_file(),
+                bundled_index_path=self.get_bundled_release_index_file(),
+            )
+            self.release_metadata_store_root = metadata_root
+        return self.release_metadata_store
+
     def get_local_registry_file(self):
         return os.path.join(self.get_plugin_home_folder(), "registry_local.json")
+
+    def loadReleaseMetadataSelection(self):
+        try:
+            selection = self.getReleaseMetadataStore().load()
+        except Exception as error:
+            selection = ReleaseMetadataSelection(
+                sequence=0,
+                registry_bytes=b"",
+                release_index_bytes=b"",
+                release_index=None,
+                release_authorized=False,
+                reason="Release metadata could not be loaded: " + str(error),
+            )
+        self.release_metadata_selection = selection
+        return selection
+
+    def getReleaseManagementContext(
+        self,
+        entry,
+        *,
+        operation,
+        trigger,
+    ):
+        if operation not in ReleaseManagementCoordinator.OPERATIONS:
+            raise ValueError("Release management operation is unsupported.")
+        if trigger not in ReleaseManagementCoordinator.TRIGGERS:
+            raise ValueError(
+                "Release management trigger must be manual or automatic."
+            )
+        selection = self.release_metadata_selection
+        release_index = (
+            selection.release_index
+            if selection.release_authorized
+            else None
+        )
+        release = None
+        tombstone = None
+        if release_index is not None and not entry.local:
+            release = release_index.plugins.get(entry.key)
+            tombstone = release_index.tombstones.get(entry.key)
+            expected_identity = normalize_repository_identity(
+                entry.author, entry.repository
+            )
+            if release is not None and (
+                not expected_identity
+                or release.repository_identity != expected_identity
+            ):
+                return {
+                    "error": "Release metadata does not match the registry repository.",
+                    "installed_mode": "absent",
+                    "index_sequence": selection.sequence,
+                }
+
+        try:
+            plugin_dir = self.resolve_installed_plugin_dir(entry.key)
+        except ValueError as error:
+            return {
+                "error": str(error),
+                "installed_mode": "absent",
+                "index_sequence": selection.sequence,
+            }
+
+        installed_mode = "absent"
+        installed_release = None
+        release_was_activated = False
+        metadata_path = os.path.join(
+            plugin_dir, InstallMetadataService.FILE_NAME
+        )
+        if os.path.lexists(plugin_dir):
+            if os.path.islink(plugin_dir) or not os.path.isdir(plugin_dir):
+                return {
+                    "error": "Installed plugin path is not a real directory.",
+                    "installed_mode": "absent",
+                    "index_sequence": selection.sequence,
+                }
+            if os.path.lexists(metadata_path):
+                installed_mode = "release"
+                release_was_activated = True
+                try:
+                    installed_release = self.install_metadata_service.read(
+                        plugin_dir
+                    )
+                except ValueError as error:
+                    return {
+                        "error": "Installed release metadata is invalid: "
+                        + str(error),
+                        "installed_mode": "release",
+                        "index_sequence": selection.sequence,
+                    }
+            elif os.path.isdir(os.path.join(plugin_dir, ".git")):
+                installed_mode = "git"
+            elif entry.key == self.get_current_plugin_folder():
+                installed_mode = "git"
+            else:
+                return {
+                    "error": "Installed plugin is not managed by Release or Git.",
+                    "installed_mode": "absent",
+                    "index_sequence": selection.sequence,
+                }
+
+        preference = None
+        repository_identity = normalize_repository_identity(
+            entry.author, entry.repository
+        )
+        if repository_identity:
+            try:
+                preference = self.channel_preference_service.get(
+                    repository_identity
+                )
+            except ValueError as error:
+                return {
+                    "error": "Channel preference is invalid: " + str(error),
+                    "installed_mode": installed_mode,
+                    "index_sequence": selection.sequence,
+                }
+
+        return {
+            "installed_mode": installed_mode,
+            "release": release,
+            "tombstone": tombstone,
+            "metadata_authorized": selection.release_authorized,
+            "metadata_reason": selection.reason,
+            "installed_release": installed_release,
+            "channel_preference": preference,
+            "downgrade_confirmed": False,
+            "release_was_activated": release_was_activated,
+            "git_status": self.update_status.get(entry.key, "unknown"),
+            "index_sequence": selection.sequence,
+        }
 
     def get_registry_entry(self, plugin_key):
         existing_entry = self.registry_entries.get(plugin_key)
@@ -9913,6 +10593,51 @@ class BasePlugin:
             Domoticz.Error("Error fetching registry: " + str(e))
         return None
 
+    def _fetch_release_metadata_bytes(self, url, label, max_bytes):
+        request = urllib.request.Request(url)
+        with urllib.request.urlopen(request, timeout=5) as response:
+            if getattr(response, "status", None) != 200:
+                raise ValueError(
+                    label
+                    + " request failed with status "
+                    + str(getattr(response, "status", "unknown"))
+                    + "."
+                )
+            contents = response.read()
+        if not isinstance(contents, bytes) or not contents:
+            raise ValueError(label + " response is empty.")
+        if len(contents) > max_bytes:
+            raise ValueError(label + " response exceeds its size limit.")
+        return contents
+
+    def refreshReleaseMetadata(self):
+        """Accept a complete remote pair or retain the last trusted pair."""
+        store = self.getReleaseMetadataStore()
+        try:
+            registry_bytes = self._fetch_release_metadata_bytes(
+                self.get_registry_url(),
+                "registry.json",
+                10 * 1024 * 1024,
+            )
+            index_bytes = self._fetch_release_metadata_bytes(
+                self.get_release_index_url(),
+                "release_index.json",
+                10 * 1024 * 1024,
+            )
+            try:
+                selection = store.accept_remote(
+                    registry_bytes, index_bytes
+                )
+            except ValueError:
+                selection = store.load()
+        except Exception as error:
+            Domoticz.Debug(
+                "Could not refresh release metadata pair: " + str(error)
+            )
+            selection = store.load()
+        self.release_metadata_selection = selection
+        return selection
+
     def load_bundled_registry(self):
         return self.load_registry_file(self.get_bundled_registry_file(), "bundled", True)
 
@@ -10369,6 +11094,154 @@ class BasePlugin:
                     versions[plugin_key]["available"] = available_version
         return versions
 
+    def getPluginManagementMap(
+        self,
+        installed_plugins,
+        update_status,
+        versions,
+        plugins_dir,
+    ):
+        """Return the forge-neutral management extension for API clients."""
+        management = {}
+        selection = self.release_metadata_selection
+        release_index = (
+            selection.release_index
+            if selection.release_authorized
+            else None
+        )
+        manager_key = self.get_current_plugin_folder()
+        for plugin_key in installed_plugins:
+            if plugin_key == manager_key:
+                continue
+            entry = self.get_registry_entry(plugin_key)
+            if entry is None:
+                continue
+            try:
+                plugin_dir = self.resolve_installed_plugin_dir(
+                    plugin_key, plugins_dir
+                )
+            except ValueError:
+                continue
+            release = (
+                release_index.plugins.get(plugin_key)
+                if release_index is not None and not entry.local
+                else None
+            )
+            tombstone = (
+                release_index.tombstones.get(plugin_key)
+                if release_index is not None and not entry.local
+                else None
+            )
+            metadata = None
+            metadata_invalid = ""
+            metadata_path = os.path.join(
+                plugin_dir, InstallMetadataService.FILE_NAME
+            )
+            if os.path.lexists(metadata_path):
+                try:
+                    metadata = self.install_metadata_service.read(plugin_dir)
+                except ValueError as error:
+                    metadata_invalid = str(error)
+            is_release = metadata is not None or bool(metadata_invalid)
+            is_git = os.path.isdir(os.path.join(plugin_dir, ".git"))
+            channel = "release" if is_release else "git"
+            preference = None
+            identity = normalize_repository_identity(
+                entry.author, entry.repository
+            )
+            if identity:
+                try:
+                    preference = self.channel_preference_service.get(identity)
+                except ValueError:
+                    preference = None
+
+            if metadata_invalid:
+                status = "verification_failed"
+                reason = "Installed release metadata is invalid: " + metadata_invalid
+            else:
+                decision = self.install_update_strategy.decide(
+                    entry,
+                    operation="status",
+                    installed_mode=("release" if is_release else "git"),
+                    release=release,
+                    tombstone=tombstone,
+                    metadata_authorized=selection.release_authorized,
+                    metadata_reason=selection.reason,
+                    installed_release=metadata,
+                    channel_preference=preference,
+                    release_was_activated=is_release,
+                    git_status=update_status.get(plugin_key, "unknown"),
+                )
+                status = decision.status
+                reason = decision.reason
+
+            version_info = versions.get(plugin_key, {})
+            installed_version = (
+                metadata.version
+                if metadata is not None
+                else str(version_info.get("installed") or "")
+            )
+            installed_revision = (
+                metadata.release_revision
+                if metadata is not None
+                else None
+            )
+            available_version = (
+                release.version
+                if release is not None
+                else str(version_info.get("available") or "")
+            )
+            available_revision = (
+                release.revision if release is not None else None
+            )
+            migration_status = (
+                status
+                if status.startswith("migration_")
+                else ("not_applicable" if is_release else "not_available")
+            )
+            release_blocked = status in {
+                "release_metadata_unavailable",
+                "verification_failed",
+                "migration_blocked_local_changes",
+                "migration_blocked_local_files",
+                "migration_waiting_for_release",
+            }
+            management[plugin_key] = {
+                "channel": channel,
+                "status": status,
+                "updateable": bool(
+                    (is_release and not release_blocked)
+                    or (is_git and not release_blocked)
+                ),
+                "installed_version": installed_version,
+                "installed_revision": installed_revision,
+                "available_version": available_version,
+                "available_revision": available_revision,
+                "verification_status": (
+                    "failed"
+                    if status == "verification_failed"
+                    else (
+                        "unavailable"
+                        if status == "release_metadata_unavailable"
+                        else (
+                            "verified"
+                            if release is not None
+                            else "not_applicable"
+                        )
+                    )
+                ),
+                "verification_message": reason,
+                "migration_status": migration_status,
+                "migration_message": reason if migration_status.startswith("migration_") else "",
+                "rollback_available": False,
+                "rollback_version": "",
+                "rollback_revision": None,
+                "restart_pending": False,
+                "git_supported": entry.delivery.git_supported,
+                "release_available": release is not None,
+            }
+        return management
+
     def refresh_single_plugin_update_status(self, plugin_key, plugin_dir, fetch_first=True):
         return self.update_status_service.refresh_single_plugin_update_status(plugin_key, plugin_dir, fetch_first)
 
@@ -10467,7 +11340,20 @@ class BasePlugin:
         self.add_self_to_registry()
 
     def fetch_registry(self):
-        registry = self.fetch_remote_registry()
+        selection = self.refreshReleaseMetadata()
+        registry = None
+        if selection.registry_bytes and selection.sequence > 0:
+            try:
+                registry = _load_json_object(
+                    selection.registry_bytes,
+                    "selected registry.json",
+                )
+            except ValueError as error:
+                Domoticz.Error(
+                    "Selected release registry is invalid: " + str(error)
+                )
+        if registry is None:
+            registry = self.fetch_remote_registry()
         if registry is None:
             registry = self.load_bundled_registry()
 
@@ -10721,7 +11607,11 @@ class BasePlugin:
     def isApiResponsePayload(self, payload):
         return (
             isinstance(payload, dict)
-            and payload.get("status") in ("success", "error")
+            and payload.get("status") in (
+                "success",
+                "error",
+                "confirmation_required",
+            )
             and "tx_id" in payload
         )
 
@@ -10931,6 +11821,12 @@ class BasePlugin:
             installed_plugins = self.getInstalledPlugins(plugins_dir)
             cached_update_status = self.getCachedUpdateStatuses(installed_plugins)
             versions = self.get_plugin_versions(installed_plugins, cached_update_status, plugins_dir)
+            management = self.getPluginManagementMap(
+                installed_plugins,
+                cached_update_status,
+                versions,
+                plugins_dir,
+            )
                     
             self.sendApiResponse({
                 "status": "success",
@@ -10942,6 +11838,7 @@ class BasePlugin:
                 "installed_match_details": self.installed_plugin_match_details,
                 "update_status": cached_update_status,
                 "versions": versions,
+                "management": management,
                 "platforms": self.plugin_platforms,
                 "self_update": self.getSelfUpdateState()
             })
@@ -10950,6 +11847,12 @@ class BasePlugin:
             installed_plugins = self.getInstalledPlugins(plugins_dir)
             update_status = self.refreshInstalledUpdateStatuses(installed_plugins, plugins_dir)
             versions = self.get_plugin_versions(installed_plugins, update_status, plugins_dir)
+            management = self.getPluginManagementMap(
+                installed_plugins,
+                update_status,
+                versions,
+                plugins_dir,
+            )
             self.sendApiResponse({
                 "status": "success",
                 "action": action,
@@ -10960,6 +11863,7 @@ class BasePlugin:
                 "installed_match_details": self.installed_plugin_match_details,
                 "update_status": update_status,
                 "versions": versions,
+                "management": management,
                 "platforms": self.plugin_platforms,
                 "self_update": self.getSelfUpdateState()
             })
@@ -10969,6 +11873,21 @@ class BasePlugin:
                 "action": action,
                 "self_update": self.getSelfUpdateState()
             })
+        elif action in ("use_git", "use_release", "rollback"):
+            plugin_key = str(payload.get("plugin_key") or "")
+            confirmation_token = payload.get("confirmation_token", "")
+            if not isinstance(confirmation_token, str):
+                confirmation_token = ""
+            result = self.executeReleaseManagementAction(
+                action=action,
+                plugin_key=plugin_key,
+                confirmation_token=confirmation_token,
+                trigger="manual",
+            )
+            response = dict(result)
+            response["action"] = action
+            response["plugin_key"] = plugin_key
+            self.sendApiResponse(response)
         elif action == "install":
             plugin_key = payload.get("plugin_key")
             entry = self.get_registry_entry(plugin_key)
