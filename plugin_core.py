@@ -3095,6 +3095,280 @@ class InstallMetadataService:
                 self._fsync_directory(plugin_dir)
 
 
+CHANNEL_PREFERENCE_SCHEMA_VERSION = 1
+CHANNEL_PREFERENCE_CHOICES = {"keep_git", "release"}
+
+
+def _normalize_channel_repository_identity(value):
+    """Normalize one safe forge-neutral repository identity."""
+    value = _require_nonempty_string(value, "repository identity")
+    if any(character.isspace() for character in value):
+        raise ValueError("Repository identity cannot contain whitespace.")
+
+    scp_style = re.match(r"^[^/@\s:]+@[^/\s:]+:.+$", value)
+    if scp_style:
+        repository_host = value.split("@", 1)[1].split(":", 1)[0]
+        if "?" in value or "#" in value:
+            raise ValueError("Repository identity cannot contain URL metadata.")
+    else:
+        has_scheme = re.match(
+            r"^[A-Za-z][A-Za-z0-9+.-]*://", value
+        )
+        try:
+            parsed = urllib.parse.urlparse(value if has_scheme else "//" + value)
+            parsed.port
+        except ValueError as error:
+            raise ValueError("Repository identity is not a valid URL.") from error
+
+        scheme = parsed.scheme.lower()
+        if has_scheme and scheme not in ("https", "ssh"):
+            raise ValueError(
+                "Repository identity must use HTTPS or SSH."
+            )
+        if parsed.password is not None:
+            raise ValueError("Repository identity cannot contain credentials.")
+        if scheme == "https" and parsed.username is not None:
+            raise ValueError("Repository identity cannot contain credentials.")
+        if not has_scheme and (
+            parsed.username is not None or parsed.password is not None
+        ):
+            raise ValueError("Repository identity cannot contain credentials.")
+        if parsed.params or parsed.query or parsed.fragment:
+            raise ValueError("Repository identity cannot contain URL metadata.")
+        repository_host = parsed.hostname or ""
+
+    if (
+        not repository_host
+        or repository_host in (".", "..")
+        or repository_host.startswith(".")
+        or repository_host.endswith(".")
+        or "\\" in repository_host
+    ):
+        raise ValueError("Repository identity has an unsafe host.")
+
+    normalized = normalize_repository_identity(value)
+    if not normalized:
+        raise ValueError("Repository identity is unsafe or incomplete.")
+    return normalized
+
+
+def _require_channel_preference(value):
+    """Accept only an explicit, supported local channel choice."""
+    if not isinstance(value, str) or value not in CHANNEL_PREFERENCE_CHOICES:
+        raise ValueError("Channel preference must be keep_git or release.")
+    return value
+
+
+@dataclass
+class ChannelPreferenceDocument:
+    """Validated manager-owned repository channel preferences."""
+
+    schema_version: int
+    channels: dict
+
+    @classmethod
+    def from_document(cls, document):
+        """Parse a strict channel-preference state document."""
+        document = _require_document(
+            document,
+            "channel preferences",
+            ("schema_version", "channels"),
+        )
+        if (
+            type(document["schema_version"]) is not int
+            or document["schema_version"]
+            != CHANNEL_PREFERENCE_SCHEMA_VERSION
+        ):
+            raise ValueError("Channel preference schema is unsupported.")
+
+        raw_channels = document["channels"]
+        if not isinstance(raw_channels, dict):
+            raise ValueError("channels must be an object.")
+
+        channels = {}
+        normalized_identities = set()
+        for raw_identity, raw_preference in raw_channels.items():
+            normalized_identity = _normalize_channel_repository_identity(
+                raw_identity
+            )
+            if normalized_identity in normalized_identities:
+                raise ValueError(
+                    "Channel preferences contain colliding identities."
+                )
+            normalized_identities.add(normalized_identity)
+            if normalized_identity != raw_identity:
+                raise ValueError(
+                    "Channel preference identities must be normalized."
+                )
+            channels[normalized_identity] = _require_channel_preference(
+                raw_preference
+            )
+
+        return cls(
+            schema_version=CHANNEL_PREFERENCE_SCHEMA_VERSION,
+            channels=channels,
+        )
+
+    def to_document(self):
+        """Return the canonical JSON-compatible preference document."""
+        return {
+            "schema_version": self.schema_version,
+            "channels": dict(self.channels),
+        }
+
+
+class ChannelPreferenceService:
+    """Durably store explicit channel choices outside plugin checkouts."""
+
+    STATE_DIRECTORY_NAME = ".pypluginstore"
+    FILE_NAME = "channels.json"
+    TEMP_FILE_NAME = "channels.json.tmp"
+
+    def __init__(self, plugin):
+        self.plugin = plugin
+
+    def _fsync_directory(self, path):
+        """Persist directory changes where supported by the host platform."""
+        flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
+        try:
+            descriptor = os.open(path, flags)
+        except OSError:
+            if os.name == "nt":
+                return
+            raise
+        try:
+            os.fsync(descriptor)
+        finally:
+            os.close(descriptor)
+
+    def _paths(self, create_state_directory=False):
+        """Resolve manager-owned state paths without entering a checkout."""
+        manager_dir = os.path.abspath(self.plugin.get_plugin_home_folder())
+        if not os.path.isdir(manager_dir) or os.path.islink(manager_dir):
+            raise ValueError("Plugin manager home must be a real directory.")
+
+        state_dir = os.path.join(manager_dir, self.STATE_DIRECTORY_NAME)
+        if os.path.lexists(state_dir):
+            if os.path.islink(state_dir) or not os.path.isdir(state_dir):
+                raise ValueError(
+                    "Plugin manager state path must be a real directory."
+                )
+        elif create_state_directory:
+            os.mkdir(state_dir)
+            self._fsync_directory(manager_dir)
+
+        return (
+            state_dir,
+            os.path.join(state_dir, self.FILE_NAME),
+            os.path.join(state_dir, self.TEMP_FILE_NAME),
+        )
+
+    def _discard_temp(self, state_dir, temporary_path):
+        """Discard an interrupted write without promoting its contents."""
+        if not os.path.lexists(temporary_path):
+            return
+        if os.path.isdir(temporary_path) and not os.path.islink(temporary_path):
+            raise ValueError("Channel preference temporary path is not a file.")
+        os.unlink(temporary_path)
+        self._fsync_directory(state_dir)
+
+    def read(self):
+        """Load committed preferences after removing any orphan temp file."""
+        state_dir, preferences_path, temporary_path = self._paths()
+        if not os.path.isdir(state_dir):
+            return ChannelPreferenceDocument(
+                schema_version=CHANNEL_PREFERENCE_SCHEMA_VERSION,
+                channels={},
+            )
+
+        self._discard_temp(state_dir, temporary_path)
+        if not os.path.lexists(preferences_path):
+            return ChannelPreferenceDocument(
+                schema_version=CHANNEL_PREFERENCE_SCHEMA_VERSION,
+                channels={},
+            )
+        if os.path.islink(preferences_path) or not os.path.isfile(
+            preferences_path
+        ):
+            raise ValueError("Channel preference path is not a regular file.")
+        try:
+            with open(preferences_path, "rb") as preferences_file:
+                document = _load_json_object(
+                    preferences_file.read(), self.FILE_NAME
+                )
+        except OSError as error:
+            raise ValueError(
+                "Could not read channel preferences: " + str(error)
+            ) from error
+        return ChannelPreferenceDocument.from_document(document)
+
+    def _write(self, preferences):
+        """Fsync and atomically replace the preference state document."""
+        if not isinstance(preferences, ChannelPreferenceDocument):
+            raise ValueError(
+                "preferences must be a validated ChannelPreferenceDocument."
+            )
+        document = preferences.to_document()
+        ChannelPreferenceDocument.from_document(document)
+        state_dir, preferences_path, temporary_path = self._paths(
+            create_state_directory=True
+        )
+        self._discard_temp(state_dir, temporary_path)
+        contents = (
+            json.dumps(document, indent=2, sort_keys=True) + "\n"
+        ).encode("utf-8")
+
+        try:
+            with open(temporary_path, "xb") as preferences_file:
+                preferences_file.write(contents)
+                preferences_file.flush()
+                os.fsync(preferences_file.fileno())
+            os.replace(temporary_path, preferences_path)
+            self._fsync_directory(state_dir)
+        finally:
+            if os.path.lexists(temporary_path):
+                if os.path.isdir(temporary_path) and not os.path.islink(
+                    temporary_path
+                ):
+                    raise ValueError(
+                        "Channel preference temporary path is not a file."
+                    )
+                os.unlink(temporary_path)
+                self._fsync_directory(state_dir)
+
+    def get(self, repository_identity):
+        """Return an explicit preference for one normalized identity."""
+        identity = _normalize_channel_repository_identity(repository_identity)
+        return self.read().channels.get(identity)
+
+    def set(self, repository_identity, preference):
+        """Set one explicit channel choice while preserving all others."""
+        identity = _normalize_channel_repository_identity(repository_identity)
+        preference = _require_channel_preference(preference)
+        channels = dict(self.read().channels)
+        channels[identity] = preference
+        self._write(
+            ChannelPreferenceDocument(
+                schema_version=CHANNEL_PREFERENCE_SCHEMA_VERSION,
+                channels=channels,
+            )
+        )
+
+    def clear(self, repository_identity):
+        """Clear one explicit choice and leave unrelated choices intact."""
+        identity = _normalize_channel_repository_identity(repository_identity)
+        channels = dict(self.read().channels)
+        if identity not in channels:
+            return
+        del channels[identity]
+        self._write(
+            ChannelPreferenceDocument(
+                schema_version=CHANNEL_PREFERENCE_SCHEMA_VERSION,
+                channels=channels,
+            )
+        )
+
+
 class RegistryEntry:
     def __init__(
         self,
