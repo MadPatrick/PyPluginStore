@@ -206,7 +206,7 @@ def forgejo_case(module, artifact="source_zip"):
         "release_id": "forgejo:codeberg.org/team/example:v1.4.0",
         "commit": "3333333333333333333333333333333333333333",
         "source_url": (
-            "https://codeberg.org/team/example/archive/"
+            "https://codeberg.org/api/v1/repos/team/example/archive/"
             "3333333333333333333333333333333333333333.zip"
         ),
         "asset_url": (
@@ -253,7 +253,7 @@ def gitea_case(module, artifact="source_zip"):
         "release_id": "gitea:gitea.example/team/example:v1.4.0",
         "commit": "4444444444444444444444444444444444444444",
         "source_url": (
-            "https://gitea.example/team/example/archive/"
+            "https://gitea.example/api/v1/repos/team/example/archive/"
             "4444444444444444444444444444444444444444.zip"
         ),
         "asset_url": (
