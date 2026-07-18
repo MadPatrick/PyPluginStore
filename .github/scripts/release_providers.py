@@ -36,6 +36,10 @@ GITHUB_API_HEADERS = {
     "User-Agent": "PyPluginStore-Release-Scanner",
     "X-GitHub-Api-Version": GITHUB_API_VERSION,
 }
+GITLAB_API_HEADERS = {
+    "Accept": "application/json",
+    "User-Agent": "PyPluginStore-Release-Scanner",
+}
 
 
 def _require_string(value, label, allow_empty=False):
@@ -424,7 +428,7 @@ def _transport_get_json(transport, url, headers):
     return get_json(url)
 
 
-def _github_version_from_tag(tag):
+def _version_from_tag(tag):
     """Derive display version text without using it for release ordering."""
     tag = _require_string(tag, "tag")
     version = tag[1:] if tag.startswith(("v", "V")) else tag
@@ -573,9 +577,198 @@ class GitHubReleaseAdapter(ReleaseProviderAdapter):
             provider=self.provider,
             repository_identity=identity,
             release_id="github:" + owner + "/" + name + ":" + tag,
-            version=_github_version_from_tag(tag),
+            version=_version_from_tag(tag),
             tag=tag,
             released_at=release.get("published_at"),
+            source_revision=commit,
+            commit=commit,
+            source_path=policy.get("source_path", "."),
+            **artifact,
+        )
+
+
+def _require_gitlab_repository(repository):
+    """Return validated GitLab project identity, path, and provider bases."""
+    if not isinstance(repository, dict):
+        raise ValueError("GitLab repository configuration must be an object.")
+    identity = _require_repository_identity(
+        repository.get("repository_identity")
+    )
+    project_path = _require_string(
+        repository.get("project_path"), "project_path"
+    )
+    if (
+        project_path != project_path.lower()
+        or unicodedata.normalize("NFC", project_path) != project_path
+        or project_path.startswith("/")
+        or project_path.endswith("/")
+        or "\\" in project_path
+        or "%" in project_path
+    ):
+        raise ValueError("project_path must be canonical and unencoded.")
+    path_parts = project_path.split("/")
+    if (
+        len(path_parts) < 2
+        or any(part in ("", ".", "..") for part in path_parts)
+        or any(
+            not re.fullmatch(r"[a-z0-9][a-z0-9._-]*", part)
+            for part in path_parts
+        )
+        or path_parts[-1].endswith(".git")
+    ):
+        raise ValueError("project_path contains an unsafe GitLab path segment.")
+    if "/".join(identity.split("/")[1:]) != project_path:
+        raise ValueError(
+            "GitLab project_path does not match repository_identity."
+        )
+
+    api_base = _require_https_base_url(
+        repository.get("api_base"), "api_base"
+    )
+    web_base = _require_https_base_url(
+        repository.get("web_base"), "web_base"
+    )
+    identity_host = identity.split("/", 1)[0].split(":", 1)[0]
+    if urllib.parse.urlsplit(web_base).hostname != identity_host:
+        raise ValueError(
+            "GitLab web_base does not match repository_identity."
+        )
+    return identity, project_path, api_base, web_base
+
+
+def _gitlab_release_is_excluded(release):
+    """Reject an explicitly upcoming GitLab release."""
+    upcoming = release.get("upcoming_release", False)
+    if type(upcoming) is not bool:
+        raise ValueError("GitLab upcoming_release must be a boolean.")
+    return upcoming
+
+
+class GitLabReleaseAdapter(ReleaseProviderAdapter):
+    """Resolve stable GitLab releases without coupling to other forges."""
+
+    provider = "gitlab"
+
+    def _get_json(self, transport, url):
+        return _transport_get_json(transport, url, GITLAB_API_HEADERS)
+
+    def _resolve_commit(self, transport, api_project_url, tag):
+        """Resolve the selected GitLab tag to one full immutable commit ID."""
+        tag_url = (
+            api_project_url
+            + "/repository/tags/"
+            + urllib.parse.quote(tag, safe="")
+        )
+        tag_document = self._get_json(transport, tag_url)
+        if not isinstance(tag_document, dict):
+            raise ValueError("GitLab tag response must be an object.")
+        if tag_document.get("name") != tag:
+            raise ValueError("GitLab tag response changed identity.")
+        target = _require_git_object_id(tag_document.get("target"))
+        commit_document = tag_document.get("commit")
+        if not isinstance(commit_document, dict):
+            raise ValueError("GitLab tag commit must be an object.")
+        commit = _require_git_object_id(commit_document.get("id"))
+        if target != commit:
+            raise ValueError("GitLab tag target does not match its commit.")
+        return commit
+
+    def _select_artifact(self, release, policy, api_project_url, commit):
+        """Return source or reviewed direct-asset candidate fields."""
+        artifact_kind = policy.get("artifact")
+        if artifact_kind == "source_zip":
+            return {
+                "artifact_kind": "source_zip",
+                "artifact_provenance": "forge_source_archive",
+                "artifact_url": (
+                    api_project_url
+                    + "/repository/archive.zip?sha="
+                    + commit
+                ),
+                "artifact_size": None,
+                "provider_sha256": "",
+                "migration_eligible": True,
+            }
+        if artifact_kind != "asset_zip":
+            raise ValueError("GitLab policy artifact must be source_zip or asset_zip.")
+
+        assets_document = release.get("assets")
+        if not isinstance(assets_document, dict):
+            raise ValueError("GitLab release assets must be an object.")
+        asset = select_asset(
+            assets_document.get("links"),
+            asset_name=policy.get("asset_name", ""),
+            asset_pattern=policy.get("asset_pattern", ""),
+        )
+        asset_name = asset.get("name")
+        if not asset_name.lower().endswith(".zip"):
+            raise ValueError("Configured GitLab release asset must be a ZIP file.")
+        asset_size = asset.get("size")
+        if asset_size is not None and (
+            type(asset_size) is not int or asset_size <= 0
+        ):
+            raise ValueError("GitLab release asset size must be positive or null.")
+        return {
+            "artifact_kind": "asset_zip",
+            "artifact_provenance": "attached_asset",
+            "artifact_url": (
+                asset.get("direct_asset_url") or asset.get("url")
+            ),
+            "artifact_size": asset_size,
+            "provider_sha256": "",
+            "migration_eligible": False,
+        }
+
+    def resolve(self, repository, policy, transport, *, now=None):
+        """Resolve the newest released GitLab candidate matching policy."""
+        identity, project_path, api_base, _web_base = (
+            _require_gitlab_repository(repository)
+        )
+        if not isinstance(policy, dict):
+            raise ValueError("GitLab release policy must be an object.")
+        if policy.get("channel") != "stable":
+            raise ValueError("GitLab adapter currently supports only stable releases.")
+        tag_pattern = _require_string(
+            policy.get("tag_pattern"), "tag_pattern"
+        )
+        try:
+            re.compile(tag_pattern)
+        except re.error as error:
+            raise ValueError(
+                "tag_pattern is not a valid regular expression."
+            ) from error
+        if now is None:
+            now = datetime.now(timezone.utc)
+
+        encoded_project = urllib.parse.quote(project_path, safe="")
+        api_project_url = api_base + "/projects/" + encoded_project
+        releases_url = (
+            api_project_url
+            + "/releases?order_by=released_at&sort=desc&per_page=100"
+        )
+        releases = self._get_json(transport, releases_url)
+        release = select_latest_stable_release(
+            releases,
+            tag_pattern,
+            released_at_key="released_at",
+            excluded=_gitlab_release_is_excluded,
+            now=now,
+        )
+        tag = release.get("tag_name")
+        commit = self._resolve_commit(
+            transport, api_project_url, tag
+        )
+        artifact = self._select_artifact(
+            release, policy, api_project_url, commit
+        )
+
+        return ReleaseCandidate(
+            provider=self.provider,
+            repository_identity=identity,
+            release_id="gitlab:" + project_path + ":" + tag,
+            version=_version_from_tag(tag),
+            tag=tag,
+            released_at=release.get("released_at"),
             source_revision=commit,
             commit=commit,
             source_path=policy.get("source_path", "."),

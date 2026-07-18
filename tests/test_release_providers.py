@@ -387,6 +387,89 @@ def test_gitlab_nested_project_path_is_encoded_in_every_api_request(
     )
 
 
+def test_gitlab_future_release_is_rejected_even_without_upcoming_flag(
+    release_providers_module,
+):
+    adapter, repository, policy, transport, expected = gitlab_case(
+        release_providers_module
+    )
+    releases = transport.responses[expected["requests"][0]]
+    future_release = next(
+        release for release in releases if release["tag_name"] == "v1.6.0"
+    )
+    future_release["upcoming_release"] = False
+
+    candidate = adapter.resolve(
+        repository, policy, transport, now=NOW
+    )
+
+    assert candidate.tag == "v1.4.0"
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        pytest.param("name", "v1.4.1", id="tag-identity"),
+        pytest.param("target", "short", id="abbreviated-target"),
+        pytest.param("target", "3" * 40, id="target-commit-mismatch"),
+        pytest.param("commit", None, id="missing-commit"),
+    ],
+)
+def test_gitlab_malformed_tag_response_is_rejected(
+    release_providers_module, field, value
+):
+    adapter, repository, policy, transport, expected = gitlab_case(
+        release_providers_module
+    )
+    tag_document = transport.responses[expected["requests"][-1]]
+    tag_document[field] = value
+
+    with pytest.raises(ValueError):
+        adapter.resolve(repository, policy, transport, now=NOW)
+
+
+def test_gitlab_project_identity_mismatch_is_rejected_before_requests(
+    release_providers_module,
+):
+    adapter, repository, policy, transport, _ = gitlab_case(
+        release_providers_module
+    )
+    repository["repository_identity"] = "gitlab.com/other/example"
+
+    with pytest.raises(ValueError, match="does not match"):
+        adapter.resolve(repository, policy, transport, now=NOW)
+
+    assert transport.requests == []
+
+
+def test_gitlab_requests_include_standard_api_headers(
+    release_providers_module,
+):
+    adapter, repository, policy, fixture_transport, _ = gitlab_case(
+        release_providers_module
+    )
+
+    class HeaderRecordingTransport(FixtureTransport):
+        def __init__(self, responses):
+            super().__init__(responses)
+            self.options = []
+
+        def get_json(self, url, **kwargs):
+            self.options.append(copy.deepcopy(kwargs))
+            return super().get_json(url, **kwargs)
+
+    transport = HeaderRecordingTransport(fixture_transport.responses)
+
+    adapter.resolve(repository, policy, transport, now=NOW)
+
+    assert transport.options
+    assert all(
+        options["headers"]["Accept"] == "application/json"
+        and options["headers"]["User-Agent"]
+        for options in transport.options
+    )
+
+
 def test_forgejo_and_gitea_use_distinct_adapter_classes(
     release_providers_module,
 ):
