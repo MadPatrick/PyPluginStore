@@ -13,8 +13,8 @@
 
 - [x] Task: Add fixture-driven failing tests for GitHub, GitLab, Forgejo/Codeberg, Gitea, and generic manifest candidates `ee0f109`
 - [x] Task: Implement the shared release-provider interface and normalized candidate model `9c9fe43`
-- [~] Task: Implement GitHub stable release resolution, source-ZIP preference, and attached-asset provenance checks
-- [ ] Task: Implement GitLab release-list filtering with reviewed tag policy, encoded project paths, source-ZIP preference, and attached-asset provenance checks
+- [x] Task: Implement GitHub stable release resolution, source-ZIP preference, and attached-asset provenance checks `54cf8f8`
+- [~] Task: Implement GitLab release-list filtering with reviewed tag policy, encoded project paths, source-ZIP preference, and attached-asset provenance checks
 - [ ] Task: Implement Forgejo/Codeberg stable release and asset/source-ZIP resolution
 - [ ] Task: Implement a distinct Gitea stable release and asset/source-ZIP adapter
 - [ ] Task: Implement generic HTTPS manifest resolution
