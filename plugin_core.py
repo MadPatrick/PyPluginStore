@@ -3,18 +3,19 @@
 import base64
 import hashlib
 import html
+import json
 import os
 import platform
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
 import time
+import unicodedata
 import urllib.error
 import urllib.parse
 import urllib.request
-import json
-import shutil
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
@@ -2783,6 +2784,315 @@ class ReleaseMetadataStore:
             bundled_registry, bundled_index, bundled_release_index
         )
         return self._selection(generation)
+
+
+INSTALL_METADATA_SCHEMA_VERSION = 1
+WINDOWS_RESERVED_PATH_NAMES = {
+    "aux",
+    "con",
+    "nul",
+    "prn",
+    *("com" + str(number) for number in range(1, 10)),
+    *("lpt" + str(number) for number in range(1, 10)),
+}
+
+
+def _require_plugin_key(value, label="plugin_key"):
+    """Validate one cross-platform plugin directory key."""
+    value = _require_nonempty_string(value, label)
+    invalid_windows_characters = '<>:"/\\|?*'
+    if (
+        value in (".", "..")
+        or value.startswith(".")
+        or value.endswith((".", " "))
+        or any(character in value for character in invalid_windows_characters)
+        or os.path.basename(value) != value
+    ):
+        raise ValueError(label + " is not a safe plugin key.")
+    windows_stem = value.split(".", 1)[0].casefold()
+    if windows_stem in WINDOWS_RESERVED_PATH_NAMES:
+        raise ValueError(label + " is reserved on Windows.")
+    return value
+
+
+def _require_audit_path(value, label):
+    """Validate one canonical, cross-platform relative audit path."""
+    path = _normalize_relative_metadata_path(value, label, allow_root=False)
+    if unicodedata.normalize("NFC", path) != path:
+        raise ValueError(label + " must use NFC Unicode normalization.")
+    parts = path.split("/")
+    for part in parts:
+        if part.endswith((".", " ")) or ":" in part:
+            raise ValueError(label + " is not portable across supported hosts.")
+        windows_stem = part.split(".", 1)[0].casefold()
+        if windows_stem in WINDOWS_RESERVED_PATH_NAMES:
+            raise ValueError(label + " contains a Windows-reserved name.")
+    first_part = parts[0].casefold()
+    if first_part in (".git", ".pypluginstore") or path.casefold() in (
+        ".pypluginstore.json",
+        "plugin.py",
+    ):
+        raise ValueError(label + " is manager-reserved or executable code.")
+    return path
+
+
+@dataclass
+class InstallMetadata:
+    """Validated audit record stored in a release-managed plugin folder."""
+
+    schema: int
+    plugin_key: str
+    management_mode: str
+    repository_identity: str
+    version: str
+    tag: str
+    release_id: str
+    release_revision: int
+    released_at: str
+    commit: str
+    artifact_sha256: str
+    artifact_tree_sha256: str
+    preserved_files: dict
+    index_sequence: int
+    installed_at: str
+    source_revision: str = ""
+
+    @classmethod
+    def from_document(cls, document):
+        """Parse strict release-managed install metadata."""
+        document = _require_document(
+            document,
+            "install metadata",
+            (
+                "schema",
+                "plugin_key",
+                "management_mode",
+                "repository_identity",
+                "version",
+                "tag",
+                "release_id",
+                "release_revision",
+                "released_at",
+                "commit",
+                "artifact_sha256",
+                "artifact_tree_sha256",
+                "preserved_files",
+                "index_sequence",
+                "installed_at",
+            ),
+            ("source_revision",),
+        )
+        if (
+            type(document["schema"]) is not int
+            or document["schema"] != INSTALL_METADATA_SCHEMA_VERSION
+        ):
+            raise ValueError("Install metadata schema is unsupported.")
+
+        management_mode = _require_nonempty_string(
+            document["management_mode"], "management_mode"
+        )
+        if management_mode != "release":
+            raise ValueError("Install metadata must be release-managed.")
+
+        raw_repository_identity = _require_nonempty_string(
+            document["repository_identity"], "repository_identity"
+        )
+        repository_identity = normalize_repository_identity(
+            raw_repository_identity
+        )
+        if (
+            not repository_identity
+            or repository_identity != raw_repository_identity
+        ):
+            raise ValueError("repository_identity must be normalized.")
+
+        released_at = _require_nonempty_string(
+            document["released_at"], "released_at"
+        )
+        installed_at = _require_nonempty_string(
+            document["installed_at"], "installed_at"
+        )
+        released_time = _parse_utc_timestamp(released_at, "released_at")
+        installed_time = _parse_utc_timestamp(installed_at, "installed_at")
+        if installed_time < released_time:
+            raise ValueError("installed_at cannot precede released_at.")
+
+        source_revision = document.get("source_revision", "")
+        if source_revision:
+            source_revision = _require_nonempty_string(
+                source_revision, "source_revision"
+            )
+        commit = _require_git_commit(
+            document["commit"], "commit", required=not source_revision
+        )
+        if not commit and not source_revision:
+            raise ValueError("Install metadata requires an immutable source revision.")
+
+        tag = document["tag"]
+        if (
+            not isinstance(tag, str)
+            or tag != tag.strip()
+            or CONTROL_CHARACTER_PATTERN.search(tag)
+        ):
+            raise ValueError("tag must be a canonical string.")
+
+        preserved_document = document["preserved_files"]
+        if not isinstance(preserved_document, dict):
+            raise ValueError("preserved_files must be an object.")
+        preserved_files = {}
+        normalized_paths = set()
+        for raw_path, raw_digest in preserved_document.items():
+            path = _require_audit_path(raw_path, "preserved_files path")
+            collision_key = unicodedata.normalize("NFC", path).casefold()
+            if collision_key in normalized_paths:
+                raise ValueError("preserved_files contains colliding paths.")
+            normalized_paths.add(collision_key)
+            preserved_files[path] = _require_sha256(
+                raw_digest, "preserved_files digest"
+            )
+
+        return cls(
+            schema=INSTALL_METADATA_SCHEMA_VERSION,
+            plugin_key=_require_plugin_key(document["plugin_key"]),
+            management_mode=management_mode,
+            repository_identity=repository_identity,
+            version=_require_nonempty_string(document["version"], "version"),
+            tag=tag,
+            release_id=_require_nonempty_string(
+                document["release_id"], "release_id"
+            ),
+            release_revision=_require_positive_integer(
+                document["release_revision"], "release_revision"
+            ),
+            released_at=released_at,
+            commit=commit,
+            artifact_sha256=_require_sha256(
+                document["artifact_sha256"], "artifact_sha256"
+            ),
+            artifact_tree_sha256=_require_sha256(
+                document["artifact_tree_sha256"], "artifact_tree_sha256"
+            ),
+            preserved_files=preserved_files,
+            index_sequence=_require_positive_integer(
+                document["index_sequence"], "index_sequence"
+            ),
+            installed_at=installed_at,
+            source_revision=source_revision,
+        )
+
+    def to_document(self):
+        """Return the canonical JSON-compatible install audit document."""
+        document = {
+            "schema": self.schema,
+            "plugin_key": self.plugin_key,
+            "management_mode": self.management_mode,
+            "repository_identity": self.repository_identity,
+            "version": self.version,
+            "tag": self.tag,
+            "release_id": self.release_id,
+            "release_revision": self.release_revision,
+            "released_at": self.released_at,
+            "commit": self.commit,
+            "artifact_sha256": self.artifact_sha256,
+            "artifact_tree_sha256": self.artifact_tree_sha256,
+            "preserved_files": dict(self.preserved_files),
+            "index_sequence": self.index_sequence,
+            "installed_at": self.installed_at,
+        }
+        if self.source_revision:
+            document["source_revision"] = self.source_revision
+        return document
+
+
+class InstallMetadataService:
+    """Read and durably replace manager-owned plugin install metadata."""
+
+    FILE_NAME = ".pypluginstore.json"
+    TEMP_FILE_NAME = ".pypluginstore.json.tmp"
+
+    def __init__(self, plugin):
+        self.plugin = plugin
+
+    def _paths(self, plugin_dir):
+        """Return committed and temporary metadata paths for a plugin."""
+        plugin_dir = os.path.abspath(str(plugin_dir))
+        if not os.path.isdir(plugin_dir) or os.path.islink(plugin_dir):
+            raise ValueError("Plugin metadata directory must be a real directory.")
+        return (
+            plugin_dir,
+            os.path.join(plugin_dir, self.FILE_NAME),
+            os.path.join(plugin_dir, self.TEMP_FILE_NAME),
+        )
+
+    def _fsync_directory(self, path):
+        """Persist directory changes where supported by the host platform."""
+        flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
+        try:
+            descriptor = os.open(path, flags)
+        except OSError:
+            if os.name == "nt":
+                return
+            raise
+        try:
+            os.fsync(descriptor)
+        finally:
+            os.close(descriptor)
+
+    def _discard_temp(self, plugin_dir, temporary_path):
+        """Discard an uncommitted write without ever promoting its contents."""
+        if not os.path.lexists(temporary_path):
+            return
+        if os.path.isdir(temporary_path) and not os.path.islink(temporary_path):
+            raise ValueError("Install metadata temporary path is not a file.")
+        os.unlink(temporary_path)
+        self._fsync_directory(plugin_dir)
+
+    def read(self, plugin_dir):
+        """Read committed metadata after discarding any orphan temporary file."""
+        plugin_dir, metadata_path, temporary_path = self._paths(plugin_dir)
+        self._discard_temp(plugin_dir, temporary_path)
+        if not os.path.lexists(metadata_path):
+            return None
+        if os.path.islink(metadata_path) or not os.path.isfile(metadata_path):
+            raise ValueError("Install metadata path is not a regular file.")
+        try:
+            with open(metadata_path, "rb") as metadata_file:
+                document = _load_json_object(
+                    metadata_file.read(), self.FILE_NAME
+                )
+        except OSError as error:
+            raise ValueError("Could not read install metadata: " + str(error)) from error
+        return InstallMetadata.from_document(document)
+
+    def write(self, plugin_dir, metadata):
+        """Fsync and atomically replace committed install metadata."""
+        if not isinstance(metadata, InstallMetadata):
+            raise ValueError("metadata must be validated InstallMetadata.")
+        document = metadata.to_document()
+        InstallMetadata.from_document(document)
+        plugin_dir, metadata_path, temporary_path = self._paths(plugin_dir)
+        self._discard_temp(plugin_dir, temporary_path)
+        contents = (
+            json.dumps(document, indent=2, sort_keys=True) + "\n"
+        ).encode("utf-8")
+
+        try:
+            with open(temporary_path, "xb") as metadata_file:
+                metadata_file.write(contents)
+                metadata_file.flush()
+                os.fsync(metadata_file.fileno())
+            os.replace(temporary_path, metadata_path)
+            self._fsync_directory(plugin_dir)
+        finally:
+            if os.path.lexists(temporary_path):
+                if os.path.isdir(temporary_path) and not os.path.islink(
+                    temporary_path
+                ):
+                    raise ValueError(
+                        "Install metadata temporary path is not a file."
+                    )
+                os.unlink(temporary_path)
+                self._fsync_directory(plugin_dir)
 
 
 class RegistryEntry:
