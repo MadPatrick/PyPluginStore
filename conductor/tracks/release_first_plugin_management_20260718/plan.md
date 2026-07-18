@@ -20,11 +20,11 @@
 - [x] Task: Implement generic HTTPS manifest resolution `5848a14`
 - [x] Task: Add SSRF-safe bounded downloads, commit-addressed source archives, transport digest/length checks, canonical-tree identity, asset mutation detection, caching, and report-only index generation `a873a68`
 - [x] Task: Extend registry validation and weekly PR automation for `release_index.json` `4fa2a2d`
-- [~] Task: Conductor - User Manual Verification 'Multi-Forge Release Resolution' (waived by user; automated checkpoint pending)
+- [x] Task: Conductor - User Manual Verification 'Multi-Forge Release Resolution' (waived by user; automated checkpoint `81413f6`)
 
 ## Phase 3: Hardened ZIP Staging and Rollback
 
-- [ ] Task: Add failing archive tests for traversal, absolute/UNC/drive paths, links/devices, control bytes, encryption, duplicate/case collisions, Windows reserved paths, ambiguous roots, manager metadata, bombs, size limits, and malformed ZIPs
+- [~] Task: Add failing archive tests for traversal, absolute/UNC/drive paths, links/devices, control bytes, encryption, duplicate/case collisions, Windows reserved paths, ambiguous roots, manager metadata, bombs, size limits, and malformed ZIPs
 - [ ] Task: Implement the SSRF-safe bounded streaming downloader and member-by-member safe ZIP extractor
 - [ ] Task: Add canonical cross-platform tree hashing, wrapper/source-path resolution, flexible `plugin.py` identity certification, and compilation validation
 - [ ] Task: Add same-filesystem manager-owned transaction journals, staging, backup, two-rename replacement, and immediate rollback
