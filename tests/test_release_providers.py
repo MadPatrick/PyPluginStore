@@ -247,6 +247,7 @@ def gitea_case(module, artifact="source_zip"):
         "repository": "example",
         "api_base": "https://gitea.example/api/v1",
         "web_base": "https://gitea.example",
+        "release_page_size": 50,
     }
     expected = {
         "provider": "gitea",
@@ -589,6 +590,48 @@ def test_custom_forgejo_requires_explicit_bases_before_requests(
     assert transport.requests == []
 
 
+def test_custom_forgejo_requires_reviewed_page_capability(
+    release_providers_module,
+):
+    adapter, repository, policy, transport, _ = forgejo_case(
+        release_providers_module
+    )
+    repository.update(
+        {
+            "repository_identity": "forge.example/team/example",
+            "api_base": "https://forge.example/api/v1",
+            "web_base": "https://forge.example",
+        }
+    )
+
+    with pytest.raises(ValueError, match="release_page_size"):
+        adapter.resolve(repository, policy, transport, now=NOW)
+
+    assert transport.requests == []
+
+
+def test_forgejo_external_asset_is_not_implicitly_trusted(
+    release_providers_module,
+):
+    adapter, repository, policy, transport, expected = forgejo_case(
+        release_providers_module,
+        artifact="asset:domoticz-plugin.zip",
+    )
+    releases = transport.responses[expected["requests"][0]]
+    stable_release = next(
+        release for release in releases if release["tag_name"] == "v1.4.0"
+    )
+    selected = next(
+        asset
+        for asset in stable_release["assets"]
+        if asset["name"] == "domoticz-plugin.zip"
+    )
+    selected["type"] = "external"
+
+    with pytest.raises(ValueError, match="External"):
+        adapter.resolve(repository, policy, transport, now=NOW)
+
+
 def test_forgejo_release_listing_paginates_until_a_short_page(
     release_providers_module,
 ):
@@ -748,6 +791,20 @@ def test_gitea_requires_explicit_provider_bases_before_requests(
     del repository["api_base"]
 
     with pytest.raises(ValueError, match="explicit"):
+        adapter.resolve(repository, policy, transport, now=NOW)
+
+    assert transport.requests == []
+
+
+def test_gitea_requires_reviewed_page_capability_before_requests(
+    release_providers_module,
+):
+    adapter, repository, policy, transport, _ = gitea_case(
+        release_providers_module
+    )
+    del repository["release_page_size"]
+
+    with pytest.raises(ValueError, match="release_page_size"):
         adapter.resolve(repository, policy, transport, now=NOW)
 
     assert transport.requests == []

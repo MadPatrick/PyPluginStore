@@ -72,6 +72,7 @@ GENERIC_MANIFEST_REQUIRED_KEYS = {
     "source_revision",
 }
 GENERIC_MANIFEST_OPTIONAL_KEYS = {"commit", "source_path"}
+MAX_CONFIGURED_RELEASE_PAGE_SIZE = 100
 
 
 def _require_string(value, label, allow_empty=False):
@@ -397,6 +398,26 @@ def _require_https_base_url(value, label):
     ):
         raise ValueError(label + " must be a credential-free HTTPS URL.")
     return value.rstrip("/")
+
+
+def _require_release_page_size(repository, provider, default=None):
+    """Return the reviewed host page cap used to detect pagination end."""
+    if "release_page_size" not in repository and default is None:
+        raise ValueError(
+            provider + " requires an explicit release_page_size capability."
+        )
+    value = repository.get("release_page_size", default)
+    if (
+        type(value) is not int
+        or value <= 0
+        or value > MAX_CONFIGURED_RELEASE_PAGE_SIZE
+    ):
+        raise ValueError(
+            provider + " release_page_size must be between 1 and "
+            + str(MAX_CONFIGURED_RELEASE_PAGE_SIZE)
+            + "."
+        )
+    return value
 
 
 def _require_github_repository(repository):
@@ -841,20 +862,39 @@ def _require_forgejo_repository(repository):
     if identity_host == CODEBERG_HOST:
         api_value = repository.get("api_base", CODEBERG_API_BASE)
         web_value = repository.get("web_base", CODEBERG_WEB_BASE)
+        release_page_size = _require_release_page_size(
+            repository, "Codeberg", FORGEJO_RELEASE_PAGE_SIZE
+        )
     else:
-        if "api_base" not in repository or "web_base" not in repository:
+        if (
+            "api_base" not in repository
+            or "web_base" not in repository
+            or "release_page_size" not in repository
+        ):
             raise ValueError(
-                "Custom Forgejo hosts require explicit api_base and web_base."
+                "Custom Forgejo hosts require explicit api_base, web_base, "
+                "and release_page_size capabilities."
             )
         api_value = repository.get("api_base")
         web_value = repository.get("web_base")
+        release_page_size = _require_release_page_size(
+            repository, "Forgejo"
+        )
     api_base = _require_https_base_url(api_value, "api_base")
     web_base = _require_https_base_url(web_value, "web_base")
     if urllib.parse.urlsplit(web_base).hostname != identity_host.split(":", 1)[0]:
         raise ValueError(
             "Forgejo web_base does not match repository_identity."
         )
-    return identity, identity_host, owner, name, api_base, web_base
+    return (
+        identity,
+        identity_host,
+        owner,
+        name,
+        api_base,
+        web_base,
+        release_page_size,
+    )
 
 
 def _forgejo_release_is_excluded(release):
@@ -873,7 +913,7 @@ class ForgejoReleaseAdapter(ReleaseProviderAdapter):
     def _get_json(self, transport, url):
         return _transport_get_json(transport, url, FORGEJO_API_HEADERS)
 
-    def _list_releases(self, transport, api_repository_url):
+    def _list_releases(self, transport, api_repository_url, page_size):
         """Read bounded release-list pages instead of created-at /latest."""
         releases = []
         for page in range(1, FORGEJO_RELEASE_MAX_PAGES + 1):
@@ -882,13 +922,13 @@ class ForgejoReleaseAdapter(ReleaseProviderAdapter):
                 + "/releases?page="
                 + str(page)
                 + "&limit="
-                + str(FORGEJO_RELEASE_PAGE_SIZE)
+                + str(page_size)
             )
             page_document = self._get_json(transport, releases_url)
             if not isinstance(page_document, list):
                 raise ValueError("Forgejo releases response must be a list.")
             releases.extend(page_document)
-            if len(page_document) < FORGEJO_RELEASE_PAGE_SIZE:
+            if len(page_document) < page_size:
                 return releases
         raise ValueError("Forgejo release pagination exceeds the safety limit.")
 
@@ -942,12 +982,11 @@ class ForgejoReleaseAdapter(ReleaseProviderAdapter):
             tag_document = self._get_json(transport, tag_url)
             if not isinstance(tag_document, dict):
                 raise ValueError("Forgejo annotated tag must be an object.")
-            if "sha" in tag_document:
-                document_sha = _require_git_object_id(tag_document.get("sha"))
-                if document_sha != tag_sha:
-                    raise ValueError(
-                        "Forgejo annotated tag response changed identity."
-                    )
+            document_sha = _require_git_object_id(tag_document.get("sha"))
+            if document_sha != tag_sha:
+                raise ValueError(
+                    "Forgejo annotated tag response changed identity."
+                )
             target = tag_document.get("object")
 
     def _select_artifact(self, release, policy, api_repository_url, commit):
@@ -975,6 +1014,10 @@ class ForgejoReleaseAdapter(ReleaseProviderAdapter):
             asset_name=policy.get("asset_name", ""),
             asset_pattern=policy.get("asset_pattern", ""),
         )
+        if asset.get("type", "attachment") != "attachment":
+            raise ValueError(
+                "External Forgejo release assets require separate review."
+            )
         asset_name = asset.get("name")
         if not asset_name.lower().endswith(".zip"):
             raise ValueError("Configured Forgejo release asset must be a ZIP file.")
@@ -992,7 +1035,7 @@ class ForgejoReleaseAdapter(ReleaseProviderAdapter):
 
     def resolve(self, repository, policy, transport, *, now=None):
         """Resolve the newest stable release from a Forgejo release list."""
-        identity, _host, owner, name, api_base, _web_base = (
+        identity, _host, owner, name, api_base, _web_base, page_size = (
             _require_forgejo_repository(repository)
         )
         if not isinstance(policy, dict):
@@ -1018,7 +1061,9 @@ class ForgejoReleaseAdapter(ReleaseProviderAdapter):
             + "/"
             + urllib.parse.quote(name, safe="")
         )
-        releases = self._list_releases(transport, api_repository_url)
+        releases = self._list_releases(
+            transport, api_repository_url, page_size
+        )
         release = select_latest_stable_release(
             releases,
             tag_pattern,
@@ -1077,8 +1122,15 @@ def _require_gitea_repository(repository):
         raise ValueError(
             "Gitea coordinates do not match repository_identity."
         )
-    if "api_base" not in repository or "web_base" not in repository:
-        raise ValueError("Gitea requires explicit api_base and web_base.")
+    if (
+        "api_base" not in repository
+        or "web_base" not in repository
+        or "release_page_size" not in repository
+    ):
+        raise ValueError(
+            "Gitea requires explicit api_base, web_base, and "
+            "release_page_size capabilities."
+        )
     api_base = _require_https_base_url(
         repository.get("api_base"), "api_base"
     )
@@ -1087,7 +1139,8 @@ def _require_gitea_repository(repository):
     )
     if urllib.parse.urlsplit(web_base).hostname != identity_host.split(":", 1)[0]:
         raise ValueError("Gitea web_base does not match repository_identity.")
-    return identity, owner, name, api_base, web_base
+    release_page_size = _require_release_page_size(repository, "Gitea")
+    return identity, owner, name, api_base, web_base, release_page_size
 
 
 def _gitea_release_is_excluded(release):
@@ -1106,7 +1159,7 @@ class GiteaReleaseAdapter(ReleaseProviderAdapter):
     def _get_json(self, transport, url):
         return _transport_get_json(transport, url, GITEA_API_HEADERS)
 
-    def _list_releases(self, transport, api_repository_url):
+    def _list_releases(self, transport, api_repository_url, page_size):
         """Read a bounded sequence of Gitea release-list pages."""
         releases = []
         for page in range(1, GITEA_RELEASE_MAX_PAGES + 1):
@@ -1115,13 +1168,13 @@ class GiteaReleaseAdapter(ReleaseProviderAdapter):
                 + "/releases?page="
                 + str(page)
                 + "&limit="
-                + str(GITEA_RELEASE_PAGE_SIZE)
+                + str(page_size)
             )
             page_document = self._get_json(transport, releases_url)
             if not isinstance(page_document, list):
                 raise ValueError("Gitea releases response must be a list.")
             releases.extend(page_document)
-            if len(page_document) < GITEA_RELEASE_PAGE_SIZE:
+            if len(page_document) < page_size:
                 return releases
         raise ValueError("Gitea release pagination exceeds the safety limit.")
 
@@ -1173,12 +1226,11 @@ class GiteaReleaseAdapter(ReleaseProviderAdapter):
             tag_document = self._get_json(transport, tag_url)
             if not isinstance(tag_document, dict):
                 raise ValueError("Gitea annotated tag must be an object.")
-            if "sha" in tag_document:
-                document_sha = _require_git_object_id(tag_document.get("sha"))
-                if document_sha != tag_sha:
-                    raise ValueError(
-                        "Gitea annotated tag response changed identity."
-                    )
+            document_sha = _require_git_object_id(tag_document.get("sha"))
+            if document_sha != tag_sha:
+                raise ValueError(
+                    "Gitea annotated tag response changed identity."
+                )
             target = tag_document.get("object")
 
     def _select_artifact(self, release, policy, api_repository_url, commit):
@@ -1206,6 +1258,8 @@ class GiteaReleaseAdapter(ReleaseProviderAdapter):
             asset_name=policy.get("asset_name", ""),
             asset_pattern=policy.get("asset_pattern", ""),
         )
+        if "type" in asset:
+            raise ValueError("Gitea release asset type is not supported.")
         asset_name = asset.get("name")
         if not asset_name.lower().endswith(".zip"):
             raise ValueError("Configured Gitea release asset must be a ZIP file.")
@@ -1223,7 +1277,7 @@ class GiteaReleaseAdapter(ReleaseProviderAdapter):
 
     def resolve(self, repository, policy, transport, *, now=None):
         """Resolve the newest stable Gitea release matching reviewed policy."""
-        identity, owner, name, api_base, _web_base = (
+        identity, owner, name, api_base, _web_base, page_size = (
             _require_gitea_repository(repository)
         )
         if not isinstance(policy, dict):
@@ -1249,7 +1303,9 @@ class GiteaReleaseAdapter(ReleaseProviderAdapter):
             + "/"
             + urllib.parse.quote(name, safe="")
         )
-        releases = self._list_releases(transport, api_repository_url)
+        releases = self._list_releases(
+            transport, api_repository_url, page_size
+        )
         release = select_latest_stable_release(
             releases,
             tag_pattern,
