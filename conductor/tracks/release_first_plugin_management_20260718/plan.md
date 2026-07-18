@@ -12,8 +12,8 @@
 ## Phase 2: Multi-Forge Release Resolution
 
 - [x] Task: Add fixture-driven failing tests for GitHub, GitLab, Forgejo/Codeberg, Gitea, and generic manifest candidates `ee0f109`
-- [~] Task: Implement the shared release-provider interface and normalized candidate model
-- [ ] Task: Implement GitHub stable release resolution, source-ZIP preference, and attached-asset provenance checks
+- [x] Task: Implement the shared release-provider interface and normalized candidate model `9c9fe43`
+- [~] Task: Implement GitHub stable release resolution, source-ZIP preference, and attached-asset provenance checks
 - [ ] Task: Implement GitLab release-list filtering with reviewed tag policy, encoded project paths, source-ZIP preference, and attached-asset provenance checks
 - [ ] Task: Implement Forgejo/Codeberg stable release and asset/source-ZIP resolution
 - [ ] Task: Implement a distinct Gitea stable release and asset/source-ZIP adapter
