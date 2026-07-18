@@ -3,8 +3,8 @@
 ## Phase 1: Contracts and Backward-Compatible Metadata
 
 - [x] Task: Add failing tests for legacy registry entries, delivery policy, normalized entries, per-plugin revision/predecessor ordering, pair sequence/freshness/registry binding, and invalid index rejection `216f1c1`
-- [~] Task: Add release descriptor and delivery-mode models without changing Git behavior
-- [ ] Task: Add generation-directory registry/index caching, a durable highest-sequence watermark, bundled bootstrap/expiry rules, atomic pointer recovery, and crash-injection tests under the unsigned-v1 trust model
+- [x] Task: Add release descriptor and delivery-mode models without changing Git behavior `602573a`
+- [~] Task: Add generation-directory registry/index caching, a durable highest-sequence watermark, bundled bootstrap/expiry rules, atomic pointer recovery, and crash-injection tests under the unsigned-v1 trust model
 - [ ] Task: Add install metadata parsing, artifact/preserved-file audit hashes, and atomic `.pypluginstore.json` writes
 - [ ] Task: Add manager-owned atomic channel preferences so an explicit keep-Git choice survives updates without modifying plugin checkouts
 - [ ] Task: Conductor - User Manual Verification 'Contracts and Backward-Compatible Metadata' (Protocol in workflow.md)
