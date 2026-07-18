@@ -6,6 +6,7 @@ import hashlib
 import html
 import http.client
 import ipaddress
+import io
 import json
 import math
 import os
@@ -19,6 +20,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import tokenize
 import unicodedata
 import urllib.error
 import urllib.parse
@@ -1956,6 +1958,8 @@ class ReleaseArtifact:
             )
             if "/" in root_prefix:
                 raise ValueError("artifact.root_prefix must identify one wrapper.")
+        elif kind == "source_zip":
+            raise ValueError("Forge source ZIP artifacts require one wrapper.")
 
         return cls(
             kind=kind,
@@ -3948,6 +3952,8 @@ class SafeZipExtractor:
         return tuple(parts)
 
     def _expected_root(self, expected_root_prefix):
+        if expected_root_prefix == ".":
+            return "."
         parts = self._portable_parts(
             expected_root_prefix,
             "expected_root_prefix",
@@ -3966,10 +3972,11 @@ class SafeZipExtractor:
         is_directory = original_name.endswith("/")
         path = original_name[:-1] if is_directory else original_name
         parts = self._portable_parts(path, "ZIP member name")
-        if parts[0] != expected_root_prefix:
-            raise ValueError("ZIP wrapper does not match the indexed root.")
-        if len(parts) == 1 and not is_directory:
-            raise ValueError("The indexed ZIP root must be a directory.")
+        if expected_root_prefix != ".":
+            if parts[0] != expected_root_prefix:
+                raise ValueError("ZIP wrapper does not match the indexed root.")
+            if len(parts) == 1 and not is_directory:
+                raise ValueError("The indexed ZIP root must be a directory.")
 
         unix_mode = (info.external_attr >> 16) & 0xFFFF
         file_type = stat.S_IFMT(unix_mode) if info.create_system == 3 else 0
@@ -4163,7 +4170,11 @@ class SafeZipExtractor:
 
             return ReleaseArchiveExtraction(
                 root_prefix=root_prefix,
-                root_path=os.path.join(destination_path, root_prefix),
+                root_path=(
+                    destination_path
+                    if root_prefix == "."
+                    else os.path.join(destination_path, root_prefix)
+                ),
                 file_count=file_count,
                 expanded_size=expanded_size,
             )
@@ -4175,6 +4186,735 @@ class SafeZipExtractor:
             if isinstance(error, Exception):
                 raise ValueError("Release ZIP extraction failed.") from error
             raise
+
+
+class ReleaseArtifactValidationError(ValueError):
+    """Categorized failure while certifying an extracted release tree."""
+
+    def __init__(self, reason, message=""):
+        self.reason = str(reason)
+        super().__init__(message or self.reason)
+
+
+@dataclass(frozen=True)
+class ReleaseArtifactValidation:
+    """Canonical identity and install inventory for a staged artifact."""
+
+    source_root: str
+    plugin_key: str
+    identity_source: str
+    tree_sha256: str
+    artifact_files: dict
+
+
+@dataclass(frozen=True)
+class _ReleaseTreeFile:
+    relative_path: str
+    physical_path: str
+    size: int
+    sha256: str
+    device: int
+    inode: int
+
+
+class ReleaseArtifactValidationService:
+    """Certify a safe extracted tree before transaction staging."""
+
+    CHUNK_SIZE = 64 * 1024
+
+    def __init__(self, plugin, limits=None):
+        if plugin is None:
+            raise ValueError("plugin is required.")
+        if limits is None:
+            limits = ReleaseArchiveLimits()
+        if not isinstance(limits, ReleaseArchiveLimits):
+            raise ValueError("limits must be ReleaseArchiveLimits.")
+        self.plugin = plugin
+        self.limits = limits
+        self.path_validator = SafeZipExtractor(limits)
+
+    def _error(self, reason, message):
+        return ReleaseArtifactValidationError(reason, message)
+
+    def _directory_stat(self, path, reason, message):
+        try:
+            path_stat = os.lstat(path)
+        except OSError as error:
+            raise self._error(reason, message) from error
+        if not stat.S_ISDIR(path_stat.st_mode):
+            raise self._error(reason, message)
+        return path_stat
+
+    def _root_layout(self, extraction_dir, root_prefix):
+        try:
+            root_prefix = self.path_validator._expected_root(root_prefix)
+        except ValueError as error:
+            raise self._error(
+                "root_layout",
+                "The indexed archive root is invalid.",
+            ) from error
+        try:
+            extraction_path = os.path.abspath(os.fspath(extraction_dir))
+        except TypeError as error:
+            raise self._error(
+                "root_layout",
+                "The extraction directory is invalid.",
+            ) from error
+        self._directory_stat(
+            extraction_path,
+            "root_layout",
+            "The extraction directory is missing or unsafe.",
+        )
+        if root_prefix == ".":
+            return extraction_path
+        try:
+            entries = list(os.scandir(extraction_path))
+        except OSError as error:
+            raise self._error(
+                "root_layout",
+                "The extraction directory could not be inspected.",
+            ) from error
+        if len(entries) != 1 or entries[0].name != root_prefix:
+            raise self._error(
+                "root_layout",
+                "The extracted archive does not have the indexed wrapper.",
+            )
+        root_path = os.path.abspath(entries[0].path)
+        try:
+            inside = os.path.commonpath((extraction_path, root_path)) == (
+                extraction_path
+            )
+        except ValueError:
+            inside = False
+        if not inside:
+            raise self._error(
+                "root_layout",
+                "The extracted archive root escapes its staging directory.",
+            )
+        self._directory_stat(
+            root_path,
+            "root_layout",
+            "The indexed archive root is missing or unsafe.",
+        )
+        return root_path
+
+    def _portable_relative_path(self, relative_path):
+        try:
+            parts = self.path_validator._portable_parts(
+                relative_path,
+                "artifact path",
+            )
+        except ValueError as error:
+            raise self._error(
+                "unsafe_tree",
+                "The extracted artifact contains an unsafe path.",
+            ) from error
+        try:
+            relative_path.encode("utf-8")
+        except UnicodeError as error:
+            raise self._error(
+                "unsafe_tree",
+                "The extracted artifact path is not valid UTF-8.",
+            ) from error
+        return parts
+
+    def _register_components(self, spellings, canonical_parts, parts):
+        for index, (canonical_part, original_part) in enumerate(
+            zip(canonical_parts, parts)
+        ):
+            spelling_key = (canonical_parts[:index], canonical_part)
+            previous = spellings.get(spelling_key)
+            if previous is not None and previous != original_part:
+                raise self._error(
+                    "unsafe_tree",
+                    "The extracted artifact contains a cross-host path collision.",
+                )
+            spellings[spelling_key] = original_part
+
+    def _opened_regular_file(self, path, path_stat):
+        flags = os.O_RDONLY | getattr(os, "O_BINARY", 0)
+        flags |= getattr(os, "O_NOFOLLOW", 0)
+        try:
+            descriptor = os.open(path, flags)
+        except OSError as error:
+            raise self._error(
+                "unsafe_tree",
+                "An artifact file could not be opened safely.",
+            ) from error
+        try:
+            opened_stat = os.fstat(descriptor)
+            if (
+                not stat.S_ISREG(opened_stat.st_mode)
+                or opened_stat.st_dev != path_stat.st_dev
+                or opened_stat.st_ino != path_stat.st_ino
+                or opened_stat.st_size != path_stat.st_size
+            ):
+                raise self._error(
+                    "unsafe_tree",
+                    "An artifact file changed while being opened.",
+                )
+            return descriptor, opened_stat
+        except BaseException:
+            os.close(descriptor)
+            raise
+
+    def _hash_regular_file(self, path, path_stat):
+        descriptor, opened_stat = self._opened_regular_file(path, path_stat)
+        digest = hashlib.sha256()
+        size = 0
+        try:
+            with os.fdopen(descriptor, "rb") as source:
+                descriptor = None
+                while True:
+                    chunk = source.read(self.CHUNK_SIZE)
+                    if not chunk:
+                        break
+                    size += len(chunk)
+                    if size > self.limits.max_file_size:
+                        raise self._error(
+                            "unsafe_tree",
+                            "An artifact file exceeds the per-file limit.",
+                        )
+                    digest.update(chunk)
+        except ReleaseArtifactValidationError:
+            raise
+        except OSError as error:
+            raise self._error(
+                "unsafe_tree",
+                "An artifact file could not be read safely.",
+            ) from error
+        finally:
+            if descriptor is not None:
+                os.close(descriptor)
+        if size != opened_stat.st_size:
+            raise self._error(
+                "unsafe_tree",
+                "An artifact file changed while being read.",
+            )
+        return size, digest.hexdigest(), opened_stat
+
+    def _scan_tree(self, root_path):
+        files = []
+        directories = {".": root_path}
+        node_spellings = {}
+        node_paths = {}
+        stack = [(root_path, "")]
+        entry_count = 0
+        expanded_size = 0
+
+        while stack:
+            directory, relative_directory = stack.pop()
+            try:
+                entries = list(os.scandir(directory))
+            except OSError as error:
+                raise self._error(
+                    "unsafe_tree",
+                    "The extracted artifact tree could not be inspected.",
+                ) from error
+            for entry in entries:
+                entry_count += 1
+                if entry_count > self.limits.max_entries:
+                    raise self._error(
+                        "unsafe_tree",
+                        "The extracted artifact contains too many entries.",
+                    )
+                relative_path = (
+                    entry.name
+                    if not relative_directory
+                    else relative_directory + "/" + entry.name
+                )
+                parts = self._portable_relative_path(relative_path)
+                canonical_parts = tuple(part.casefold() for part in parts)
+                self._register_components(
+                    node_spellings,
+                    canonical_parts,
+                    parts,
+                )
+                previous_path = node_paths.get(canonical_parts)
+                if previous_path is not None and previous_path != relative_path:
+                    raise self._error(
+                        "unsafe_tree",
+                        "The extracted artifact contains colliding paths.",
+                    )
+                node_paths[canonical_parts] = relative_path
+
+                try:
+                    path_stat = entry.stat(follow_symlinks=False)
+                except OSError as error:
+                    raise self._error(
+                        "unsafe_tree",
+                        "An artifact path could not be inspected safely.",
+                    ) from error
+                if stat.S_ISDIR(path_stat.st_mode):
+                    directories[relative_path] = entry.path
+                    stack.append((entry.path, relative_path))
+                    continue
+                if not stat.S_ISREG(path_stat.st_mode):
+                    raise self._error(
+                        "unsafe_tree",
+                        "The extracted artifact contains a link or special file.",
+                    )
+                if getattr(path_stat, "st_nlink", 1) > 1:
+                    raise self._error(
+                        "unsafe_tree",
+                        "The extracted artifact contains a hard-linked file.",
+                    )
+                if path_stat.st_size > self.limits.max_file_size:
+                    raise self._error(
+                        "unsafe_tree",
+                        "An artifact file exceeds the per-file limit.",
+                    )
+                size, digest, opened_stat = self._hash_regular_file(
+                    entry.path,
+                    path_stat,
+                )
+                expanded_size += size
+                if expanded_size > self.limits.max_expanded_size:
+                    raise self._error(
+                        "unsafe_tree",
+                        "The extracted artifact exceeds the expansion limit.",
+                    )
+                files.append(
+                    _ReleaseTreeFile(
+                        relative_path=relative_path,
+                        physical_path=entry.path,
+                        size=size,
+                        sha256=digest,
+                        device=opened_stat.st_dev,
+                        inode=opened_stat.st_ino,
+                    )
+                )
+        if not files:
+            raise self._error(
+                "unsafe_tree",
+                "The extracted artifact does not contain regular files.",
+            )
+        return files, directories
+
+    def _tree_digest(self, files):
+        records = []
+        for file_record in files:
+            path_bytes = file_record.relative_path.encode("utf-8")
+            record = (
+                path_bytes
+                + b"\0"
+                + str(file_record.size).encode("ascii")
+                + b"\0"
+                + file_record.sha256.encode("ascii")
+                + b"\n"
+            )
+            records.append((path_bytes, record))
+        records.sort(key=lambda item: item[0])
+        return hashlib.sha256(
+            b"".join(record for _path, record in records)
+        ).hexdigest()
+
+    def _tree_fingerprint(self, files):
+        return sorted(
+            (
+                file_record.relative_path,
+                file_record.size,
+                file_record.sha256,
+                file_record.device,
+                file_record.inode,
+            )
+            for file_record in files
+        )
+
+    def _source_tree(self, root_path, files, directories, source_path):
+        try:
+            source_path = _normalize_relative_metadata_path(
+                source_path,
+                "artifact.source_path",
+            )
+            if source_path != ".":
+                self.path_validator._portable_parts(
+                    source_path,
+                    "artifact.source_path",
+                )
+        except ValueError as error:
+            raise self._error(
+                "source_path",
+                "The indexed source path is invalid.",
+            ) from error
+        if source_path not in directories:
+            raise self._error(
+                "source_path",
+                "The indexed source path is not a staged directory.",
+            )
+        source_root = root_path if source_path == "." else directories[source_path]
+        prefix = "" if source_path == "." else source_path + "/"
+        selected = []
+        for file_record in files:
+            if prefix and not file_record.relative_path.startswith(prefix):
+                continue
+            installed_path = (
+                file_record.relative_path
+                if not prefix
+                else file_record.relative_path[len(prefix) :]
+            )
+            if not installed_path:
+                continue
+            selected.append((installed_path, file_record))
+        selected.sort(key=lambda item: item[0].encode("utf-8"))
+        return source_root, selected
+
+    def _read_verified_contents(self, file_record):
+        try:
+            path_stat = os.lstat(file_record.physical_path)
+        except OSError as error:
+            raise self._error(
+                "unsafe_tree",
+                "An artifact file disappeared during validation.",
+            ) from error
+        descriptor, opened_stat = self._opened_regular_file(
+            file_record.physical_path,
+            path_stat,
+        )
+        try:
+            with os.fdopen(descriptor, "rb") as source:
+                descriptor = None
+                contents = source.read(self.limits.max_file_size + 1)
+        except OSError as error:
+            raise self._error(
+                "unsafe_tree",
+                "An artifact file could not be re-read safely.",
+            ) from error
+        finally:
+            if descriptor is not None:
+                os.close(descriptor)
+        if (
+            len(contents) != file_record.size
+            or len(contents) != opened_stat.st_size
+            or opened_stat.st_dev != file_record.device
+            or opened_stat.st_ino != file_record.inode
+            or hashlib.sha256(contents).hexdigest() != file_record.sha256
+        ):
+            raise self._error(
+                "unsafe_tree",
+                "An artifact file changed during validation.",
+            )
+        return contents
+
+    def _compile_python(self, selected_files):
+        plugin_metadata = None
+        for installed_path, file_record in selected_files:
+            if not installed_path.casefold().endswith(".py"):
+                continue
+            contents = self._read_verified_contents(file_record)
+            try:
+                compile(
+                    contents,
+                    file_record.physical_path,
+                    "exec",
+                    dont_inherit=True,
+                )
+            except (
+                SyntaxError,
+                UnicodeError,
+                ValueError,
+                OverflowError,
+                RecursionError,
+            ) as error:
+                raise self._error(
+                    "compile_failed",
+                    "Python source failed compilation: " + installed_path,
+                ) from error
+            if installed_path == "plugin.py":
+                plugin_metadata = self._parse_plugin_metadata(contents)
+        return plugin_metadata
+
+    def _parse_plugin_metadata(self, contents):
+        try:
+            encoding, _lines = tokenize.detect_encoding(
+                io.BytesIO(contents).readline
+            )
+            source_code = contents.decode(encoding)
+        except (SyntaxError, UnicodeError, LookupError) as error:
+            raise self._error(
+                "identity_mismatch",
+                "The staged plugin metadata encoding is invalid.",
+            ) from error
+        plugin_tags = re.findall(
+            r"<plugin\b([^>]*)>",
+            source_code,
+            re.IGNORECASE | re.DOTALL,
+        )
+        if len(plugin_tags) != 1:
+            raise self._error(
+                "identity_mismatch",
+                "The staged plugin must contain one Domoticz plugin tag.",
+            )
+        metadata = {}
+        for match in re.finditer(
+            r"([A-Za-z_][\w:.-]*)\s*=\s*(\"([^\"]*)\"|'([^']*)')",
+            plugin_tags[0],
+        ):
+            key = match.group(1).lower()
+            if key in metadata:
+                raise self._error(
+                    "identity_ambiguous",
+                    "The staged plugin metadata contains duplicate attributes.",
+                )
+            value = match.group(3) if match.group(3) is not None else match.group(4)
+            metadata[key] = html.unescape(value or "")
+        return metadata
+
+    def _repository_lookup(self):
+        lookup = {}
+        keys = list(getattr(self.plugin, "plugin_data", {}))
+        for key in getattr(self.plugin, "registry_entries", {}):
+            if key not in keys:
+                keys.append(key)
+        for key in keys:
+            entry = self.plugin.get_registry_entry(key)
+            if entry is None:
+                continue
+            identity = normalize_repository_identity(
+                entry.author,
+                entry.repository,
+            )
+            if not identity:
+                continue
+            lookup.setdefault(identity, [])
+            if key not in lookup[identity]:
+                lookup[identity].append(key)
+        return lookup
+
+    def _identity_tier(self, candidates, plugin_key, source):
+        unique = []
+        for candidate in candidates:
+            if candidate and candidate not in unique:
+                unique.append(candidate)
+        if len(unique) > 1:
+            raise self._error(
+                "identity_ambiguous",
+                "The staged plugin identity matches multiple entries.",
+            )
+        if not unique:
+            return ""
+        if unique[0] != plugin_key:
+            raise self._error(
+                "identity_mismatch",
+                "The staged plugin identity resolves to another plugin.",
+            )
+        return source
+
+    def _certify_identity(
+        self,
+        source_root,
+        plugin_key,
+        metadata,
+        repository_identity,
+    ):
+        entry = self.plugin.get_registry_entry(plugin_key)
+        if entry is None:
+            raise self._error(
+                "identity_mismatch",
+                "The requested plugin is not present in the registry.",
+            )
+        configured_identity = normalize_repository_identity(
+            entry.author,
+            entry.repository,
+        )
+        if not configured_identity:
+            raise self._error(
+                "identity_mismatch",
+                "The registry repository identity is invalid.",
+            )
+        if repository_identity is not None:
+            normalized_identity = normalize_repository_identity(
+                repository_identity
+            )
+            if (
+                not normalized_identity
+                or normalized_identity != configured_identity
+            ):
+                raise self._error(
+                    "identity_mismatch",
+                    "The release repository identity differs from the registry.",
+                )
+
+        try:
+            lookups = self.plugin.build_installed_plugin_lookup()
+        except Exception as error:
+            raise self._error(
+                "identity_mismatch",
+                "The staged plugin identity could not be certified.",
+            ) from error
+        source_folder = os.path.basename(source_root)
+
+        external_link = metadata.get("externallink", "")
+        if external_link:
+            external_identity = normalize_repository_identity(external_link)
+            if not external_identity:
+                raise self._error(
+                    "identity_mismatch",
+                    "The staged plugin externallink is invalid.",
+                )
+            source = self._identity_tier(
+                self._repository_lookup().get(external_identity, []),
+                plugin_key,
+                "plugin.py externallink",
+            )
+            if source:
+                return source
+
+        exact_key = lookups[0].get(
+            self.plugin.normalize_plugin_folder_name(source_folder),
+            "",
+        )
+        source = self._identity_tier(
+            [exact_key] if exact_key else [],
+            plugin_key,
+            "exact folder key",
+        )
+        if source:
+            return source
+
+        folder_tiers = (
+            (
+                lookups[1].get(
+                    self.plugin.normalize_plugin_folder_name(source_folder),
+                    [],
+                ),
+                "repository/archive folder name",
+            ),
+            (
+                lookups[2].get(
+                    self.plugin.normalize_plugin_metadata_value(source_folder),
+                    [],
+                ),
+                "normalized folder name",
+            ),
+        )
+        for candidates, source_label in folder_tiers:
+            if len(set(candidates)) > 1:
+                raise self._error(
+                    "identity_ambiguous",
+                    "The staged plugin identity matches multiple entries.",
+                )
+            if candidates and self.plugin.plugin_metadata_matches_registry(
+                candidates[0],
+                source_root,
+                metadata,
+            ):
+                source = self._identity_tier(
+                    candidates,
+                    plugin_key,
+                    source_label,
+                )
+                if source:
+                    return source
+
+        metadata_candidates = []
+        for field in ("key", "name"):
+            normalized = self.plugin.normalize_plugin_metadata_value(
+                metadata.get(field, "")
+            )
+            for candidate in lookups[3].get(normalized, []):
+                if candidate not in metadata_candidates:
+                    metadata_candidates.append(candidate)
+        source = self._identity_tier(
+            metadata_candidates,
+            plugin_key,
+            "plugin.py key/name",
+        )
+        if source:
+            return source
+        raise self._error(
+            "identity_mismatch",
+            "The staged plugin identity does not match the requested plugin.",
+        )
+
+    def validate(
+        self,
+        *,
+        extraction_dir,
+        root_prefix,
+        source_path,
+        plugin_key,
+        expected_tree_sha256=None,
+        repository_identity=None,
+    ):
+        """Return canonical identity only after every runtime check succeeds."""
+        try:
+            plugin_key = _require_plugin_key(plugin_key)
+        except ValueError as error:
+            raise self._error(
+                "identity_mismatch",
+                "The requested plugin key is invalid.",
+            ) from error
+        if expected_tree_sha256 is not None:
+            try:
+                expected_tree_sha256 = _require_sha256(
+                    expected_tree_sha256,
+                    "expected_tree_sha256",
+                )
+            except ValueError as error:
+                raise self._error(
+                    "tree_mismatch",
+                    "The expected artifact tree digest is invalid.",
+                ) from error
+
+        root_path = self._root_layout(extraction_dir, root_prefix)
+        files, directories = self._scan_tree(root_path)
+        tree_sha256 = self._tree_digest(files)
+        if (
+            expected_tree_sha256 is not None
+            and tree_sha256 != expected_tree_sha256
+        ):
+            raise self._error(
+                "tree_mismatch",
+                "The staged artifact tree differs from the release index.",
+            )
+        source_root, selected_files = self._source_tree(
+            root_path,
+            files,
+            directories,
+            source_path,
+        )
+        selected_by_path = dict(selected_files)
+        plugin_file = selected_by_path.get("plugin.py")
+        if plugin_file is None or plugin_file.size <= 0:
+            raise self._error(
+                "plugin_missing",
+                "The selected source tree requires a non-empty root plugin.py.",
+            )
+        metadata = self._compile_python(selected_files)
+        if metadata is None:
+            raise self._error(
+                "identity_mismatch",
+                "The staged plugin metadata could not be read.",
+            )
+        identity_source = self._certify_identity(
+            source_root,
+            plugin_key,
+            metadata,
+            repository_identity,
+        )
+        revalidated_files, _revalidated_directories = self._scan_tree(root_path)
+        if self._tree_fingerprint(revalidated_files) != self._tree_fingerprint(
+            files
+        ):
+            raise self._error(
+                "unsafe_tree",
+                "The staged artifact changed during validation.",
+            )
+        artifact_files = {
+            installed_path: {
+                "sha256": file_record.sha256,
+                "size": file_record.size,
+            }
+            for installed_path, file_record in selected_files
+        }
+        return ReleaseArtifactValidation(
+            source_root=source_root,
+            plugin_key=plugin_key,
+            identity_source=identity_source,
+            tree_sha256=tree_sha256,
+            artifact_files=artifact_files,
+        )
 
 
 @dataclass

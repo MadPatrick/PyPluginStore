@@ -405,6 +405,17 @@ def invalid_documents():
     ] = "../plugin"
     cases.append(pytest.param(unsafe_source_path, id="unsafe-source-path"))
 
+    unwrapped_source_archive = release_index_document()
+    unwrapped_source_archive["plugins"]["ExamplePlugin"]["artifact"][
+        "root_prefix"
+    ] = "."
+    cases.append(
+        pytest.param(
+            unwrapped_source_archive,
+            id="source-archive-without-wrapper",
+        )
+    )
+
     overlapping_tombstone = release_index_document(
         tombstones={
             "ExamplePlugin": release_tombstone(

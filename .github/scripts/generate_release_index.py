@@ -29,7 +29,7 @@ import zipfile
 
 
 INDEX_SCHEMA_VERSION = 1
-CACHE_SCHEMA_VERSION = 1
+CACHE_SCHEMA_VERSION = 2
 DEFAULT_VALIDITY_SECONDS = 7 * 24 * 60 * 60
 DEFAULT_CACHE_TTL_SECONDS = 60 * 60
 DEFAULT_MAX_ARCHIVE_SIZE = 50 * 1024 * 1024
@@ -49,6 +49,15 @@ WINDOWS_RESERVED_NAMES = {
     "prn",
     *("com" + str(number) for number in range(1, 10)),
     *("lpt" + str(number) for number in range(1, 10)),
+}
+WINDOWS_FORBIDDEN_CHARACTERS = '<>:"|?*'
+RESERVED_METADATA_PARTS = {
+    ".git",
+    ".hg",
+    ".svn",
+    ".bzr",
+    ".pypluginstore",
+    ".pypluginstore.json",
 }
 CANDIDATE_FIELDS = (
     "provider",
@@ -678,6 +687,7 @@ def _safe_zip_path(filename):
         raise ValueError("ZIP member name must be non-empty text.")
     if (
         CONTROL_CHARACTER_PATTERN.search(filename)
+        or any(unicodedata.category(character) == "Cc" for character in filename)
         or "\\" in filename
         or filename.startswith("/")
         or WINDOWS_DRIVE_PATTERN.match(filename)
@@ -693,20 +703,31 @@ def _safe_zip_path(filename):
     normalized_parts = []
     for part in raw_parts:
         normalized = unicodedata.normalize("NFC", part)
-        if not normalized or CONTROL_CHARACTER_PATTERN.search(normalized):
+        if (
+            not normalized
+            or normalized != part
+            or CONTROL_CHARACTER_PATTERN.search(normalized)
+        ):
             raise ValueError("ZIP member path is not canonical Unicode.")
-        if normalized.endswith((".", " ")) or ":" in normalized:
+        if normalized.endswith((".", " ")) or any(
+            character in WINDOWS_FORBIDDEN_CHARACTERS
+            for character in normalized
+        ):
             raise ValueError("ZIP member path is not portable.")
         if normalized.split(".", 1)[0].casefold() in WINDOWS_RESERVED_NAMES:
             raise ValueError("ZIP member uses a reserved path name.")
+        if normalized.casefold() in RESERVED_METADATA_PARTS:
+            raise ValueError("ZIP member contains manager or VCS metadata.")
         normalized_parts.append(normalized)
     return "/".join(normalized_parts), directory
 
 
 def _zip_member_kind(info):
     mode = (info.external_attr >> 16) & 0xFFFF
-    kind = stat.S_IFMT(mode)
-    if kind in (0, stat.S_IFREG):
+    kind = stat.S_IFMT(mode) if info.create_system == 3 else 0
+    if kind == 0:
+        return "unspecified"
+    if kind == stat.S_IFREG:
         return "file"
     if kind == stat.S_IFDIR:
         return "directory"
@@ -721,8 +742,11 @@ def _certify_zip_bytes(data, candidate):
         raise ValueError("Downloaded ZIP size is outside the certification limit.")
 
     files = []
+    members = []
     seen_normalized = set()
     seen_casefold = {}
+    component_spellings = {}
+    node_kinds = {}
     expanded_size = 0
     try:
         with zipfile.ZipFile(io.BytesIO(data), "r") as archive:
@@ -730,15 +754,58 @@ def _certify_zip_bytes(data, candidate):
             if not infos or len(infos) > DEFAULT_MAX_ENTRIES:
                 raise ValueError("ZIP entry count is outside the certification limit.")
             for info in infos:
-                if info.flag_bits & 0x1:
+                original_name = getattr(info, "orig_filename", info.filename)
+                if original_name != info.filename or "\0" in original_name:
+                    raise ValueError("ZIP member contains a NUL byte.")
+                if info.flag_bits & (0x1 | 0x40):
                     raise ValueError("Encrypted ZIP members are unsupported.")
-                normalized_path, named_directory = _safe_zip_path(info.filename)
+                normalized_path, named_directory = _safe_zip_path(original_name)
                 member_kind = _zip_member_kind(info)
-                is_directory = info.is_dir() or named_directory
-                if is_directory and member_kind == "file" and named_directory:
-                    member_kind = "directory"
-                if is_directory != (member_kind == "directory"):
+                is_directory = named_directory
+                if (is_directory and member_kind == "file") or (
+                    not is_directory and member_kind == "directory"
+                ):
                     raise ValueError("ZIP directory metadata is inconsistent.")
+                if is_directory and info.file_size != 0:
+                    raise ValueError("ZIP directory metadata is inconsistent.")
+                members.append((normalized_path, is_directory))
+
+                path_parts = tuple(normalized_path.split("/"))
+                canonical_parts = tuple(part.casefold() for part in path_parts)
+                for index, (canonical_part, original_part) in enumerate(
+                    zip(canonical_parts, path_parts)
+                ):
+                    spelling_key = (canonical_parts[:index], canonical_part)
+                    previous_component = component_spellings.get(spelling_key)
+                    if (
+                        previous_component is not None
+                        and previous_component != original_part
+                    ):
+                        raise ValueError(
+                            "ZIP contains a Unicode or case-fold path collision."
+                        )
+                    component_spellings[spelling_key] = original_part
+
+                for prefix_length in range(1, len(canonical_parts)):
+                    prefix = canonical_parts[:prefix_length]
+                    if node_kinds.get(prefix) == "file":
+                        raise ValueError(
+                            "ZIP contains a file/directory prefix collision."
+                        )
+                    node_kinds.setdefault(prefix, "directory")
+                existing_kind = node_kinds.get(canonical_parts)
+                if is_directory:
+                    if existing_kind == "file":
+                        raise ValueError(
+                            "ZIP contains a file/directory prefix collision."
+                        )
+                    node_kinds[canonical_parts] = "directory"
+                else:
+                    if existing_kind is not None:
+                        raise ValueError(
+                            "ZIP contains a file/directory prefix collision."
+                        )
+                    node_kinds[canonical_parts] = "file"
 
                 collision_key = normalized_path.casefold()
                 previous_spelling = seen_casefold.get(collision_key)
@@ -791,6 +858,11 @@ def _certify_zip_bytes(data, candidate):
         raise ValueError("ZIP root wrapper must be one path segment.")
     if candidate.artifact_kind == "source_zip" and root_prefix == ".":
         raise ValueError("Forge source ZIP must have one wrapper directory.")
+    if root_prefix != "." and any(
+        path != root_prefix and not path.startswith(root_prefix + "/")
+        for path, _is_directory in members
+    ):
+        raise ValueError("ZIP contains paths outside its single wrapper.")
 
     relative_paths = sorted(path for path, _contents in relative_files)
     for index, path in enumerate(relative_paths[:-1]):

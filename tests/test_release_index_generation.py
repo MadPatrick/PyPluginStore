@@ -270,6 +270,20 @@ def zip_archive(
     return output.getvalue()
 
 
+def raw_zip_archive(entries):
+    output = io.BytesIO()
+    with zipfile.ZipFile(output, "w") as archive:
+        for entry in entries:
+            name, contents = entry[:2]
+            mode = entry[2] if len(entry) > 2 else 0o100644
+            info = zipfile.ZipInfo(name)
+            info.compress_type = zipfile.ZIP_DEFLATED
+            info.create_system = 3
+            info.external_attr = mode << 16
+            archive.writestr(info, contents)
+    return output.getvalue()
+
+
 def canonical_tree_sha256(files=None):
     files = files or {
         "plugin.py": b"print('plugin')\n",
@@ -563,6 +577,154 @@ def test_source_archive_certification_records_transport_and_canonical_tree_ident
     ]
     assert status(result) == "certified_new"
     assert result.report["summary"] == {"certified_new": 1}
+
+
+def test_attached_asset_certification_supports_an_indexed_no_wrapper_layout(
+    release_index_generation_module,
+):
+    files = {
+        "plugin.py": b"print('plugin')\n",
+        "README.md": b"Attached release asset\n",
+    }
+    archive = raw_zip_archive(list(files.items()))
+    selected = candidate(
+        artifact_kind="asset_zip",
+        artifact_provenance="release_asset",
+    )
+
+    certified = release_index_generation_module._certify_zip_bytes(
+        archive,
+        selected,
+    )
+
+    assert certified.root_prefix == "."
+    assert certified.tree_sha256 == canonical_tree_sha256(files)
+
+
+@pytest.mark.parametrize(
+    "unsafe_path",
+    [
+        ".pypluginstore.json",
+        "nested/.Git/config",
+        "bad?.txt",
+        "cafe\u0301.txt",
+        "bad\u0085name.txt",
+    ],
+    ids=("manager", "vcs", "windows", "non-nfc", "c1-control"),
+)
+def test_scanner_rejects_paths_the_runtime_cannot_install(
+    release_index_generation_module,
+    unsafe_path,
+):
+    root = "example-plugin-" + COMMIT_1
+    archive = raw_zip_archive(
+        [
+            (root + "/plugin.py", b"print('plugin')\n"),
+            (root + "/" + unsafe_path, b"unsafe\n"),
+        ]
+    )
+
+    with pytest.raises(ValueError):
+        release_index_generation_module._certify_zip_bytes(
+            archive,
+            candidate(),
+        )
+
+
+def test_scanner_rejects_nul_in_the_original_member_name(
+    release_index_generation_module,
+):
+    root = "example-plugin-" + COMMIT_1
+    original = (root + "/badXsuffix.txt").encode("utf-8")
+    replacement = (root + "/bad\x00suffix.txt").encode("utf-8")
+    archive = raw_zip_archive(
+        [
+            (root + "/plugin.py", b"print('plugin')\n"),
+            (root + "/badXsuffix.txt", b"unsafe\n"),
+        ]
+    )
+    assert archive.count(original) >= 2
+    archive = archive.replace(original, replacement)
+
+    with pytest.raises(ValueError, match="NUL"):
+        release_index_generation_module._certify_zip_bytes(
+            archive,
+            candidate(),
+        )
+
+
+def test_scanner_rejects_component_only_casefold_collisions(
+    release_index_generation_module,
+):
+    root = "example-plugin-" + COMMIT_1
+    archive = raw_zip_archive(
+        [
+            (root + "/plugin.py", b"print('plugin')\n"),
+            (root + "/Config/first.json", b"{}\n"),
+            (root + "/config/second.json", b"{}\n"),
+        ]
+    )
+
+    with pytest.raises(ValueError, match="collision"):
+        release_index_generation_module._certify_zip_bytes(
+            archive,
+            candidate(),
+        )
+
+
+def test_scanner_rejects_an_extra_empty_root_outside_the_wrapper(
+    release_index_generation_module,
+):
+    root = "example-plugin-" + COMMIT_1
+    archive = raw_zip_archive(
+        [
+            (root + "/plugin.py", b"print('plugin')\n"),
+            ("unexpected-root/", b"", 0o40755),
+        ]
+    )
+
+    with pytest.raises(ValueError, match="wrapper"):
+        release_index_generation_module._certify_zip_bytes(
+            archive,
+            candidate(),
+        )
+
+
+def test_scanner_rejects_file_and_empty_directory_prefix_collisions(
+    release_index_generation_module,
+):
+    root = "example-plugin-" + COMMIT_1
+    archive = raw_zip_archive(
+        [
+            (root + "/plugin.py", b"print('plugin')\n"),
+            (root + "/data", b"regular file\n"),
+            (root + "/data/empty/", b"", 0o40755),
+        ]
+    )
+
+    with pytest.raises(ValueError, match="prefix collision"):
+        release_index_generation_module._certify_zip_bytes(
+            archive,
+            candidate(),
+        )
+
+
+def test_scanner_rejects_directory_members_with_payload_bytes(
+    release_index_generation_module,
+):
+    root = "example-plugin-" + COMMIT_1
+    archive = raw_zip_archive(
+        [
+            (root + "/plugin.py", b"print('plugin')\n"),
+            (root + "/config/", b"not empty", 0o40755),
+        ]
+    )
+
+    with pytest.raises(ValueError, match="directory metadata"):
+        release_index_generation_module._certify_zip_bytes(
+            archive,
+            candidate(),
+        )
 
 
 def test_reviewed_allowed_origins_are_forwarded_to_artifact_download(

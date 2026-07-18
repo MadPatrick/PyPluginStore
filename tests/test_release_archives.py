@@ -153,6 +153,32 @@ def test_safe_zip_extractor_accepts_a_valid_single_root_archive(
     assert (destination / ROOT_PREFIX / "config" / "default.json").is_file()
 
 
+def test_safe_zip_extractor_accepts_an_indexed_no_wrapper_archive(
+    plugin_core_module, tmp_path
+):
+    archive_path = write_zip(
+        tmp_path / "no-wrapper.zip",
+        [
+            ("plugin.py", "print('valid')\n"),
+            ("README.md", "Valid plugin\n"),
+            ("package/module.py", "VALUE = 1\n"),
+        ],
+    )
+    destination = tmp_path / "extracted"
+
+    result = make_extractor(plugin_core_module).extract(
+        str(archive_path),
+        str(destination),
+        expected_root_prefix=".",
+    )
+
+    assert result.root_prefix == "."
+    assert Path(result.root_path) == destination
+    assert result.file_count == 3
+    assert (destination / "plugin.py").is_file()
+    assert (destination / "package" / "module.py").is_file()
+
+
 def test_release_archive_limits_match_reviewed_defaults(plugin_core_module):
     limits = plugin_core_module.ReleaseArchiveLimits()
 
