@@ -33,8 +33,8 @@
 
 ## Phase 4: Release-First Install, Update, and UI
 
-- [~] Task: Add failing activation/order/status tests for release-if-indexed, required release, Git-only, explicit Git, unavailable/de-certified metadata, predecessor gaps, mutations, recompressed source ZIPs, downgrade confirmation, and fail-closed cases
-- [ ] Task: Replace the single Git strategy field with a release-aware coordinator that retains `GitInstallUpdateStrategy`
+- [x] Task: Add failing activation/order/status tests for release-if-indexed, required release, Git-only, explicit Git, unavailable/de-certified metadata, predecessor gaps, mutations, recompressed source ZIPs, downgrade confirmation, and fail-closed cases `2b383dd`
+- [~] Task: Replace the single Git strategy field with a release-aware coordinator that retains `GitInstallUpdateStrategy`
 - [ ] Task: Implement release-first new installs and release-to-release updates
 - [ ] Task: Implement local-data inventory and reviewed mutable overlays for release updates, rollback, and channel switches
 - [ ] Task: Stage, validate, atomically swap, and roll back complete shared-dependency snapshots before code activation
