@@ -27,8 +27,8 @@
 - [x] Task: Add failing archive tests for traversal, absolute/UNC/drive paths, links/devices, control bytes, encryption, duplicate/case collisions, Windows reserved paths, ambiguous roots, manager metadata, bombs, size limits, and malformed ZIPs `caf99ba`
 - [x] Task: Implement the SSRF-safe bounded streaming downloader and member-by-member safe ZIP extractor `00abc9e`
 - [x] Task: Add canonical cross-platform tree hashing, wrapper/source-path resolution, flexible `plugin.py` identity certification, and compilation validation `168aa70`
-- [~] Task: Add same-filesystem manager-owned transaction journals, staging, backup, two-rename replacement, and immediate rollback
-- [ ] Task: Add idempotent queued replacement for Windows locked-file behavior
+- [x] Task: Add same-filesystem manager-owned transaction journals, staging, backup, two-rename replacement, and immediate rollback `f7580fc`
+- [~] Task: Add idempotent queued replacement for Windows locked-file behavior
 - [ ] Task: Conductor - User Manual Verification 'Hardened ZIP Staging and Rollback' (Protocol in workflow.md)
 
 ## Phase 4: Release-First Install, Update, and UI
