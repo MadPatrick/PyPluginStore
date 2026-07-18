@@ -28,12 +28,12 @@
 - [x] Task: Implement the SSRF-safe bounded streaming downloader and member-by-member safe ZIP extractor `00abc9e`
 - [x] Task: Add canonical cross-platform tree hashing, wrapper/source-path resolution, flexible `plugin.py` identity certification, and compilation validation `168aa70`
 - [x] Task: Add same-filesystem manager-owned transaction journals, staging, backup, two-rename replacement, and immediate rollback `f7580fc`
-- [~] Task: Add idempotent queued replacement for Windows locked-file behavior
-- [ ] Task: Conductor - User Manual Verification 'Hardened ZIP Staging and Rollback' (Protocol in workflow.md)
+- [x] Task: Add idempotent queued replacement for Windows locked-file behavior `62ed533`
+- [x] Task: Conductor - User Manual Verification 'Hardened ZIP Staging and Rollback' (waived by user; automated checkpoint `62ed533`)
 
 ## Phase 4: Release-First Install, Update, and UI
 
-- [ ] Task: Add failing activation/order/status tests for release-if-indexed, required release, Git-only, explicit Git, unavailable/de-certified metadata, predecessor gaps, mutations, recompressed source ZIPs, downgrade confirmation, and fail-closed cases
+- [~] Task: Add failing activation/order/status tests for release-if-indexed, required release, Git-only, explicit Git, unavailable/de-certified metadata, predecessor gaps, mutations, recompressed source ZIPs, downgrade confirmation, and fail-closed cases
 - [ ] Task: Replace the single Git strategy field with a release-aware coordinator that retains `GitInstallUpdateStrategy`
 - [ ] Task: Implement release-first new installs and release-to-release updates
 - [ ] Task: Implement local-data inventory and reviewed mutable overlays for release updates, rollback, and channel switches
