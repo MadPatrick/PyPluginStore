@@ -9,7 +9,7 @@ This file tracks all major tracks for the project. Each track has its own detail
 
 ---
 
-## [~] Track: Support Codeberg and GitLab plugin repositories
+## [x] Track: Support Codeberg and GitLab plugin repositories
 *Link: [./conductor/tracks/codeberg_gitlab_20260702/](./conductor/tracks/codeberg_gitlab_20260702/)*
 
 ---
