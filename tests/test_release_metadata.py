@@ -137,6 +137,7 @@ def test_object_registry_entry_parses_delivery_without_changing_legacy_consumers
                     "artifact": "source_zip",
                     "source_path": "plugin",
                     "mutable_paths": ["config.json", "data"],
+                    "allowed_origins": ["https://packages.example.org/"],
                 },
             },
         }
@@ -160,6 +161,34 @@ def test_object_registry_entry_parses_delivery_without_changing_legacy_consumers
     assert delivery.release.artifact == "source_zip"
     assert delivery.release.source_path == "plugin"
     assert delivery.release.mutable_paths == ["config.json", "data"]
+    assert delivery.release.allowed_origins == ["https://packages.example.org"]
+
+
+def test_local_registry_entries_are_explicitly_git_only(plugin_core_module):
+    plugin = plugin_core_module.BasePlugin()
+    local_registry = {
+        "ExamplePlugin": {
+            "owner": "owner",
+            "repository": "repo",
+            "description": "Local override",
+            "branch": "main",
+            "delivery": {
+                "schema_version": 1,
+                "preferred": "release",
+                "git_supported": False,
+                "release": {"provider": "github"},
+            },
+        }
+    }
+
+    _, _, entries = plugin.registry_service.normalize_registry(
+        local_registry,
+        local_keys={"ExamplePlugin"},
+    )
+
+    assert entries["ExamplePlugin"].delivery.preferred == "git"
+    assert entries["ExamplePlugin"].delivery.git_supported is True
+    assert entries["ExamplePlugin"].delivery.release is None
 
 
 def test_normalized_release_index_exposes_provider_neutral_descriptor(
@@ -261,12 +290,21 @@ def test_higher_revision_accepts_complete_supersedes_lineage(plugin_core_module)
             tag="v1.3.0",
             commit="2" * 40,
         ),
+        release_entry(
+            revision=7,
+            release_id="github:owner/repo:v1.3.0",
+            supersedes=[
+                "github:owner/repo:v1.2.0",
+                "github:owner/repo:v1.3.0",
+            ],
+        ),
     ],
     ids=(
         "revision-regression",
         "missing-predecessor",
         "same-revision-new-release",
         "same-revision-mutated-commit",
+        "higher-revision-same-release",
     ),
 )
 def test_release_ordering_rejects_regressions_gaps_and_mutations(

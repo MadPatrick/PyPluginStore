@@ -1409,6 +1409,887 @@ def make_host_runtime(parameters):
     return LinuxHostRuntime(parameters)
 
 
+RELEASE_INDEX_SCHEMA_VERSION = 1
+DELIVERY_POLICY_SCHEMA_VERSION = 1
+RELEASE_PROVIDERS = {
+    "codeberg",
+    "forgejo",
+    "generic",
+    "gitea",
+    "github",
+    "gitlab",
+}
+RELEASE_ARTIFACT_KINDS = {
+    "asset_zip",
+    "generic_zip",
+    "source_zip",
+}
+RELEASE_POLICY_ARTIFACTS = {"asset_zip", "source_zip"}
+RELEASE_ARTIFACT_PROVENANCE = {
+    "attached_asset",
+    "forge_release_asset",
+    "forge_source_archive",
+    "generic_manifest",
+    "release_asset",
+}
+RELEASE_PREFERRED_MODES = {"git", "release", "release_if_indexed"}
+LOWER_SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
+GIT_COMMIT_PATTERN = re.compile(r"^[0-9a-f]{40}(?:[0-9a-f]{24})?$")
+CONTROL_CHARACTER_PATTERN = re.compile(r"[\x00-\x1f\x7f]")
+
+
+def _require_document(value, label, required_keys, optional_keys=()):
+    """Validate a versioned metadata object and return it unchanged."""
+    if not isinstance(value, dict):
+        raise ValueError(label + " must be an object.")
+
+    required = set(required_keys)
+    allowed = required | set(optional_keys)
+    missing = sorted(required - set(value))
+    unknown = sorted(set(value) - allowed)
+    if missing:
+        raise ValueError(label + " is missing fields: " + ", ".join(missing))
+    if unknown:
+        raise ValueError(label + " has unknown fields: " + ", ".join(unknown))
+    return value
+
+
+def _require_nonempty_string(value, label):
+    """Return a non-empty metadata string without silently coercing types."""
+    if not isinstance(value, str) or not value or value != value.strip():
+        raise ValueError(label + " must be a non-empty string.")
+    if CONTROL_CHARACTER_PATTERN.search(value):
+        raise ValueError(label + " contains control characters.")
+    return value
+
+
+def _require_positive_integer(value, label):
+    """Return a positive integer, rejecting booleans and numeric strings."""
+    if type(value) is not int or value <= 0:
+        raise ValueError(label + " must be a positive integer.")
+    return value
+
+
+def _require_boolean(value, label):
+    """Return a real JSON boolean."""
+    if type(value) is not bool:
+        raise ValueError(label + " must be a boolean.")
+    return value
+
+
+def _require_sha256(value, label):
+    """Return a canonical lowercase SHA-256 digest."""
+    value = _require_nonempty_string(value, label)
+    if not LOWER_SHA256_PATTERN.fullmatch(value):
+        raise ValueError(label + " must be a lowercase SHA-256 digest.")
+    return value
+
+
+def _require_git_commit(value, label, required=True):
+    """Return a full lowercase Git object identifier."""
+    if value in (None, "") and not required:
+        return ""
+    value = _require_nonempty_string(value, label)
+    if not GIT_COMMIT_PATTERN.fullmatch(value):
+        raise ValueError(label + " must be a full lowercase Git commit ID.")
+    return value
+
+
+def _parse_utc_timestamp(value, label):
+    """Parse the canonical UTC timestamp format used by release metadata."""
+    value = _require_nonempty_string(value, label)
+    try:
+        parsed = datetime.strptime(value, "%Y-%m-%dT%H:%M:%SZ")
+    except ValueError as error:
+        raise ValueError(label + " must be an ISO 8601 UTC timestamp.") from error
+    if parsed.strftime("%Y-%m-%dT%H:%M:%SZ") != value:
+        raise ValueError(label + " must be a canonical UTC timestamp.")
+    return parsed.replace(tzinfo=timezone.utc)
+
+
+def _normalize_relative_metadata_path(value, label, allow_root=True):
+    """Normalize a safe POSIX path used in reviewed release metadata."""
+    value = _require_nonempty_string(value, label)
+    if value == "." and allow_root:
+        return value
+    if (
+        value.startswith(("/", "\\"))
+        or "\\" in value
+        or re.match(r"^[A-Za-z]:", value)
+    ):
+        raise ValueError(label + " must be a relative POSIX path.")
+
+    parts = value.split("/")
+    if any(part in ("", ".", "..") for part in parts):
+        raise ValueError(label + " must be a normalized relative path.")
+    return "/".join(parts)
+
+
+def _require_https_url(value, label):
+    """Validate a public HTTPS metadata or artifact URL."""
+    value = _require_nonempty_string(value, label)
+    try:
+        parsed = urllib.parse.urlparse(value)
+        port = parsed.port
+    except ValueError as error:
+        raise ValueError(label + " is not a valid URL.") from error
+    if (
+        parsed.scheme != "https"
+        or not parsed.hostname
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.fragment
+    ):
+        raise ValueError(label + " must be a public HTTPS URL.")
+    if port is not None and not (1 <= port <= 65535):
+        raise ValueError(label + " has an invalid port.")
+    return value
+
+
+def _repository_host(parsed_url):
+    """Return a lowercase host and optional explicit port from a URL."""
+    hostname = str(parsed_url.hostname or "").lower()
+    if not hostname:
+        return ""
+    try:
+        port = parsed_url.port
+    except ValueError:
+        return ""
+    return hostname + ((":" + str(port)) if port is not None else "")
+
+
+def normalize_repository_identity(source, repository=""):
+    """Return the forge-neutral host/path identity for a repository."""
+    source = str(source or "").strip().rstrip("/")
+    repository = str(repository or "").strip().strip("/")
+    if not source:
+        return ""
+
+    host = ""
+    path = ""
+    if re.match(r"^[^/@\s:]+@[^/\s:]+:.+$", source):
+        user_host, path = source.split(":", 1)
+        host = user_host.split("@", 1)[-1].lower()
+    else:
+        parsed = urllib.parse.urlparse(source)
+        if parsed.scheme:
+            if parsed.scheme not in ("http", "https", "ssh"):
+                return ""
+            host = _repository_host(parsed)
+            path = parsed.path
+        else:
+            shorthand = urllib.parse.urlparse("//" + source)
+            first_part = source.split("/", 1)[0]
+            if shorthand.hostname and ("." in first_part or ":" in first_part):
+                host = _repository_host(shorthand)
+                path = shorthand.path
+            else:
+                host = DEFAULT_GIT_HOST
+                path = source
+
+    if not host:
+        return ""
+    path_parts = []
+    for part in path.split("/"):
+        part = urllib.parse.unquote(part.strip())
+        if not part:
+            continue
+        if (
+            CONTROL_CHARACTER_PATTERN.search(part)
+            or "/" in part
+            or "\\" in part
+            or part in (".", "..")
+        ):
+            return ""
+        if part in REPOSITORY_PATH_STOP_PARTS:
+            break
+        path_parts.append(part)
+    if repository:
+        if "/" in repository or "\\" in repository:
+            return ""
+        path_parts.append(repository)
+    if path_parts and path_parts[-1].endswith(".git"):
+        path_parts[-1] = path_parts[-1][:-4]
+    if len(path_parts) < 2 or any(not part for part in path_parts):
+        return ""
+    return (host + "/" + "/".join(path_parts)).lower()
+
+
+def _registry_entry_identity(data):
+    """Extract a normalized repository identity from a registry entry."""
+    if isinstance(data, list) and len(data) >= 2:
+        return normalize_repository_identity(data[0], data[1])
+    if isinstance(data, dict):
+        return normalize_repository_identity(
+            data.get("author", data.get("owner", "")),
+            data.get("repository", data.get("repo", "")),
+        )
+    return ""
+
+
+def _load_json_object(contents, label):
+    """Load UTF-8 JSON while rejecting duplicate object keys."""
+    if not isinstance(contents, (bytes, bytearray)):
+        raise ValueError(label + " must be bytes.")
+
+    def reject_duplicate_keys(pairs):
+        result = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError(label + " contains duplicate key " + str(key) + ".")
+            result[key] = value
+        return result
+
+    try:
+        document = json.loads(
+            bytes(contents).decode("utf-8"),
+            object_pairs_hook=reject_duplicate_keys,
+        )
+    except (UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise ValueError(label + " is not valid UTF-8 JSON.") from error
+    if not isinstance(document, dict):
+        raise ValueError(label + " must contain a JSON object.")
+    return document
+
+
+@dataclass
+class ReleasePolicy:
+    """Reviewed provider discovery policy from a registry entry."""
+
+    provider: str
+    channel: str
+    tag_pattern: str
+    artifact: str
+    source_path: str
+    mutable_paths: list
+    api_base: str = ""
+    manifest_url: str = ""
+    asset_name: str = ""
+    asset_pattern: str = ""
+    allowed_origins: list = None
+
+    @classmethod
+    def from_document(cls, document):
+        """Parse and validate the release portion of a delivery policy."""
+        document = _require_document(
+            document,
+            "delivery.release",
+            ("provider",),
+            (
+                "api_base",
+                "allowed_origins",
+                "artifact",
+                "asset_name",
+                "asset_pattern",
+                "channel",
+                "manifest_url",
+                "mutable_paths",
+                "source_path",
+                "tag_pattern",
+            ),
+        )
+        provider = _require_nonempty_string(
+            document["provider"], "delivery.release.provider"
+        ).lower()
+        if provider not in RELEASE_PROVIDERS:
+            raise ValueError("delivery.release.provider is not supported.")
+
+        channel = _require_nonempty_string(
+            document.get("channel", "stable"), "delivery.release.channel"
+        )
+        tag_pattern = document.get("tag_pattern", "")
+        if tag_pattern:
+            tag_pattern = _require_nonempty_string(
+                tag_pattern, "delivery.release.tag_pattern"
+            )
+            try:
+                re.compile(tag_pattern)
+            except re.error as error:
+                raise ValueError(
+                    "delivery.release.tag_pattern is not a valid regular expression."
+                ) from error
+
+        artifact = _require_nonempty_string(
+            document.get("artifact", "source_zip"),
+            "delivery.release.artifact",
+        )
+        if artifact not in RELEASE_POLICY_ARTIFACTS:
+            raise ValueError("delivery.release.artifact is not supported.")
+        source_path = _normalize_relative_metadata_path(
+            document.get("source_path", "."),
+            "delivery.release.source_path",
+        )
+
+        mutable_paths_document = document.get("mutable_paths", [])
+        if not isinstance(mutable_paths_document, list):
+            raise ValueError("delivery.release.mutable_paths must be a list.")
+        mutable_paths = []
+        for value in mutable_paths_document:
+            path = _normalize_relative_metadata_path(
+                value, "delivery.release.mutable_paths entry", allow_root=False
+            )
+            first_part = path.split("/", 1)[0].lower()
+            if first_part in (".git", ".pypluginstore") or path.lower() in (
+                ".pypluginstore.json",
+                "plugin.py",
+            ):
+                raise ValueError("delivery.release.mutable_paths contains a reserved path.")
+            if path in mutable_paths:
+                raise ValueError("delivery.release.mutable_paths contains a duplicate.")
+            mutable_paths.append(path)
+
+        api_base = document.get("api_base", "")
+        if api_base:
+            api_base = _require_https_url(api_base, "delivery.release.api_base")
+        manifest_url = document.get("manifest_url", "")
+        if manifest_url:
+            manifest_url = _require_https_url(
+                manifest_url, "delivery.release.manifest_url"
+            )
+        if provider == "generic" and not manifest_url:
+            raise ValueError("Generic release policy requires manifest_url.")
+        if provider != "generic" and manifest_url:
+            raise ValueError("manifest_url is only valid for the generic provider.")
+
+        allowed_origins_document = document.get("allowed_origins", [])
+        if not isinstance(allowed_origins_document, list):
+            raise ValueError("delivery.release.allowed_origins must be a list.")
+        allowed_origins = []
+        for origin in allowed_origins_document:
+            origin = _require_https_url(
+                origin, "delivery.release.allowed_origins entry"
+            )
+            parsed_origin = urllib.parse.urlparse(origin)
+            if parsed_origin.path not in ("", "/") or parsed_origin.query:
+                raise ValueError(
+                    "delivery.release.allowed_origins entries must be origins."
+                )
+            normalized_origin = (
+                "https://" + _repository_host(parsed_origin)
+            )
+            if normalized_origin in allowed_origins:
+                raise ValueError(
+                    "delivery.release.allowed_origins contains a duplicate."
+                )
+            allowed_origins.append(normalized_origin)
+
+        asset_name = document.get("asset_name", "")
+        if asset_name:
+            asset_name = _require_nonempty_string(
+                asset_name, "delivery.release.asset_name"
+            )
+        asset_pattern = document.get("asset_pattern", "")
+        if asset_pattern:
+            asset_pattern = _require_nonempty_string(
+                asset_pattern, "delivery.release.asset_pattern"
+            )
+            try:
+                re.compile(asset_pattern)
+            except re.error as error:
+                raise ValueError(
+                    "delivery.release.asset_pattern is not a valid regular expression."
+                ) from error
+        if asset_name and asset_pattern:
+            raise ValueError("Choose either asset_name or asset_pattern, not both.")
+        if artifact == "source_zip" and (asset_name or asset_pattern):
+            raise ValueError("Source ZIP policies cannot select a release asset.")
+
+        return cls(
+            provider=provider,
+            channel=channel,
+            tag_pattern=tag_pattern,
+            artifact=artifact,
+            source_path=source_path,
+            mutable_paths=mutable_paths,
+            api_base=api_base,
+            manifest_url=manifest_url,
+            asset_name=asset_name,
+            asset_pattern=asset_pattern,
+            allowed_origins=allowed_origins,
+        )
+
+
+@dataclass
+class DeliveryPolicy:
+    """Backward-compatible release/Git selection policy."""
+
+    schema_version: int
+    preferred: str
+    git_supported: bool
+    release: object = None
+
+    @classmethod
+    def implicit(cls):
+        """Return the policy assigned to a legacy registry list entry."""
+        return cls(
+            schema_version=DELIVERY_POLICY_SCHEMA_VERSION,
+            preferred="release_if_indexed",
+            git_supported=True,
+            release=None,
+        )
+
+    @classmethod
+    def git_only(cls):
+        """Return the policy for local-registry entries in unsigned v1."""
+        return cls(
+            schema_version=DELIVERY_POLICY_SCHEMA_VERSION,
+            preferred="git",
+            git_supported=True,
+            release=None,
+        )
+
+    @classmethod
+    def from_document(cls, document):
+        """Parse a versioned registry delivery policy."""
+        document = _require_document(
+            document,
+            "delivery",
+            ("schema_version", "preferred", "git_supported"),
+            ("release",),
+        )
+        if (
+            type(document["schema_version"]) is not int
+            or document["schema_version"] != DELIVERY_POLICY_SCHEMA_VERSION
+        ):
+            raise ValueError("delivery.schema_version is not supported.")
+        preferred = _require_nonempty_string(
+            document["preferred"], "delivery.preferred"
+        )
+        if preferred not in RELEASE_PREFERRED_MODES:
+            raise ValueError("delivery.preferred is not supported.")
+        git_supported = _require_boolean(
+            document["git_supported"], "delivery.git_supported"
+        )
+        release_document = document.get("release")
+        release = (
+            ReleasePolicy.from_document(release_document)
+            if release_document is not None
+            else None
+        )
+        if preferred == "release" and release is None:
+            raise ValueError("Release delivery requires delivery.release.")
+        if preferred == "git" and not git_supported:
+            raise ValueError("Git delivery requires git_supported.")
+        return cls(
+            schema_version=DELIVERY_POLICY_SCHEMA_VERSION,
+            preferred=preferred,
+            git_supported=git_supported,
+            release=release,
+        )
+
+
+@dataclass
+class ReleaseArtifact:
+    """Provider-neutral, checksum-pinned ZIP artifact metadata."""
+
+    kind: str
+    provenance: str
+    migration_eligible: bool
+    url: str
+    sha256: str
+    size: int
+    tree_sha256: str
+    root_prefix: str
+    source_path: str
+
+    @classmethod
+    def from_document(cls, document):
+        """Parse a normalized release artifact descriptor."""
+        document = _require_document(
+            document,
+            "release artifact",
+            (
+                "kind",
+                "provenance",
+                "migration_eligible",
+                "url",
+                "sha256",
+                "size",
+                "tree_sha256",
+                "root_prefix",
+                "source_path",
+            ),
+        )
+        kind = _require_nonempty_string(document["kind"], "artifact.kind")
+        if kind not in RELEASE_ARTIFACT_KINDS:
+            raise ValueError("artifact.kind is not supported.")
+        provenance = _require_nonempty_string(
+            document["provenance"], "artifact.provenance"
+        )
+        if provenance not in RELEASE_ARTIFACT_PROVENANCE:
+            raise ValueError("artifact.provenance is not supported.")
+
+        root_prefix = _require_nonempty_string(
+            document["root_prefix"], "artifact.root_prefix"
+        )
+        if root_prefix != ".":
+            root_prefix = _normalize_relative_metadata_path(
+                root_prefix, "artifact.root_prefix", allow_root=False
+            )
+            if "/" in root_prefix:
+                raise ValueError("artifact.root_prefix must identify one wrapper.")
+
+        return cls(
+            kind=kind,
+            provenance=provenance,
+            migration_eligible=_require_boolean(
+                document["migration_eligible"], "artifact.migration_eligible"
+            ),
+            url=_require_https_url(document["url"], "artifact.url"),
+            sha256=_require_sha256(document["sha256"], "artifact.sha256"),
+            size=_require_positive_integer(document["size"], "artifact.size"),
+            tree_sha256=_require_sha256(
+                document["tree_sha256"], "artifact.tree_sha256"
+            ),
+            root_prefix=root_prefix,
+            source_path=_normalize_relative_metadata_path(
+                document["source_path"], "artifact.source_path"
+            ),
+        )
+
+
+@dataclass
+class ReleaseDescriptor:
+    """One accepted release target independent of its source forge."""
+
+    revision: int
+    release_id: str
+    supersedes: list
+    provider: str
+    repository_identity: str
+    version: str
+    tag: str
+    released_at: str
+    commit: str
+    artifact: ReleaseArtifact
+    source_revision: str = ""
+
+    @classmethod
+    def from_document(cls, document):
+        """Parse a normalized release descriptor."""
+        document = _require_document(
+            document,
+            "release descriptor",
+            (
+                "revision",
+                "release_id",
+                "supersedes",
+                "provider",
+                "repository_identity",
+                "version",
+                "tag",
+                "released_at",
+                "artifact",
+            ),
+            ("commit", "source_revision"),
+        )
+        provider = _require_nonempty_string(
+            document["provider"], "release.provider"
+        ).lower()
+        if provider not in RELEASE_PROVIDERS:
+            raise ValueError("release.provider is not supported.")
+
+        repository_identity = normalize_repository_identity(
+            document["repository_identity"]
+        )
+        if not repository_identity:
+            raise ValueError("release.repository_identity is invalid.")
+
+        release_id = _require_nonempty_string(
+            document["release_id"], "release.release_id"
+        )
+        supersedes_document = document["supersedes"]
+        if not isinstance(supersedes_document, list):
+            raise ValueError("release.supersedes must be a list.")
+        supersedes = []
+        for value in supersedes_document:
+            predecessor = _require_nonempty_string(
+                value, "release.supersedes entry"
+            )
+            if predecessor == release_id or predecessor in supersedes:
+                raise ValueError("release.supersedes contains invalid lineage.")
+            supersedes.append(predecessor)
+
+        source_revision = document.get("source_revision", "")
+        if source_revision:
+            source_revision = _require_nonempty_string(
+                source_revision, "release.source_revision"
+            )
+        if provider == "generic" and not source_revision:
+            raise ValueError("Generic releases require source_revision.")
+        commit = _require_git_commit(
+            document.get("commit", ""),
+            "release.commit",
+            required=provider != "generic",
+        )
+        artifact = ReleaseArtifact.from_document(document["artifact"])
+        if not commit and artifact.migration_eligible:
+            raise ValueError("A release without a commit cannot be migration eligible.")
+
+        released_at = _require_nonempty_string(
+            document["released_at"], "release.released_at"
+        )
+        _parse_utc_timestamp(released_at, "release.released_at")
+        return cls(
+            revision=_require_positive_integer(
+                document["revision"], "release.revision"
+            ),
+            release_id=release_id,
+            supersedes=supersedes,
+            provider=provider,
+            repository_identity=repository_identity,
+            version=_require_nonempty_string(
+                document["version"], "release.version"
+            ),
+            tag=_require_nonempty_string(document["tag"], "release.tag"),
+            released_at=released_at,
+            commit=commit,
+            artifact=artifact,
+            source_revision=source_revision,
+        )
+
+    def same_accepted_target(self, other):
+        """Return whether an equal revision still names the accepted source."""
+        if not isinstance(other, ReleaseDescriptor):
+            return False
+        common_fields_match = (
+            self.revision == other.revision
+            and self.release_id == other.release_id
+            and self.supersedes == other.supersedes
+            and self.provider == other.provider
+            and self.repository_identity == other.repository_identity
+            and self.version == other.version
+            and self.tag == other.tag
+            and self.released_at == other.released_at
+            and self.commit == other.commit
+            and self.source_revision == other.source_revision
+            and self.artifact.kind == other.artifact.kind
+            and self.artifact.provenance == other.artifact.provenance
+            and self.artifact.migration_eligible
+            == other.artifact.migration_eligible
+            and self.artifact.tree_sha256 == other.artifact.tree_sha256
+            and self.artifact.source_path == other.artifact.source_path
+        )
+        if not common_fields_match:
+            return False
+        if self.artifact.provenance == "forge_source_archive":
+            return True
+        return (
+            self.artifact.url == other.artifact.url
+            and self.artifact.sha256 == other.artifact.sha256
+            and self.artifact.size == other.artifact.size
+            and self.artifact.root_prefix == other.artifact.root_prefix
+        )
+
+
+@dataclass
+class ReleaseTombstone:
+    """Reviewed release de-certification metadata."""
+
+    repository_identity: str
+    last_revision: int
+    release_id: str
+    reason: str
+    removed_at: str
+
+    @classmethod
+    def from_document(cls, document):
+        """Parse a de-certification tombstone."""
+        document = _require_document(
+            document,
+            "release tombstone",
+            (
+                "repository_identity",
+                "last_revision",
+                "release_id",
+                "reason",
+                "removed_at",
+            ),
+        )
+        repository_identity = normalize_repository_identity(
+            document["repository_identity"]
+        )
+        if not repository_identity:
+            raise ValueError("tombstone.repository_identity is invalid.")
+        removed_at = _require_nonempty_string(
+            document["removed_at"], "tombstone.removed_at"
+        )
+        _parse_utc_timestamp(removed_at, "tombstone.removed_at")
+        return cls(
+            repository_identity=repository_identity,
+            last_revision=_require_positive_integer(
+                document["last_revision"], "tombstone.last_revision"
+            ),
+            release_id=_require_nonempty_string(
+                document["release_id"], "tombstone.release_id"
+            ),
+            reason=_require_nonempty_string(document["reason"], "tombstone.reason"),
+            removed_at=removed_at,
+        )
+
+
+@dataclass
+class ReleaseIndex:
+    """Validated release targets bound to exact public registry bytes."""
+
+    schema_version: int
+    sequence: int
+    generated_at: str
+    expires_at: str
+    registry_sha256: str
+    plugins: dict
+    tombstones: dict
+
+    @classmethod
+    def from_document(cls, document, registry_bytes, now=None, previous=None):
+        """Validate and normalize a release index document."""
+        document = _require_document(
+            document,
+            "release index",
+            (
+                "schema_version",
+                "sequence",
+                "generated_at",
+                "expires_at",
+                "registry_sha256",
+                "plugins",
+            ),
+            ("tombstones",),
+        )
+        if (
+            type(document["schema_version"]) is not int
+            or document["schema_version"] != RELEASE_INDEX_SCHEMA_VERSION
+        ):
+            raise ValueError("release_index.schema_version is not supported.")
+        sequence = _require_positive_integer(
+            document["sequence"], "release_index.sequence"
+        )
+        if previous is not None:
+            if not isinstance(previous, cls):
+                raise ValueError("previous release index is invalid.")
+            if sequence <= previous.sequence:
+                raise ValueError("release_index.sequence must increase.")
+
+        generated_at = _require_nonempty_string(
+            document["generated_at"], "release_index.generated_at"
+        )
+        expires_at = _require_nonempty_string(
+            document["expires_at"], "release_index.expires_at"
+        )
+        generated_time = _parse_utc_timestamp(
+            generated_at, "release_index.generated_at"
+        )
+        expiry_time = _parse_utc_timestamp(expires_at, "release_index.expires_at")
+        if expiry_time <= generated_time:
+            raise ValueError("release index validity window is invalid.")
+        if now is None:
+            now = datetime.now(timezone.utc)
+        if not isinstance(now, datetime) or now.tzinfo is None:
+            raise ValueError("release index validation time must be timezone-aware.")
+        if expiry_time <= now.astimezone(timezone.utc):
+            raise ValueError("release index is expired.")
+
+        registry = _load_json_object(registry_bytes, "registry")
+        expected_registry_sha256 = _require_sha256(
+            document["registry_sha256"], "release_index.registry_sha256"
+        )
+        actual_registry_sha256 = hashlib.sha256(bytes(registry_bytes)).hexdigest()
+        if expected_registry_sha256 != actual_registry_sha256:
+            raise ValueError("release index does not match registry bytes.")
+
+        plugins_document = document["plugins"]
+        tombstones_document = document.get("tombstones", {})
+        if not isinstance(plugins_document, dict):
+            raise ValueError("release_index.plugins must be an object.")
+        if not isinstance(tombstones_document, dict):
+            raise ValueError("release_index.tombstones must be an object.")
+        if set(plugins_document) & set(tombstones_document):
+            raise ValueError("A plugin cannot be active and de-certified together.")
+
+        plugins = {}
+        active_release_ids = set()
+        for plugin_key, entry_document in plugins_document.items():
+            if plugin_key not in registry:
+                raise ValueError("Release index contains an unknown plugin.")
+            descriptor = ReleaseDescriptor.from_document(entry_document)
+            registry_identity = _registry_entry_identity(registry[plugin_key])
+            if not registry_identity or descriptor.repository_identity != registry_identity:
+                raise ValueError("Release repository does not match the registry.")
+            if descriptor.release_id in active_release_ids:
+                raise ValueError("Release index contains a duplicate release identity.")
+            active_release_ids.add(descriptor.release_id)
+            plugins[plugin_key] = descriptor
+
+        tombstones = {}
+        for plugin_key, tombstone_document in tombstones_document.items():
+            if plugin_key not in registry:
+                raise ValueError("Release index contains an unknown tombstone plugin.")
+            tombstone = ReleaseTombstone.from_document(tombstone_document)
+            registry_identity = _registry_entry_identity(registry[plugin_key])
+            if not registry_identity or tombstone.repository_identity != registry_identity:
+                raise ValueError("Tombstone repository does not match the registry.")
+            tombstones[plugin_key] = tombstone
+
+        result = cls(
+            schema_version=RELEASE_INDEX_SCHEMA_VERSION,
+            sequence=sequence,
+            generated_at=generated_at,
+            expires_at=expires_at,
+            registry_sha256=expected_registry_sha256,
+            plugins=plugins,
+            tombstones=tombstones,
+        )
+        if previous is not None:
+            result._validate_lineage(previous)
+        return result
+
+    def _validate_lineage(self, previous):
+        """Reject revision regressions, gaps, mutations, and silent removals."""
+        for plugin_key, previous_release in previous.plugins.items():
+            current_release = self.plugins.get(plugin_key)
+            tombstone = self.tombstones.get(plugin_key)
+            if current_release is None:
+                if tombstone is None:
+                    raise ValueError("Accepted release disappeared without a tombstone.")
+                if (
+                    tombstone.repository_identity
+                    != previous_release.repository_identity
+                    or tombstone.last_revision != previous_release.revision
+                    or tombstone.release_id != previous_release.release_id
+                ):
+                    raise ValueError("Release tombstone does not match prior state.")
+                continue
+
+            if current_release.revision < previous_release.revision:
+                raise ValueError("Release revision regressed.")
+            if current_release.revision == previous_release.revision:
+                if not current_release.same_accepted_target(previous_release):
+                    raise ValueError("An accepted release revision was mutated.")
+                continue
+
+            if current_release.release_id == previous_release.release_id:
+                raise ValueError(
+                    "A higher release revision must name a new release."
+                )
+
+            required_predecessors = set(previous_release.supersedes)
+            required_predecessors.add(previous_release.release_id)
+            if not required_predecessors.issubset(set(current_release.supersedes)):
+                raise ValueError("Release lineage has a predecessor gap.")
+
+        for plugin_key, previous_tombstone in previous.tombstones.items():
+            current_tombstone = self.tombstones.get(plugin_key)
+            if current_tombstone is None:
+                raise ValueError("A de-certified release was reactivated without review.")
+            if (
+                current_tombstone.repository_identity
+                != previous_tombstone.repository_identity
+                or current_tombstone.last_revision < previous_tombstone.last_revision
+                or current_tombstone.release_id != previous_tombstone.release_id
+            ):
+                raise ValueError("Release tombstone regressed or changed identity.")
+
+
 class RegistryEntry:
     def __init__(
         self,
@@ -1421,6 +2302,7 @@ class RegistryEntry:
         platforms=None,
         updated_at_slot_present=False,
         local=False,
+        delivery=None,
     ):
         self.key = str(key or "")
         self.author = str(author or "")
@@ -1431,6 +2313,7 @@ class RegistryEntry:
         self.platforms = list(platforms or ["unknown"])
         self.updated_at_slot_present = bool(updated_at_slot_present or self.updated_at)
         self.local = bool(local)
+        self.delivery = delivery or DeliveryPolicy.implicit()
 
     def to_legacy_list(self):
         entry = [self.author, self.repository, self.description, self.branch]
@@ -1449,6 +2332,7 @@ class RegistryEntry:
             self.platforms,
             self.updated_at_slot_present,
             self.local,
+            self.delivery,
         )
 
 
@@ -1465,6 +2349,21 @@ class RegistryService:
             branch = data.get("branch", "master")
             updated_at = "" if local else data.get("updated_at", "")
             platforms = self.plugin.normalize_platforms(data.get("platforms", data.get("platform", None)))
+            try:
+                if local:
+                    delivery = DeliveryPolicy.git_only()
+                else:
+                    delivery = (
+                        DeliveryPolicy.from_document(data["delivery"])
+                        if "delivery" in data
+                        else DeliveryPolicy.implicit()
+                    )
+            except ValueError as error:
+                Domoticz.Error(
+                    "Plugin '" + str(key) + "' has invalid delivery policy: "
+                    + str(error)
+                )
+                return None, ["unknown"]
             entry = RegistryEntry(
                 key,
                 author,
@@ -1475,6 +2374,7 @@ class RegistryService:
                 platforms,
                 bool(updated_at),
                 local,
+                delivery,
             )
         elif isinstance(data, list):
             raw_entry = list(data[:5])
@@ -1496,6 +2396,7 @@ class RegistryService:
                 platforms,
                 False if local else len(raw_entry) >= 5,
                 local,
+                DeliveryPolicy.git_only() if local else None,
             )
         else:
             Domoticz.Error("Plugin '" + str(key) + "' has an invalid registry entry.")
@@ -2178,6 +3079,10 @@ class BasePlugin:
         return os.path.join(self.get_plugin_home_folder(), "registry_local.json")
 
     def get_registry_entry(self, plugin_key):
+        existing_entry = self.registry_entries.get(plugin_key)
+        if existing_entry is not None:
+            return existing_entry
+
         data = self.plugin_data.get(plugin_key)
         if data is not None:
             has_explicit_platforms = (
