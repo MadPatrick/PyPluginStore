@@ -16,3 +16,8 @@ This file tracks all major tracks for the project. Each track has its own detail
 
 ## [x] Track: Robust PyPluginStore Self-Update State
 *Link: [./conductor/tracks/self_update_state_20260709/](./conductor/tracks/self_update_state_20260709/)*
+
+---
+
+## [ ] Track: Release-first plugin installation and updates
+*Link: [./conductor/tracks/release_first_plugin_management_20260718/](./conductor/tracks/release_first_plugin_management_20260718/)*
