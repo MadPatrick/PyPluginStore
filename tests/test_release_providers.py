@@ -427,6 +427,118 @@ def test_missing_configured_asset_is_rejected(release_providers_module):
         adapter.resolve(repository, policy, transport, now=NOW)
 
 
+def test_github_annotated_tag_cycle_is_rejected(release_providers_module):
+    adapter, repository, policy, transport, expected = github_case(
+        release_providers_module
+    )
+    first_sha = "a" * 40
+    second_sha = "b" * 40
+    first_tag_url = expected["requests"][-1]
+    second_tag_url = (
+        "https://api.github.com/repos/octo/example/git/tags/" + second_sha
+    )
+    transport.responses[first_tag_url] = {
+        "sha": first_sha,
+        "object": {"type": "tag", "sha": second_sha},
+    }
+    transport.responses[second_tag_url] = {
+        "sha": second_sha,
+        "object": {"type": "tag", "sha": first_sha},
+    }
+
+    with pytest.raises(ValueError, match="cycle"):
+        adapter.resolve(repository, policy, transport, now=NOW)
+
+
+@pytest.mark.parametrize(
+    "target",
+    [
+        pytest.param({}, id="missing-type-and-sha"),
+        pytest.param(
+            {"type": "tree", "sha": "1" * 40},
+            id="non-commit-target",
+        ),
+        pytest.param(
+            {"type": "commit", "sha": "short"},
+            id="abbreviated-commit",
+        ),
+    ],
+)
+def test_github_malformed_tag_target_is_rejected(
+    release_providers_module, target
+):
+    adapter, repository, policy, transport, expected = github_case(
+        release_providers_module
+    )
+    transport.responses[expected["requests"][1]]["object"] = target
+
+    with pytest.raises(ValueError):
+        adapter.resolve(repository, policy, transport, now=NOW)
+
+
+def test_github_rejects_malformed_provider_asset_digest(
+    release_providers_module,
+):
+    adapter, repository, policy, transport, _ = github_case(
+        release_providers_module,
+        artifact="asset:domoticz-plugin.zip",
+    )
+    releases = transport.responses[next(iter(transport.responses))]
+    stable_release = next(
+        release for release in releases if release["tag_name"] == "v1.4.0"
+    )
+    selected_asset = next(
+        asset
+        for asset in stable_release["assets"]
+        if asset["name"] == "domoticz-plugin.zip"
+    )
+    selected_asset["digest"] = "sha512:" + "a" * 128
+
+    with pytest.raises(ValueError, match="SHA-256"):
+        adapter.resolve(repository, policy, transport, now=NOW)
+
+
+def test_github_requests_include_standard_api_headers(
+    release_providers_module,
+):
+    adapter, repository, policy, fixture_transport, _ = github_case(
+        release_providers_module
+    )
+
+    class HeaderRecordingTransport(FixtureTransport):
+        def __init__(self, responses):
+            super().__init__(responses)
+            self.options = []
+
+        def get_json(self, url, **kwargs):
+            self.options.append(copy.deepcopy(kwargs))
+            return super().get_json(url, **kwargs)
+
+    transport = HeaderRecordingTransport(fixture_transport.responses)
+
+    adapter.resolve(repository, policy, transport, now=NOW)
+
+    assert transport.options
+    assert all(
+        options["headers"]["Accept"] == "application/vnd.github+json"
+        and options["headers"]["X-GitHub-Api-Version"] == "2026-03-10"
+        and options["headers"]["User-Agent"]
+        for options in transport.options
+    )
+
+
+def test_github_repository_identity_must_match_configured_web_host(
+    release_providers_module,
+):
+    adapter, repository, policy, transport, _ = github_case(
+        release_providers_module
+    )
+    repository["repository_identity"] = "mirror.example/octo/example"
+
+    with pytest.raises(ValueError, match="web_base"):
+        adapter.resolve(repository, policy, transport, now=NOW)
+
+
 def generic_case(module, manifest=None, manifest_url=None):
     manifest_url = manifest_url or (
         "https://downloads.example.test/example/release-manifest.json"

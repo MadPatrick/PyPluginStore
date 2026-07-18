@@ -3,6 +3,7 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from datetime import datetime, timezone
+import inspect
 import re
 import unicodedata
 import urllib.parse
@@ -27,6 +28,13 @@ WINDOWS_RESERVED_NAMES = {
     "prn",
     *("com" + str(number) for number in range(1, 10)),
     *("lpt" + str(number) for number in range(1, 10)),
+}
+GITHUB_API_VERSION = "2026-03-10"
+GITHUB_TAG_MAX_DEREFERENCES = 8
+GITHUB_API_HEADERS = {
+    "Accept": "application/vnd.github+json",
+    "User-Agent": "PyPluginStore-Release-Scanner",
+    "X-GitHub-Api-Version": GITHUB_API_VERSION,
 }
 
 
@@ -333,3 +341,243 @@ def select_exact_asset(assets, asset_name, *, name_key="name"):
         asset_name=asset_name,
         name_key=name_key,
     )
+
+
+def _require_https_base_url(value, label):
+    """Validate and normalize a configured provider API or web base URL."""
+    value = _require_string(value, label)
+    try:
+        parsed = urllib.parse.urlsplit(value)
+        parsed.port
+    except ValueError as error:
+        raise ValueError(label + " is not a valid URL.") from error
+    if (
+        parsed.scheme != "https"
+        or not parsed.hostname
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.query
+        or parsed.fragment
+    ):
+        raise ValueError(label + " must be a credential-free HTTPS URL.")
+    return value.rstrip("/")
+
+
+def _require_github_repository(repository):
+    """Return validated GitHub repository coordinates and configured bases."""
+    if not isinstance(repository, dict):
+        raise ValueError("GitHub repository configuration must be an object.")
+    identity = _require_repository_identity(
+        repository.get("repository_identity")
+    )
+    owner = _require_string(repository.get("owner"), "owner")
+    name = _require_string(repository.get("repository"), "repository")
+    for value, label in ((owner, "owner"), (name, "repository")):
+        if (
+            value != value.lower()
+            or value in (".", "..")
+            or "/" in value
+            or "\\" in value
+            or urllib.parse.quote(value, safe="") != value
+        ):
+            raise ValueError(label + " must be a canonical GitHub path segment.")
+    if name.endswith(".git"):
+        raise ValueError("repository must not include a .git suffix.")
+
+    identity_parts = identity.split("/")
+    if identity_parts[-2:] != [owner, name]:
+        raise ValueError(
+            "GitHub repository coordinates do not match repository_identity."
+        )
+    api_base = _require_https_base_url(
+        repository.get("api_base"), "api_base"
+    )
+    web_base = _require_https_base_url(
+        repository.get("web_base"), "web_base"
+    )
+    identity_host = identity.split("/", 1)[0].split(":", 1)[0]
+    if urllib.parse.urlsplit(web_base).hostname != identity_host:
+        raise ValueError(
+            "GitHub web_base does not match repository_identity."
+        )
+    return identity, owner, name, api_base, web_base
+
+
+def _transport_get_json(transport, url, headers):
+    """Request JSON with diagnostics when the transport accepts headers."""
+    get_json = getattr(transport, "get_json", None)
+    if not callable(get_json):
+        raise ValueError("Release transport must provide get_json().")
+
+    supports_headers = True
+    try:
+        parameters = inspect.signature(get_json).parameters.values()
+        supports_headers = any(
+            parameter.kind == inspect.Parameter.VAR_KEYWORD
+            or parameter.name == "headers"
+            for parameter in parameters
+        )
+    except (TypeError, ValueError):
+        pass
+    if supports_headers:
+        return get_json(url, headers=dict(headers))
+    return get_json(url)
+
+
+def _github_version_from_tag(tag):
+    """Derive display version text without using it for release ordering."""
+    tag = _require_string(tag, "tag")
+    version = tag[1:] if tag.startswith(("v", "V")) else tag
+    return _require_string(version, "version")
+
+
+def _github_provider_digest(value):
+    """Parse GitHub's optional algorithm-prefixed asset digest."""
+    if value in (None, ""):
+        return ""
+    value = _require_string(value, "GitHub asset digest")
+    prefix = "sha256:"
+    if not value.startswith(prefix):
+        raise ValueError("GitHub asset digest must use SHA-256.")
+    digest = value[len(prefix):]
+    _require_sha256(digest)
+    return digest
+
+
+def _github_release_is_excluded(release):
+    """Fail closed unless GitHub supplied explicit stable-release flags."""
+    for flag in ("draft", "prerelease"):
+        if flag not in release or type(release[flag]) is not bool:
+            raise ValueError("GitHub release " + flag + " must be a boolean.")
+    return release["draft"] or release["prerelease"]
+
+
+class GitHubReleaseAdapter(ReleaseProviderAdapter):
+    """Resolve stable GitHub releases to immutable provider-neutral candidates."""
+
+    provider = "github"
+
+    def _get_json(self, transport, url):
+        return _transport_get_json(transport, url, GITHUB_API_HEADERS)
+
+    def _resolve_commit(self, transport, api_repository_url, tag):
+        """Peel a lightweight or nested annotated tag to a bounded commit ID."""
+        encoded_tag = urllib.parse.quote(tag, safe="")
+        ref_url = api_repository_url + "/git/ref/tags/" + encoded_tag
+        ref_document = self._get_json(transport, ref_url)
+        if not isinstance(ref_document, dict):
+            raise ValueError("GitHub tag reference must be an object.")
+        target = ref_document.get("object")
+        visited_tags = set()
+        dereferences = 0
+
+        while True:
+            if not isinstance(target, dict):
+                raise ValueError("GitHub tag target must be an object.")
+            target_type = target.get("type")
+            target_sha = target.get("sha")
+            if target_type == "commit":
+                return _require_git_object_id(target_sha)
+            if target_type != "tag":
+                raise ValueError("GitHub tag must resolve to a commit or tag object.")
+            tag_sha = _require_git_object_id(target_sha)
+            if tag_sha in visited_tags:
+                raise ValueError("GitHub annotated tag chain contains a cycle.")
+            if dereferences >= GITHUB_TAG_MAX_DEREFERENCES:
+                raise ValueError("GitHub annotated tag chain exceeds the limit.")
+            visited_tags.add(tag_sha)
+            dereferences += 1
+
+            tag_url = api_repository_url + "/git/tags/" + tag_sha
+            tag_document = self._get_json(transport, tag_url)
+            if not isinstance(tag_document, dict):
+                raise ValueError("GitHub annotated tag must be an object.")
+            document_sha = _require_git_object_id(tag_document.get("sha"))
+            if document_sha != tag_sha:
+                raise ValueError("GitHub annotated tag response changed identity.")
+            target = tag_document.get("object")
+
+    def _select_artifact(self, release, policy, api_repository_url, commit):
+        """Return candidate artifact fields for source or configured asset ZIP."""
+        artifact_kind = policy.get("artifact")
+        if artifact_kind == "source_zip":
+            return {
+                "artifact_kind": "source_zip",
+                "artifact_provenance": "forge_source_archive",
+                "artifact_url": api_repository_url + "/zipball/" + commit,
+                "artifact_size": None,
+                "provider_sha256": "",
+                "migration_eligible": True,
+            }
+        if artifact_kind != "asset_zip":
+            raise ValueError("GitHub policy artifact must be source_zip or asset_zip.")
+
+        asset = select_asset(
+            release.get("assets"),
+            asset_name=policy.get("asset_name", ""),
+            asset_pattern=policy.get("asset_pattern", ""),
+        )
+        asset_name = asset.get("name")
+        if not asset_name.lower().endswith(".zip"):
+            raise ValueError("Configured GitHub release asset must be a ZIP file.")
+        if asset.get("state", "uploaded") != "uploaded":
+            raise ValueError("Configured GitHub release asset is not uploaded.")
+        asset_size = asset.get("size")
+        if type(asset_size) is not int or asset_size <= 0:
+            raise ValueError("GitHub release asset size must be positive.")
+        return {
+            "artifact_kind": "asset_zip",
+            "artifact_provenance": "attached_asset",
+            "artifact_url": asset.get("browser_download_url"),
+            "artifact_size": asset_size,
+            "provider_sha256": _github_provider_digest(asset.get("digest")),
+            "migration_eligible": False,
+        }
+
+    def resolve(self, repository, policy, transport, *, now=None):
+        """Resolve the newest reviewed stable GitHub release."""
+        identity, owner, name, api_base, _web_base = (
+            _require_github_repository(repository)
+        )
+        if not isinstance(policy, dict):
+            raise ValueError("GitHub release policy must be an object.")
+        if policy.get("channel") != "stable":
+            raise ValueError("GitHub adapter currently supports only stable releases.")
+
+        tag_pattern = policy.get("tag_pattern")
+        api_repository_url = (
+            api_base
+            + "/repos/"
+            + urllib.parse.quote(owner, safe="")
+            + "/"
+            + urllib.parse.quote(name, safe="")
+        )
+        releases_url = api_repository_url + "/releases?per_page=100"
+        releases = self._get_json(transport, releases_url)
+        release = select_latest_stable_release(
+            releases,
+            tag_pattern,
+            released_at_key="published_at",
+            excluded=_github_release_is_excluded,
+            now=now,
+        )
+        tag = release.get("tag_name")
+        commit = self._resolve_commit(
+            transport, api_repository_url, tag
+        )
+        artifact = self._select_artifact(
+            release, policy, api_repository_url, commit
+        )
+
+        return ReleaseCandidate(
+            provider=self.provider,
+            repository_identity=identity,
+            release_id="github:" + owner + "/" + name + ":" + tag,
+            version=_github_version_from_tag(tag),
+            tag=tag,
+            released_at=release.get("published_at"),
+            source_revision=commit,
+            commit=commit,
+            source_path=policy.get("source_path", "."),
+            **artifact,
+        )
