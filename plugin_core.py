@@ -8,6 +8,7 @@ import platform
 import re
 import subprocess
 import sys
+import tempfile
 import time
 import urllib.error
 import urllib.parse
@@ -2288,6 +2289,500 @@ class ReleaseIndex:
                 or current_tombstone.release_id != previous_tombstone.release_id
             ):
                 raise ValueError("Release tombstone regressed or changed identity.")
+
+
+@dataclass
+class ReleaseMetadataSelection:
+    """The registry/index pair selected for runtime use."""
+
+    sequence: int
+    registry_bytes: bytes
+    release_index_bytes: bytes
+    release_index: object
+    release_authorized: bool
+    reason: str = ""
+
+
+@dataclass
+class _ReleaseMetadataGeneration:
+    """One complete and hash-verified on-disk metadata generation."""
+
+    sequence: int
+    registry_bytes: bytes
+    release_index_bytes: bytes
+    release_index: ReleaseIndex
+
+
+class ReleaseMetadataStore:
+    """Durably cache and recover exact registry/release-index generations."""
+
+    def __init__(
+        self,
+        metadata_root,
+        bundled_registry_path=None,
+        bundled_index_path=None,
+        clock=None,
+        fault_injector=None,
+    ):
+        self.metadata_root = os.path.abspath(str(metadata_root))
+        self.generations_dir = os.path.join(self.metadata_root, "generations")
+        self.watermark_path = os.path.join(
+            self.metadata_root, "trust-state.json"
+        )
+        self.pointer_path = os.path.join(self.metadata_root, "current.json")
+        self.bundled_registry_path = bundled_registry_path
+        self.bundled_index_path = bundled_index_path
+        self.clock = clock or (lambda: datetime.now(timezone.utc))
+        self.fault_injector = fault_injector
+
+    def _event(self, event):
+        """Expose a completed durability boundary to crash-injection tests."""
+        if self.fault_injector is not None:
+            self.fault_injector(event)
+
+    def _ensure_directories(self):
+        """Create the manager-owned metadata and generation directories."""
+        os.makedirs(self.generations_dir, exist_ok=True)
+
+    def _fsync_directory(self, path):
+        """Persist directory entry changes where the platform supports it."""
+        flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
+        try:
+            descriptor = os.open(path, flags)
+        except OSError:
+            if os.name == "nt":
+                return
+            raise
+        try:
+            os.fsync(descriptor)
+        finally:
+            os.close(descriptor)
+
+    def _json_bytes(self, document):
+        """Serialize small state documents deterministically."""
+        return (
+            json.dumps(document, indent=2, sort_keys=True) + "\n"
+        ).encode("utf-8")
+
+    def _write_generation_file(
+        self, path, contents, written_event, fsynced_event
+    ):
+        """Write and fsync one file inside an unpublished generation."""
+        with open(path, "xb") as metadata_file:
+            metadata_file.write(contents)
+            self._event(written_event)
+            metadata_file.flush()
+            os.fsync(metadata_file.fileno())
+            self._event(fsynced_event)
+
+    def _write_atomic_state(
+        self,
+        path,
+        document,
+        written_event,
+        fsynced_event,
+        replaced_event,
+        directory_fsynced_event,
+    ):
+        """Atomically replace a durable metadata state document."""
+        self._ensure_directories()
+        descriptor, temporary_path = tempfile.mkstemp(
+            prefix=os.path.basename(path) + ".tmp-",
+            dir=self.metadata_root,
+        )
+        with os.fdopen(descriptor, "wb") as state_file:
+            state_file.write(self._json_bytes(document))
+            self._event(written_event)
+            state_file.flush()
+            os.fsync(state_file.fileno())
+            self._event(fsynced_event)
+        os.replace(temporary_path, path)
+        self._event(replaced_event)
+        self._fsync_directory(self.metadata_root)
+        self._event(directory_fsynced_event)
+
+    def _write_watermark(self, sequence):
+        """Raise the durable highest-sequence watermark."""
+        self._write_atomic_state(
+            self.watermark_path,
+            {
+                "schema_version": RELEASE_INDEX_SCHEMA_VERSION,
+                "highest_sequence": sequence,
+            },
+            "watermark_written",
+            "watermark_fsynced",
+            "watermark_replaced",
+            "metadata_fsynced_after_watermark",
+        )
+
+    def _write_pointer(self, sequence):
+        """Point runtime readers at one complete metadata generation."""
+        self._write_atomic_state(
+            self.pointer_path,
+            {
+                "schema_version": RELEASE_INDEX_SCHEMA_VERSION,
+                "sequence": sequence,
+            },
+            "pointer_written",
+            "pointer_fsynced",
+            "pointer_replaced",
+            "metadata_fsynced_after_pointer",
+        )
+
+    def _read_state_sequence(self, path, field):
+        """Read one small state document without repairing invalid data."""
+        if not os.path.isfile(path):
+            return "missing", 0
+        try:
+            with open(path, "rb") as state_file:
+                document = _load_json_object(state_file.read(), path)
+            allowed = {field, "schema_version"}
+            if set(document) - allowed or field not in document:
+                raise ValueError("State document has unexpected fields.")
+            if "schema_version" in document and (
+                type(document["schema_version"]) is not int
+                or document["schema_version"] != RELEASE_INDEX_SCHEMA_VERSION
+            ):
+                raise ValueError("State document schema is unsupported.")
+            sequence = _require_positive_integer(document[field], field)
+            return "valid", sequence
+        except (OSError, ValueError, TypeError):
+            return "invalid", 0
+
+    def _historical_index(self, registry_bytes, index_bytes):
+        """Validate a stored pair without applying current-time expiry."""
+        document = _load_json_object(index_bytes, "release_index.json")
+        generated_at = _parse_utc_timestamp(
+            document.get("generated_at"), "release_index.generated_at"
+        )
+        return ReleaseIndex.from_document(
+            document,
+            registry_bytes=registry_bytes,
+            now=generated_at,
+        )
+
+    def _generation_from_directory(self, generation_path):
+        """Load one complete generation, returning None if it is corrupt."""
+        generation_name = os.path.basename(generation_path)
+        if (
+            not generation_name.isdigit()
+            or os.path.islink(generation_path)
+            or not os.path.isdir(generation_path)
+        ):
+            return None
+        try:
+            sequence = _require_positive_integer(
+                int(generation_name), "generation sequence"
+            )
+            with open(
+                os.path.join(generation_path, "registry.json"), "rb"
+            ) as registry_file:
+                registry_bytes = registry_file.read()
+            with open(
+                os.path.join(generation_path, "release_index.json"), "rb"
+            ) as index_file:
+                index_bytes = index_file.read()
+            with open(
+                os.path.join(generation_path, "hashes.json"), "rb"
+            ) as hashes_file:
+                hashes = _load_json_object(
+                    hashes_file.read(), "generation hashes"
+                )
+            if set(hashes) != {
+                "registry_sha256",
+                "release_index_sha256",
+            }:
+                raise ValueError("Generation hashes have unexpected fields.")
+            registry_sha256 = _require_sha256(
+                hashes["registry_sha256"], "generation registry hash"
+            )
+            index_sha256 = _require_sha256(
+                hashes["release_index_sha256"], "generation index hash"
+            )
+            if hashlib.sha256(registry_bytes).hexdigest() != registry_sha256:
+                raise ValueError("Cached registry hash mismatch.")
+            if hashlib.sha256(index_bytes).hexdigest() != index_sha256:
+                raise ValueError("Cached release index hash mismatch.")
+            release_index = self._historical_index(
+                registry_bytes, index_bytes
+            )
+            if release_index.sequence != sequence:
+                raise ValueError(
+                    "Generation directory does not match embedded sequence."
+                )
+            return _ReleaseMetadataGeneration(
+                sequence=sequence,
+                registry_bytes=registry_bytes,
+                release_index_bytes=index_bytes,
+                release_index=release_index,
+            )
+        except (OSError, ValueError, TypeError):
+            return None
+
+    def _scan_generations(self):
+        """Return all complete generations ordered by increasing sequence."""
+        if not os.path.isdir(self.generations_dir):
+            return []
+        generations = []
+        try:
+            names = os.listdir(self.generations_dir)
+        except OSError:
+            return generations
+        for name in names:
+            if not name.isdigit():
+                continue
+            generation = self._generation_from_directory(
+                os.path.join(self.generations_dir, name)
+            )
+            if generation is not None:
+                generations.append(generation)
+        return sorted(generations, key=lambda generation: generation.sequence)
+
+    def _read_bundle_bytes(self):
+        """Read bundled bytes for bootstrap or registry-only fallback."""
+        registry_bytes = b""
+        index_bytes = b""
+        try:
+            if self.bundled_registry_path:
+                with open(self.bundled_registry_path, "rb") as registry_file:
+                    registry_bytes = registry_file.read()
+                _load_json_object(registry_bytes, "bundled registry")
+        except (OSError, ValueError):
+            registry_bytes = b""
+        try:
+            if self.bundled_index_path:
+                with open(self.bundled_index_path, "rb") as index_file:
+                    index_bytes = index_file.read()
+        except OSError:
+            index_bytes = b""
+        return registry_bytes, index_bytes
+
+    def _is_fresh(self, release_index):
+        """Return whether an otherwise valid index may authorize mutations."""
+        now = self.clock()
+        if not isinstance(now, datetime) or now.tzinfo is None:
+            raise ValueError("Release metadata clock must be timezone-aware.")
+        expires_at = _parse_utc_timestamp(
+            release_index.expires_at, "release_index.expires_at"
+        )
+        return expires_at > now.astimezone(timezone.utc)
+
+    def _selection(self, generation, reason=""):
+        """Build a runtime selection and apply current freshness rules."""
+        release_authorized = self._is_fresh(generation.release_index)
+        if not release_authorized and not reason:
+            reason = "Release metadata is expired; release changes are paused."
+        return ReleaseMetadataSelection(
+            sequence=generation.sequence,
+            registry_bytes=generation.registry_bytes,
+            release_index_bytes=generation.release_index_bytes,
+            release_index=(
+                generation.release_index if release_authorized else None
+            ),
+            release_authorized=release_authorized,
+            reason=reason,
+        )
+
+    def _unauthorized_selection(
+        self, reason, registry_bytes=b"", sequence=0, index_bytes=b""
+    ):
+        """Return registry data while refusing all release mutations."""
+        return ReleaseMetadataSelection(
+            sequence=sequence,
+            registry_bytes=registry_bytes,
+            release_index_bytes=index_bytes,
+            release_index=None,
+            release_authorized=False,
+            reason=reason,
+        )
+
+    def _trusted_generation(self, repair=True):
+        """Select the highest complete generation at or above the watermark."""
+        watermark_status, watermark = self._read_state_sequence(
+            self.watermark_path, "highest_sequence"
+        )
+        if watermark_status == "invalid":
+            raise ValueError(
+                "The durable release metadata watermark is malformed."
+            )
+
+        generations = self._scan_generations()
+        eligible = [
+            generation
+            for generation in generations
+            if generation.sequence >= watermark
+        ]
+        generation = eligible[-1] if eligible else None
+        if generation is None:
+            if watermark > 0:
+                raise ValueError(
+                    "The generation named by the durable watermark is unavailable."
+                )
+            return None, 0, generations
+
+        pointer_status, pointer = self._read_state_sequence(
+            self.pointer_path, "sequence"
+        )
+        pointer_matches = (
+            pointer_status == "valid" and pointer == generation.sequence
+        )
+        watermark_matches = watermark == generation.sequence
+        if repair and (not watermark_matches or not pointer_matches):
+            self._event("recovery_selected")
+            if not watermark_matches:
+                self._write_watermark(generation.sequence)
+            if not pointer_matches:
+                self._write_pointer(generation.sequence)
+        return generation, watermark, generations
+
+    def _persist_generation(
+        self, registry_bytes, index_bytes, release_index
+    ):
+        """Publish an exact pair, then durably raise trust and current state."""
+        self._ensure_directories()
+        sequence = release_index.sequence
+        final_path = os.path.join(self.generations_dir, str(sequence))
+        if os.path.exists(final_path):
+            raise ValueError("Release metadata generation already exists.")
+        temporary_path = tempfile.mkdtemp(
+            prefix=str(sequence) + ".tmp-", dir=self.generations_dir
+        )
+
+        self._write_generation_file(
+            os.path.join(temporary_path, "registry.json"),
+            registry_bytes,
+            "registry_written",
+            "registry_fsynced",
+        )
+        self._write_generation_file(
+            os.path.join(temporary_path, "release_index.json"),
+            index_bytes,
+            "index_written",
+            "index_fsynced",
+        )
+        hashes = self._json_bytes(
+            {
+                "registry_sha256": hashlib.sha256(
+                    registry_bytes
+                ).hexdigest(),
+                "release_index_sha256": hashlib.sha256(
+                    index_bytes
+                ).hexdigest(),
+            }
+        )
+        self._write_generation_file(
+            os.path.join(temporary_path, "hashes.json"),
+            hashes,
+            "hashes_written",
+            "hashes_fsynced",
+        )
+        self._fsync_directory(temporary_path)
+        self._event("generation_fsynced")
+        os.replace(temporary_path, final_path)
+        self._event("generation_renamed")
+        self._fsync_directory(self.generations_dir)
+        self._event("generations_fsynced")
+        self._write_watermark(sequence)
+        self._write_pointer(sequence)
+        return _ReleaseMetadataGeneration(
+            sequence=sequence,
+            registry_bytes=registry_bytes,
+            release_index_bytes=index_bytes,
+            release_index=release_index,
+        )
+
+    def accept_remote(self, registry_bytes, index_bytes):
+        """Validate and durably accept a fresh, increasing remote pair."""
+        if not isinstance(registry_bytes, (bytes, bytearray)) or not isinstance(
+            index_bytes, (bytes, bytearray)
+        ):
+            raise ValueError("Remote release metadata must be bytes.")
+        registry_bytes = bytes(registry_bytes)
+        index_bytes = bytes(index_bytes)
+
+        prior_generation, watermark, _ = self._trusted_generation(repair=True)
+        document = _load_json_object(index_bytes, "release_index.json")
+        release_index = ReleaseIndex.from_document(
+            document,
+            registry_bytes=registry_bytes,
+            now=self.clock(),
+            previous=(
+                prior_generation.release_index
+                if prior_generation is not None
+                else None
+            ),
+        )
+        if release_index.sequence <= watermark:
+            raise ValueError("Release metadata sequence does not raise trust.")
+
+        generation = self._persist_generation(
+            registry_bytes, index_bytes, release_index
+        )
+        return self._selection(generation)
+
+    def load(self):
+        """Recover the highest trusted pair or return a registry-only fallback."""
+        bundled_registry, bundled_index = self._read_bundle_bytes()
+        generations = self._scan_generations()
+        fallback_generation = generations[-1] if generations else None
+        fallback_registry = (
+            fallback_generation.registry_bytes
+            if fallback_generation is not None
+            else bundled_registry
+        )
+        fallback_sequence = (
+            fallback_generation.sequence if fallback_generation is not None else 0
+        )
+
+        try:
+            generation, watermark, _ = self._trusted_generation(repair=True)
+        except ValueError as error:
+            return self._unauthorized_selection(
+                str(error),
+                registry_bytes=fallback_registry,
+                sequence=fallback_sequence,
+            )
+        if generation is not None:
+            return self._selection(generation)
+
+        if not bundled_registry:
+            return self._unauthorized_selection(
+                "No valid bundled or cached plugin registry is available."
+            )
+        if not bundled_index:
+            return self._unauthorized_selection(
+                "The bundled release index is unavailable.",
+                registry_bytes=bundled_registry,
+            )
+
+        try:
+            bundled_release_index = self._historical_index(
+                bundled_registry, bundled_index
+            )
+        except ValueError as error:
+            return self._unauthorized_selection(
+                "The bundled release index is invalid: " + str(error),
+                registry_bytes=bundled_registry,
+            )
+        if bundled_release_index.sequence < watermark:
+            return self._unauthorized_selection(
+                "The bundled release index is below the durable watermark.",
+                registry_bytes=bundled_registry,
+                sequence=bundled_release_index.sequence,
+                index_bytes=bundled_index,
+            )
+        if not self._is_fresh(bundled_release_index):
+            return self._unauthorized_selection(
+                "The bundled release index is expired.",
+                registry_bytes=bundled_registry,
+                sequence=bundled_release_index.sequence,
+                index_bytes=bundled_index,
+            )
+
+        generation = self._persist_generation(
+            bundled_registry, bundled_index, bundled_release_index
+        )
+        return self._selection(generation)
 
 
 class RegistryEntry:
