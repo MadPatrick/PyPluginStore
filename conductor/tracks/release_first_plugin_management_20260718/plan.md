@@ -18,8 +18,8 @@
 - [x] Task: Implement Forgejo/Codeberg stable release and asset/source-ZIP resolution `8dbb9d7`
 - [x] Task: Implement a distinct Gitea stable release and asset/source-ZIP adapter `589bb61`
 - [x] Task: Implement generic HTTPS manifest resolution `5848a14`
-- [~] Task: Add SSRF-safe bounded downloads, commit-addressed source archives, transport digest/length checks, canonical-tree identity, asset mutation detection, caching, and report-only index generation
-- [ ] Task: Extend registry validation and weekly PR automation for `release_index.json`
+- [x] Task: Add SSRF-safe bounded downloads, commit-addressed source archives, transport digest/length checks, canonical-tree identity, asset mutation detection, caching, and report-only index generation `a873a68`
+- [~] Task: Extend registry validation and weekly PR automation for `release_index.json`
 - [ ] Task: Conductor - User Manual Verification 'Multi-Forge Release Resolution' (Protocol in workflow.md)
 
 ## Phase 3: Hardened ZIP Staging and Rollback
