@@ -225,33 +225,40 @@ serialization are shared.
 
 ### Codeberg and Forgejo hosts
 
-- Use the Forgejo-compatible `/api/v1/repos/{owner}/{repo}/releases/latest` or
-  release-list endpoint.
+- Use the Forgejo-compatible release-list endpoint and apply the reviewed tag
+  policy locally. Do not rely on `/releases/latest`, whose ordering cannot express
+  the complete stable-selection policy.
 - Resolve the tag and request its commit-addressed source archive. Configured
   assets follow the same source-tree equivalence rule before they become
   migration-eligible.
 - Calculate SHA-256 because the common API does not guarantee an artifact digest.
 - Treat API compatibility as a provider capability. Codeberg is enabled by
-  default; other public or self-hosted bases require explicit registry policy.
+  default; other public or self-hosted bases require explicit registry policy,
+  including the API/web bases and the reviewed server response-page cap. This
+  avoids treating a server-capped short page as the end of a result set.
+- Use the returned attachment URL. External Forgejo assets are not implicitly
+  trusted as ordinary uploaded attachments and require a separate reviewed policy.
 
 ### Gitea hosts
 
 - Use a distinct adapter and fixture contract even where endpoints resemble
   Forgejo. The projects can diverge and must not be coupled by an assumed shared
   implementation.
-- Require an explicitly configured API base and capabilities for public or
-  self-hosted instances, then normalize assets and source ZIPs through the same
-  validation pipeline.
+- Require explicitly configured API/web bases and a reviewed response-page cap
+  for public or self-hosted instances, then normalize host-returned asset URLs and
+  source ZIPs through the same validation pipeline.
 
 ### Generic HTTPS manifest
 
-Support non-forge hosting with a small versioned manifest containing `release_id`,
-`version`, `released_at`, `url`, `sha256`, `size`, immutable `source_revision`,
-and optional `commit`/`source_path`. Repository automation validates it, assigns
-the curator-controlled revision/lineage, and pins it into the same index. Public
-manifests and artifacts require HTTPS. Runtime `file://` archives, local manifest
-discovery, and private-host authentication are not part of v1; local registries
-continue to support Git.
+Support non-forge hosting with a strict versioned manifest containing
+`release_id`, `version`, `released_at`, `url`, `sha256`, `size`, immutable
+`source_revision`, and optional `commit`/`source_path`. Repository automation
+validates it, binds it to the configured repository identity, assigns the
+curator-controlled revision/lineage, and pins it into the same index. The
+publisher manifest is scanner input, not a runtime trust root; runtime consumes
+only curator-generated index records. Public manifests and artifacts require
+HTTPS. Runtime `file://` archives, local manifest discovery, and private-host
+authentication are not part of v1; local registries continue to support Git.
 
 All provider and generic downloads enforce a public-fetch policy in scanner and
 runtime code: HTTPS on every redirect, bounded redirects and DNS resolution,
