@@ -2,6 +2,7 @@
 
 import base64
 from collections.abc import Mapping
+from contextlib import contextmanager
 import hashlib
 import html
 import http.client
@@ -19,6 +20,7 @@ import stat
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import tokenize
 import unicodedata
@@ -5491,6 +5493,1568 @@ class ChannelPreferenceService:
                 channels=channels,
             )
         )
+
+
+RELEASE_TRANSACTION_SCHEMA_VERSION = 1
+RELEASE_TRANSACTION_OPERATIONS = {
+    "release_install",
+    "release_update",
+    "release_migration",
+}
+RELEASE_TRANSACTION_FINAL_PHASES = {
+    "release_managed",
+    "restart_pending",
+    "rolled_back",
+    "stale_target",
+}
+RELEASE_TRANSACTION_PHASES = RELEASE_TRANSACTION_FINAL_PHASES | {
+    "created",
+    "staged_verified",
+    "dependencies_staged",
+    "code_backup_pending",
+    "code_backed_up",
+    "dependencies_backup_pending",
+    "dependencies_backed_up",
+    "dependencies_activation_pending",
+    "dependencies_activated",
+    "code_activation_pending",
+    "release_activated",
+    "rollback_pending",
+    "queued_locked",
+}
+_RELEASE_TRANSACTION_LOCKS = {}
+_RELEASE_TRANSACTION_LOCKS_GUARD = threading.Lock()
+
+
+def _transaction_json_copy(value, label):
+    """Return a JSON-only deep copy for a durable transaction descriptor."""
+    try:
+        encoded = json.dumps(
+            value,
+            ensure_ascii=False,
+            allow_nan=False,
+            sort_keys=True,
+        )
+        return json.loads(encoded)
+    except (TypeError, ValueError, json.JSONDecodeError) as error:
+        raise ValueError(label + " must contain only finite JSON values.") from error
+
+
+def _validated_dependency_tree(value, label, allow_none=False):
+    if value is None and allow_none:
+        return None
+    value = _require_document(value, label, ("present", "tree"))
+    present = _require_boolean(value["present"], label + ".present")
+    tree = value["tree"]
+    if not present:
+        if tree is not None:
+            raise ValueError(label + ".tree must be null when absent.")
+        return {"present": False, "tree": None}
+    tree = _require_document(
+        tree,
+        label + ".tree",
+        ("sha256", "files", "directories", "bytes"),
+    )
+    normalized = {"sha256": _require_sha256(tree["sha256"], label + ".sha256")}
+    for field in ("files", "directories", "bytes"):
+        field_value = tree[field]
+        if type(field_value) is not int or field_value < 0:
+            raise ValueError(label + "." + field + " must be a non-negative integer.")
+        normalized[field] = field_value
+    return {"present": True, "tree": normalized}
+
+
+def _validated_dependency_state(value):
+    value = _require_document(
+        value,
+        "dependency_state",
+        ("expected", "target"),
+    )
+    return {
+        "expected": _validated_dependency_tree(
+            value["expected"],
+            "dependency_state.expected",
+        ),
+        "target": _validated_dependency_tree(
+            value["target"],
+            "dependency_state.target",
+            allow_none=True,
+        ),
+    }
+
+
+def _validated_staged_snapshot(value, allow_none=False):
+    if value is None and allow_none:
+        return None
+    value = _require_document(
+        value,
+        "staged_snapshot",
+        ("install_metadata_sha256", "artifact_files", "preserved_files"),
+    )
+    metadata_sha256 = _require_sha256(
+        value["install_metadata_sha256"],
+        "staged_snapshot.install_metadata_sha256",
+    )
+    artifact_files = value["artifact_files"]
+    if not isinstance(artifact_files, dict) or not artifact_files:
+        raise ValueError("staged_snapshot.artifact_files must be non-empty.")
+    normalized_artifacts = {}
+    artifact_spellings = {}
+    for raw_path, raw_record in artifact_files.items():
+        path = _require_artifact_file_path(
+            raw_path,
+            "staged_snapshot.artifact_files path",
+        )
+        collision_key = path.casefold()
+        if collision_key in artifact_spellings:
+            raise ValueError(
+                "staged_snapshot.artifact_files contains colliding paths."
+            )
+        artifact_spellings[collision_key] = path
+        raw_record = _require_document(
+            raw_record,
+            "staged_snapshot artifact record",
+            ("sha256", "size"),
+        )
+        normalized_artifacts[path] = {
+            "sha256": _require_sha256(
+                raw_record["sha256"],
+                "staged_snapshot artifact digest",
+            ),
+            "size": _require_positive_integer(
+                raw_record["size"],
+                "staged_snapshot artifact size",
+            ),
+        }
+    preserved_files = value["preserved_files"]
+    if not isinstance(preserved_files, dict):
+        raise ValueError("staged_snapshot.preserved_files must be an object.")
+    normalized_preserved = {}
+    preserved_spellings = {}
+    for raw_path, digest in preserved_files.items():
+        path = _require_audit_path(
+            raw_path,
+            "staged_snapshot preserved path",
+        )
+        collision_key = path.casefold()
+        if collision_key in preserved_spellings:
+            raise ValueError(
+                "staged_snapshot.preserved_files contains colliding paths."
+            )
+        artifact_spelling = artifact_spellings.get(collision_key)
+        if artifact_spelling is not None and artifact_spelling != path:
+            raise ValueError(
+                "staged_snapshot inventories contain colliding paths."
+            )
+        preserved_spellings[collision_key] = path
+        normalized_preserved[path] = _require_sha256(
+            digest,
+            "staged_snapshot preserved digest",
+        )
+    return {
+        "install_metadata_sha256": metadata_sha256,
+        "artifact_files": normalized_artifacts,
+        "preserved_files": normalized_preserved,
+    }
+
+
+@dataclass(frozen=True)
+class ReleaseTransactionPaths:
+    journal: str
+    staged_code: str
+    staged_dependencies: str
+    backup_code: str
+    backup_dependencies: str
+    live_code: str
+    live_dependencies: str
+
+    def to_document(self):
+        return {
+            "journal": self.journal,
+            "staged_code": self.staged_code,
+            "staged_dependencies": self.staged_dependencies,
+            "backup_code": self.backup_code,
+            "backup_dependencies": self.backup_dependencies,
+            "live_code": self.live_code,
+            "live_dependencies": self.live_dependencies,
+        }
+
+
+@dataclass
+class ReleaseTransaction:
+    operation_id: str
+    plugin_key: str
+    operation: str
+    phase: str
+    expected_current: dict
+    target: dict
+    dependency_snapshot: object
+    dependency_state: dict
+    staged_snapshot: object
+    paths: ReleaseTransactionPaths
+    created_at: str
+    updated_at: str
+    error: str = ""
+    rollback_from: str = ""
+
+    def to_document(self):
+        return {
+            "schema_version": RELEASE_TRANSACTION_SCHEMA_VERSION,
+            "operation_id": self.operation_id,
+            "plugin_key": self.plugin_key,
+            "operation": self.operation,
+            "phase": self.phase,
+            "expected_current": _transaction_json_copy(
+                self.expected_current,
+                "expected_current",
+            ),
+            "target": _transaction_json_copy(self.target, "target"),
+            "dependency_snapshot": _transaction_json_copy(
+                self.dependency_snapshot,
+                "dependency_snapshot",
+            ),
+            "dependency_state": _transaction_json_copy(
+                self.dependency_state,
+                "dependency_state",
+            ),
+            "staged_snapshot": _transaction_json_copy(
+                self.staged_snapshot,
+                "staged_snapshot",
+            ),
+            "paths": self.paths.to_document(),
+            "created_at": self.created_at,
+            "updated_at": self.updated_at,
+            "error": self.error,
+            "rollback_from": self.rollback_from,
+        }
+
+    @classmethod
+    def from_document(cls, document, expected_paths):
+        document = _require_document(
+            document,
+            "release transaction",
+            (
+                "schema_version",
+                "operation_id",
+                "plugin_key",
+                "operation",
+                "phase",
+                "expected_current",
+                "target",
+                "dependency_snapshot",
+                "dependency_state",
+                "staged_snapshot",
+                "paths",
+                "created_at",
+                "updated_at",
+                "error",
+                "rollback_from",
+            ),
+        )
+        if (
+            type(document["schema_version"]) is not int
+            or document["schema_version"]
+            != RELEASE_TRANSACTION_SCHEMA_VERSION
+        ):
+            raise ValueError("Release transaction schema is unsupported.")
+        operation_id = _require_plugin_key(
+            document["operation_id"],
+            "operation_id",
+        )
+        plugin_key = _require_plugin_key(document["plugin_key"])
+        operation = _require_nonempty_string(
+            document["operation"],
+            "operation",
+        )
+        if operation not in RELEASE_TRANSACTION_OPERATIONS:
+            raise ValueError("Release transaction operation is unsupported.")
+        phase = _require_nonempty_string(document["phase"], "phase")
+        if phase not in RELEASE_TRANSACTION_PHASES:
+            raise ValueError("Release transaction phase is unsupported.")
+        if not isinstance(document["expected_current"], dict):
+            raise ValueError("expected_current must be an object.")
+        if not isinstance(document["target"], dict):
+            raise ValueError("target must be an object.")
+        dependency_snapshot = document["dependency_snapshot"]
+        if dependency_snapshot is not None and not isinstance(
+            dependency_snapshot,
+            dict,
+        ):
+            raise ValueError("dependency_snapshot must be an object or null.")
+        dependency_state = _validated_dependency_state(
+            document["dependency_state"]
+        )
+        staged_snapshot = _validated_staged_snapshot(
+            document["staged_snapshot"],
+            allow_none=True,
+        )
+        if document["paths"] != expected_paths.to_document():
+            raise ValueError("Release transaction paths are not manager-owned.")
+        created_at = _require_nonempty_string(
+            document["created_at"],
+            "created_at",
+        )
+        updated_at = _require_nonempty_string(
+            document["updated_at"],
+            "updated_at",
+        )
+        _parse_utc_timestamp(created_at, "created_at")
+        _parse_utc_timestamp(updated_at, "updated_at")
+        error = document["error"]
+        if not isinstance(error, str):
+            raise ValueError("error must be text.")
+        rollback_from = document["rollback_from"]
+        if not isinstance(rollback_from, str):
+            raise ValueError("rollback_from must be text.")
+        if rollback_from and (
+            rollback_from not in RELEASE_TRANSACTION_PHASES
+            or rollback_from in ("rollback_pending", "rolled_back")
+        ):
+            raise ValueError("rollback_from is unsupported.")
+        if phase == "rollback_pending" and not rollback_from:
+            raise ValueError("rollback_pending requires rollback_from.")
+        return cls(
+            operation_id=operation_id,
+            plugin_key=plugin_key,
+            operation=operation,
+            phase=phase,
+            expected_current=_transaction_json_copy(
+                document["expected_current"],
+                "expected_current",
+            ),
+            target=_transaction_json_copy(document["target"], "target"),
+            dependency_snapshot=_transaction_json_copy(
+                dependency_snapshot,
+                "dependency_snapshot",
+            ),
+            dependency_state=dependency_state,
+            staged_snapshot=staged_snapshot,
+            paths=expected_paths,
+            created_at=created_at,
+            updated_at=updated_at,
+            error=error,
+            rollback_from=rollback_from,
+        )
+
+
+class ReleaseTransactionManager:
+    """Durably activate and recover manager-owned release transactions."""
+
+    def __init__(self, plugin):
+        if plugin is None:
+            raise ValueError("plugin is required.")
+        self.plugin = plugin
+        self.fault_injector = None
+
+    def _fsync_directory(self, path):
+        flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
+        try:
+            descriptor = os.open(path, flags)
+        except OSError:
+            if os.name == "nt":
+                return
+            raise
+        try:
+            os.fsync(descriptor)
+        finally:
+            os.close(descriptor)
+
+    def _manager_paths(self, create=False):
+        manager_dir = os.path.abspath(self.plugin.get_plugin_home_folder())
+        if not os.path.isdir(manager_dir) or os.path.islink(manager_dir):
+            raise ValueError("Plugin manager home must be a real directory.")
+        plugins_dir = os.path.abspath(os.path.dirname(manager_dir))
+        if not os.path.isdir(plugins_dir) or os.path.islink(plugins_dir):
+            raise ValueError("Domoticz plugins path must be a real directory.")
+        state_root = os.path.join(manager_dir, ".pypluginstore")
+        directories = (
+            state_root,
+            os.path.join(state_root, "transactions"),
+            os.path.join(state_root, "staging"),
+            os.path.join(state_root, "backups"),
+        )
+        parent = manager_dir
+        for directory in directories:
+            if os.path.lexists(directory):
+                if os.path.islink(directory) or not os.path.isdir(directory):
+                    raise ValueError(
+                        "Release transaction state path must be a real directory."
+                    )
+            elif create:
+                os.mkdir(directory)
+                self._fsync_directory(parent)
+            else:
+                raise ValueError(
+                    "Release transaction state directory does not exist."
+                )
+            parent = state_root
+        manager_device = os.stat(plugins_dir).st_dev
+        if any(
+            os.stat(directory).st_dev != manager_device
+            for directory in directories
+        ):
+            raise ValueError(
+                "Release transactions require manager state and plugins on one filesystem."
+            )
+        return manager_dir, plugins_dir, state_root
+
+    def _paths(self, plugin_key, operation_id, create_parents=False):
+        plugin_key = _require_plugin_key(plugin_key)
+        operation_id = _require_plugin_key(operation_id, "operation_id")
+        manager_dir, plugins_dir, state_root = self._manager_paths(
+            create=create_parents
+        )
+        staging_parent = os.path.join(
+            state_root,
+            "staging",
+            plugin_key,
+            operation_id,
+        )
+        backup_parent = os.path.join(
+            state_root,
+            "backups",
+            plugin_key,
+            operation_id,
+        )
+        if create_parents:
+            for directory in (
+                os.path.dirname(staging_parent),
+                os.path.dirname(backup_parent),
+            ):
+                if os.path.lexists(directory):
+                    if os.path.islink(directory) or not os.path.isdir(directory):
+                        raise ValueError(
+                            "Release transaction path must be a real directory."
+                        )
+                    continue
+                os.mkdir(directory)
+                self._fsync_directory(os.path.dirname(directory))
+            for directory in (staging_parent, backup_parent):
+                if os.path.lexists(directory):
+                    raise ValueError(
+                        "Release transaction operation path already exists."
+                    )
+                os.mkdir(directory)
+                self._fsync_directory(os.path.dirname(directory))
+        manager_device = os.stat(plugins_dir).st_dev
+        for directory in (
+            os.path.dirname(staging_parent),
+            staging_parent,
+            os.path.dirname(backup_parent),
+            backup_parent,
+        ):
+            if os.path.islink(directory) or not os.path.isdir(directory):
+                raise ValueError(
+                    "Release transaction path must be a real directory."
+                )
+            if os.stat(directory).st_dev != manager_device:
+                raise ValueError(
+                    "Release transaction paths must share one filesystem."
+                )
+        return ReleaseTransactionPaths(
+            journal=os.path.join(
+                state_root,
+                "transactions",
+                operation_id + ".json",
+            ),
+            staged_code=os.path.join(staging_parent, "code"),
+            staged_dependencies=os.path.join(staging_parent, "dependencies"),
+            backup_code=os.path.join(backup_parent, "code"),
+            backup_dependencies=os.path.join(backup_parent, "dependencies"),
+            live_code=os.path.join(plugins_dir, plugin_key),
+            live_dependencies=os.path.join(manager_dir, ".shared_deps"),
+        )
+
+    def _process_lock(self, state_root):
+        with _RELEASE_TRANSACTION_LOCKS_GUARD:
+            process_lock = _RELEASE_TRANSACTION_LOCKS.get(state_root)
+            if process_lock is None:
+                process_lock = threading.Lock()
+                _RELEASE_TRANSACTION_LOCKS[state_root] = process_lock
+        return process_lock
+
+    def _lock_file(self, descriptor, blocking):
+        if os.name == "nt":
+            import msvcrt
+
+            os.lseek(descriptor, 0, os.SEEK_SET)
+            mode = msvcrt.LK_LOCK if blocking else msvcrt.LK_NBLCK
+            try:
+                msvcrt.locking(descriptor, mode, 1)
+            except OSError as error:
+                raise RuntimeError(
+                    "Another release transaction is already running."
+                ) from error
+            return
+        import fcntl
+
+        operation = fcntl.LOCK_EX
+        if not blocking:
+            operation |= fcntl.LOCK_NB
+        try:
+            fcntl.flock(descriptor, operation)
+        except OSError as error:
+            raise RuntimeError(
+                "Another release transaction is already running."
+            ) from error
+
+    def _unlock_file(self, descriptor):
+        if os.name == "nt":
+            import msvcrt
+
+            try:
+                os.lseek(descriptor, 0, os.SEEK_SET)
+                msvcrt.locking(descriptor, msvcrt.LK_UNLCK, 1)
+            except OSError:
+                pass
+            return
+        import fcntl
+
+        fcntl.flock(descriptor, fcntl.LOCK_UN)
+
+    @contextmanager
+    def operation_lock(self, blocking=True):
+        if type(blocking) is not bool:
+            raise ValueError("blocking must be a boolean.")
+        _manager, _plugins, state_root = self._manager_paths(create=True)
+        process_lock = self._process_lock(state_root)
+        if not process_lock.acquire(blocking=blocking):
+            raise RuntimeError("Another release transaction is already running.")
+        descriptor = None
+        locked = False
+        try:
+            lock_path = os.path.join(state_root, "transactions.lock")
+            previous_stat = None
+            if os.path.lexists(lock_path):
+                previous_stat = os.lstat(lock_path)
+                if not stat.S_ISREG(previous_stat.st_mode):
+                    raise ValueError(
+                        "Release transaction lock must be a regular file."
+                    )
+            open_flags = os.O_RDWR | os.O_CREAT
+            open_flags |= getattr(os, "O_BINARY", 0)
+            open_flags |= getattr(os, "O_NOFOLLOW", 0)
+            try:
+                descriptor = os.open(lock_path, open_flags, 0o600)
+            except OSError as error:
+                raise ValueError(
+                    "Release transaction lock could not be opened safely."
+                ) from error
+            opened_stat = os.fstat(descriptor)
+            if not stat.S_ISREG(opened_stat.st_mode):
+                raise ValueError(
+                    "Release transaction lock must be a regular file."
+                )
+            if previous_stat is not None and (
+                opened_stat.st_dev != previous_stat.st_dev
+                or opened_stat.st_ino != previous_stat.st_ino
+            ):
+                raise ValueError(
+                    "Release transaction lock changed while being opened."
+                )
+            if os.fstat(descriptor).st_size == 0:
+                os.write(descriptor, b"\0")
+                os.fsync(descriptor)
+            self._lock_file(descriptor, blocking)
+            locked = True
+            yield
+        finally:
+            if descriptor is not None:
+                if locked:
+                    self._unlock_file(descriptor)
+                os.close(descriptor)
+            process_lock.release()
+
+    def _write_transaction(self, transaction):
+        transaction.updated_at = self.plugin.get_host().utc_timestamp()
+        document = transaction.to_document()
+        expected_paths = self._paths(
+            transaction.plugin_key,
+            transaction.operation_id,
+        )
+        ReleaseTransaction.from_document(document, expected_paths)
+        journal = transaction.paths.journal
+        journal_dir = os.path.dirname(journal)
+        temporary = journal + ".tmp"
+        contents = (
+            json.dumps(document, indent=2, sort_keys=True) + "\n"
+        ).encode("utf-8")
+        if os.path.lexists(temporary):
+            if os.path.islink(temporary) or not os.path.isfile(temporary):
+                raise ValueError("Release transaction temporary path is unsafe.")
+            os.unlink(temporary)
+            self._fsync_directory(journal_dir)
+        try:
+            with open(temporary, "xb") as journal_file:
+                journal_file.write(contents)
+                journal_file.flush()
+                os.fsync(journal_file.fileno())
+            os.replace(temporary, journal)
+            self._fsync_directory(journal_dir)
+        finally:
+            if os.path.lexists(temporary):
+                os.unlink(temporary)
+                self._fsync_directory(journal_dir)
+
+    def _load_transaction(self, operation_id):
+        operation_id = _require_plugin_key(operation_id, "operation_id")
+        _manager, _plugins, state_root = self._manager_paths(create=False)
+        journal = os.path.join(
+            state_root,
+            "transactions",
+            operation_id + ".json",
+        )
+        if os.path.islink(journal) or not os.path.isfile(journal):
+            raise ValueError("Release transaction journal does not exist.")
+        with open(journal, "rb") as journal_file:
+            document = _load_json_object(
+                journal_file.read(),
+                "release transaction journal",
+            )
+        plugin_key = document.get("plugin_key", "")
+        expected_paths = self._paths(plugin_key, operation_id)
+        transaction = ReleaseTransaction.from_document(
+            document,
+            expected_paths,
+        )
+        expected_current, target = self._validate_descriptors(
+            transaction.operation,
+            transaction.expected_current,
+            transaction.target,
+        )
+        transaction.expected_current = expected_current
+        transaction.target = target
+        return transaction
+
+    def load_transaction(self, operation_id):
+        with self.operation_lock():
+            return self._load_transaction(operation_id)
+
+    def _validate_descriptors(self, operation, expected_current, target):
+        if operation not in RELEASE_TRANSACTION_OPERATIONS:
+            raise ValueError("Release transaction operation is unsupported.")
+        expected_current = _transaction_json_copy(
+            expected_current,
+            "expected_current",
+        )
+        target = _transaction_json_copy(target, "target")
+        if not isinstance(expected_current, dict):
+            raise ValueError("expected_current must be an object.")
+        if not isinstance(target, dict):
+            raise ValueError("target must be an object.")
+        expected_mode = expected_current.get("management_mode")
+        required_mode = {
+            "release_install": "absent",
+            "release_update": "release",
+            "release_migration": "git",
+        }[operation]
+        if expected_mode != required_mode:
+            raise ValueError("expected_current does not match the operation.")
+        if target.get("management_mode") != "release":
+            raise ValueError("Release transaction target must be release-managed.")
+        _require_nonempty_string(target.get("release_id"), "target.release_id")
+        _require_positive_integer(
+            target.get("release_revision"),
+            "target.release_revision",
+        )
+        _require_git_commit(target.get("commit"), "target.commit")
+        _require_sha256(
+            target.get("artifact_tree_sha256"),
+            "target.artifact_tree_sha256",
+        )
+        if expected_mode in ("release", "git"):
+            _require_git_commit(
+                expected_current.get("commit"),
+                "expected_current.commit",
+            )
+        if expected_mode == "release":
+            _require_sha256(
+                expected_current.get("artifact_tree_sha256"),
+                "expected_current.artifact_tree_sha256",
+            )
+        return expected_current, target
+
+    def create_transaction(
+        self,
+        *,
+        plugin_key,
+        operation_id,
+        operation,
+        expected_current,
+        target,
+    ):
+        plugin_key = _require_plugin_key(plugin_key)
+        operation_id = _require_plugin_key(operation_id, "operation_id")
+        operation = _require_nonempty_string(operation, "operation")
+        expected_current, target = self._validate_descriptors(
+            operation,
+            expected_current,
+            target,
+        )
+        with self.operation_lock():
+            paths = self._paths(
+                plugin_key,
+                operation_id,
+                create_parents=True,
+            )
+            if os.path.lexists(paths.journal):
+                raise ValueError("Release transaction operation already exists.")
+            dependency_state = {
+                "expected": self._dependency_tree_state(
+                    paths.live_dependencies,
+                    "Installed dependency snapshot",
+                ),
+                "target": None,
+            }
+            timestamp = self.plugin.get_host().utc_timestamp()
+            transaction = ReleaseTransaction(
+                operation_id=operation_id,
+                plugin_key=plugin_key,
+                operation=operation,
+                phase="created",
+                expected_current=expected_current,
+                target=target,
+                dependency_snapshot=None,
+                dependency_state=dependency_state,
+                staged_snapshot=None,
+                paths=paths,
+                created_at=timestamp,
+                updated_at=timestamp,
+            )
+            self._write_transaction(transaction)
+            return transaction
+
+    def _require_real_directory(self, path, label):
+        if os.path.islink(path) or not os.path.isdir(path):
+            raise ValueError(label + " must be a real directory.")
+
+    def _sync_staged_tree(
+        self,
+        root,
+        label,
+        *,
+        expected_files=None,
+        allow_install_metadata=False,
+        capture_tree=False,
+    ):
+        """Validate and fsync one manager-owned tree without following links."""
+        self._require_real_directory(root, label)
+        root_stat = os.lstat(root)
+        expected = None
+        if expected_files is not None:
+            expected = {
+                path: dict(record)
+                for path, record in expected_files.items()
+            }
+        validator = SafeZipExtractor(ReleaseArchiveLimits())
+        stack = [(root, "")]
+        directories = []
+        seen_nodes = set()
+        seen_files = set()
+        tree_records = []
+        total_bytes = 0
+        while stack:
+            directory, relative_directory = stack.pop()
+            directory_stat = os.lstat(directory)
+            if (
+                not stat.S_ISDIR(directory_stat.st_mode)
+                or directory_stat.st_dev != root_stat.st_dev
+            ):
+                raise ValueError(label + " contains an unsafe directory.")
+            directories.append(directory)
+            try:
+                entries = list(os.scandir(directory))
+            except OSError as error:
+                raise ValueError(label + " could not be inspected.") from error
+            for entry in entries:
+                relative_path = (
+                    entry.name
+                    if not relative_directory
+                    else relative_directory + "/" + entry.name
+                )
+                if (
+                    allow_install_metadata
+                    and relative_path == InstallMetadataService.FILE_NAME
+                ):
+                    parts = (relative_path,)
+                else:
+                    try:
+                        parts = validator._portable_parts(
+                            relative_path,
+                            label + " path",
+                        )
+                    except ValueError as error:
+                        raise ValueError(
+                            label + " contains an unsafe path."
+                        ) from error
+                collision_key = tuple(part.casefold() for part in parts)
+                if collision_key in seen_nodes:
+                    raise ValueError(
+                        label + " contains a cross-platform path collision."
+                    )
+                seen_nodes.add(collision_key)
+                try:
+                    path_stat = entry.stat(follow_symlinks=False)
+                except OSError as error:
+                    raise ValueError(
+                        label + " contains an unreadable path."
+                    ) from error
+                if path_stat.st_dev != root_stat.st_dev:
+                    raise ValueError(
+                        label + " must remain on the transaction filesystem."
+                    )
+                if stat.S_ISDIR(path_stat.st_mode):
+                    if capture_tree:
+                        tree_records.append(("directory", relative_path))
+                    stack.append((entry.path, relative_path))
+                    continue
+                if not stat.S_ISREG(path_stat.st_mode):
+                    raise ValueError(label + " contains a link or special file.")
+                if getattr(path_stat, "st_nlink", 1) > 1:
+                    raise ValueError(label + " contains a hard-linked file.")
+                is_metadata = (
+                    allow_install_metadata
+                    and relative_path == InstallMetadataService.FILE_NAME
+                )
+                if expected is not None and not is_metadata:
+                    if relative_path not in expected:
+                        raise ValueError(
+                            label + " contains a file outside its audit inventory."
+                        )
+                    expected_size = expected[relative_path].get("size")
+                    if (
+                        expected_size is not None
+                        and path_stat.st_size != expected_size
+                    ):
+                        raise ValueError(
+                            label + " file size differs from its audit inventory."
+                        )
+                flags = os.O_RDONLY | getattr(os, "O_BINARY", 0)
+                flags |= getattr(os, "O_NOFOLLOW", 0)
+                try:
+                    descriptor = os.open(entry.path, flags)
+                except OSError as error:
+                    raise ValueError(
+                        label + " file could not be opened safely."
+                    ) from error
+                should_hash = not is_metadata and (
+                    expected is not None or capture_tree
+                )
+                digest = hashlib.sha256() if should_hash else None
+                try:
+                    opened_stat = os.fstat(descriptor)
+                    if (
+                        not stat.S_ISREG(opened_stat.st_mode)
+                        or opened_stat.st_dev != path_stat.st_dev
+                        or opened_stat.st_ino != path_stat.st_ino
+                        or opened_stat.st_size != path_stat.st_size
+                    ):
+                        raise ValueError(
+                            label + " file changed while being opened."
+                        )
+                    if digest is not None:
+                        while True:
+                            chunk = os.read(descriptor, RELEASE_HTTP_CHUNK_SIZE)
+                            if not chunk:
+                                break
+                            digest.update(chunk)
+                    os.fsync(descriptor)
+                finally:
+                    os.close(descriptor)
+                if expected is not None and not is_metadata:
+                    if digest.hexdigest() != expected[relative_path]["sha256"]:
+                        raise ValueError(
+                            label + " digest differs from its audit inventory."
+                        )
+                    seen_files.add(relative_path)
+                if capture_tree and not is_metadata:
+                    tree_records.append(
+                        (
+                            "file",
+                            relative_path,
+                            path_stat.st_size,
+                            digest.hexdigest(),
+                        )
+                    )
+                    total_bytes += path_stat.st_size
+        if expected is not None and seen_files != set(expected):
+            raise ValueError(label + " is missing an audited file.")
+        for directory in reversed(directories):
+            self._fsync_directory(directory)
+        if not capture_tree:
+            return None
+        tree_digest = hashlib.sha256()
+        for record in sorted(
+            tree_records,
+            key=lambda item: item[1].encode("utf-8"),
+        ):
+            tree_digest.update(
+                json.dumps(
+                    record,
+                    ensure_ascii=False,
+                    separators=(",", ":"),
+                ).encode("utf-8")
+            )
+            tree_digest.update(b"\n")
+        return {
+            "sha256": tree_digest.hexdigest(),
+            "files": sum(1 for record in tree_records if record[0] == "file"),
+            "directories": sum(
+                1 for record in tree_records if record[0] == "directory"
+            ),
+            "bytes": total_bytes,
+        }
+
+    def _install_metadata_digest(self, metadata):
+        contents = json.dumps(
+            metadata.to_document(),
+            ensure_ascii=False,
+            allow_nan=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+        return hashlib.sha256(contents).hexdigest()
+
+    def _snapshot_for_metadata(self, metadata):
+        return _validated_staged_snapshot(
+            {
+                "install_metadata_sha256": self._install_metadata_digest(
+                    metadata
+                ),
+                "artifact_files": {
+                    path: dict(record)
+                    for path, record in metadata.artifact_files.items()
+                },
+                "preserved_files": dict(metadata.preserved_files),
+            }
+        )
+
+    def _release_tree_matches_descriptor(
+        self,
+        root,
+        plugin_key,
+        descriptor,
+        staged_snapshot=None,
+    ):
+        try:
+            metadata = InstallMetadataService(self.plugin).read(root)
+            if not self._release_metadata_matches(
+                metadata,
+                plugin_key,
+                descriptor,
+            ):
+                return False
+            if staged_snapshot is not None:
+                staged_snapshot = _validated_staged_snapshot(staged_snapshot)
+                if (
+                    self._install_metadata_digest(metadata)
+                    != staged_snapshot["install_metadata_sha256"]
+                    or metadata.artifact_files
+                    != staged_snapshot["artifact_files"]
+                    or metadata.preserved_files
+                    != staged_snapshot["preserved_files"]
+                ):
+                    return False
+                artifact_files = staged_snapshot["artifact_files"]
+                preserved_files = staged_snapshot["preserved_files"]
+            else:
+                artifact_files = metadata.artifact_files
+                preserved_files = metadata.preserved_files
+            expected_files = {
+                path: dict(record)
+                for path, record in artifact_files.items()
+            }
+            for path, digest in preserved_files.items():
+                expected_files[path] = {"sha256": digest}
+            self._sync_staged_tree(
+                root,
+                "Release tree",
+                expected_files=expected_files,
+                allow_install_metadata=True,
+            )
+            return True
+        except (OSError, ValueError):
+            return False
+
+    def _release_tree_matches_target(self, root, transaction):
+        if transaction.staged_snapshot is None:
+            return False
+        return self._release_tree_matches_descriptor(
+            root,
+            transaction.plugin_key,
+            transaction.target,
+            transaction.staged_snapshot,
+        )
+
+    def _capture_staged_snapshot(self, root, transaction):
+        metadata = InstallMetadataService(self.plugin).read(root)
+        if not self._release_metadata_matches(
+            metadata,
+            transaction.plugin_key,
+            transaction.target,
+        ):
+            raise ValueError("Staged metadata does not match the target.")
+        snapshot = self._snapshot_for_metadata(metadata)
+        if not self._release_tree_matches_descriptor(
+            root,
+            transaction.plugin_key,
+            transaction.target,
+            snapshot,
+        ):
+            raise ValueError("Staged release inventory is invalid.")
+        return snapshot
+
+    def _dependency_tree_state(self, path, label):
+        if not os.path.lexists(path):
+            return {"present": False, "tree": None}
+        self._require_real_directory(path, label)
+        return _validated_dependency_tree(
+            {
+                "present": True,
+                "tree": self._sync_staged_tree(
+                    path,
+                    label,
+                    capture_tree=True,
+                ),
+            },
+            label,
+        )
+
+    def _dependency_tree_matches(self, path, expected, label):
+        try:
+            current = self._dependency_tree_state(path, label)
+        except (OSError, ValueError):
+            return False
+        return current == _validated_dependency_tree(expected, label)
+
+    def mark_staged_verified(self, operation_id):
+        with self.operation_lock():
+            transaction = self._load_transaction(operation_id)
+            if transaction.phase != "created":
+                raise RuntimeError(
+                    "Transaction must be created before staged verification."
+                )
+            self._require_real_directory(
+                transaction.paths.staged_code,
+                "Staged release code",
+            )
+            try:
+                staged_snapshot = self._capture_staged_snapshot(
+                    transaction.paths.staged_code,
+                    transaction,
+                )
+            except (OSError, ValueError):
+                raise ValueError(
+                    "Staged release does not match the pinned target."
+                ) from None
+            transaction.staged_snapshot = staged_snapshot
+            transaction.phase = "staged_verified"
+            transaction.error = ""
+            self._write_transaction(transaction)
+            return transaction
+
+    def mark_dependencies_staged(self, operation_id, dependency_snapshot):
+        dependency_snapshot = _transaction_json_copy(
+            dependency_snapshot,
+            "dependency_snapshot",
+        )
+        if not isinstance(dependency_snapshot, dict):
+            raise ValueError("dependency_snapshot must be an object.")
+        with self.operation_lock():
+            transaction = self._load_transaction(operation_id)
+            if transaction.phase != "staged_verified":
+                raise RuntimeError(
+                    "Transaction must be staged_verified before dependencies."
+                )
+            self._require_real_directory(
+                transaction.paths.staged_dependencies,
+                "Staged dependency snapshot",
+            )
+            transaction.dependency_state["target"] = (
+                self._dependency_tree_state(
+                    transaction.paths.staged_dependencies,
+                    "Staged dependency snapshot",
+                )
+            )
+            transaction.dependency_snapshot = dependency_snapshot
+            transaction.phase = "dependencies_staged"
+            transaction.error = ""
+            self._write_transaction(transaction)
+            return transaction
+
+    def _event(self, phase, transaction):
+        if callable(self.fault_injector):
+            self.fault_injector(phase, transaction)
+
+    def _set_phase(self, transaction, phase, error=None, inject=False):
+        transaction.phase = phase
+        if error is not None:
+            transaction.error = str(error)
+        self._write_transaction(transaction)
+        if inject:
+            self._event(phase, transaction)
+        return transaction
+
+    def _replace_directory(
+        self,
+        transaction,
+        source,
+        destination,
+        pending_phase,
+        completed_phase,
+    ):
+        self._set_phase(transaction, pending_phase)
+        if os.path.lexists(source):
+            if os.path.lexists(destination):
+                raise ValueError(
+                    "Release transaction rename destination already exists."
+                )
+            os.replace(source, destination)
+            self._fsync_directory(os.path.dirname(source))
+            self._fsync_directory(os.path.dirname(destination))
+        self._set_phase(transaction, completed_phase, inject=True)
+
+    def _code_path_matches(self, path, plugin_key, descriptor):
+        mode = descriptor.get("management_mode")
+        if mode == "absent":
+            return not os.path.lexists(path)
+        if mode == "release":
+            if not os.path.isdir(path) or os.path.islink(path):
+                return False
+            return self._release_tree_matches_descriptor(
+                path,
+                plugin_key,
+                descriptor,
+            )
+        if mode == "git":
+            if (
+                not os.path.isdir(path)
+                or os.path.islink(path)
+                or not os.path.isdir(os.path.join(path, ".git"))
+            ):
+                return False
+            result = self.plugin.run_git_command(
+                path,
+                ["git", "rev-parse", "HEAD"],
+                timeout=10,
+            )
+            return bool(
+                result is not None
+                and result.returncode == 0
+                and result.stdout.strip().lower() == descriptor.get("commit")
+            )
+        return False
+
+    def _metadata_matches(self, transaction):
+        return self._code_path_matches(
+            transaction.paths.live_code,
+            transaction.plugin_key,
+            transaction.expected_current,
+        )
+
+    def _release_metadata_matches(
+        self,
+        metadata,
+        plugin_key,
+        descriptor,
+    ):
+        if (
+            metadata is None
+            or metadata.management_mode != "release"
+            or metadata.plugin_key != plugin_key
+        ):
+            return False
+        fields = (
+            ("commit", metadata.commit),
+            ("artifact_tree_sha256", metadata.artifact_tree_sha256),
+            ("release_id", metadata.release_id),
+            ("release_revision", metadata.release_revision),
+        )
+        return all(
+            key not in descriptor or descriptor[key] == value
+            for key, value in fields
+        )
+
+    def _staged_metadata_matches_target(self, transaction):
+        return self._release_tree_matches_target(
+            transaction.paths.staged_code,
+            transaction,
+        )
+
+    def _validate_activation_paths(self, transaction):
+        transaction_device = os.stat(
+            os.path.dirname(transaction.paths.journal)
+        ).st_dev
+        for path, label in (
+            (transaction.paths.staged_code, "Staged release code"),
+            (
+                transaction.paths.staged_dependencies,
+                "Staged dependency snapshot",
+            ),
+        ):
+            self._require_real_directory(path, label)
+            if os.stat(path).st_dev != transaction_device:
+                raise ValueError(
+                    label + " must share the transaction filesystem."
+                )
+        for path, label in (
+            (transaction.paths.live_code, "Installed plugin"),
+            (transaction.paths.live_dependencies, "Installed dependencies"),
+        ):
+            if not os.path.lexists(path):
+                continue
+            self._require_real_directory(path, label)
+            if os.stat(path).st_dev != transaction_device:
+                raise ValueError(
+                    label + " must share the transaction filesystem."
+                )
+        if os.path.lexists(transaction.paths.backup_code) or os.path.lexists(
+            transaction.paths.backup_dependencies
+        ):
+            raise ValueError(
+                "Release transaction backup destination already exists."
+            )
+
+    def _active_dependencies_match_target(self, transaction):
+        target = transaction.dependency_state.get("target")
+        if target is None:
+            return False
+        return self._dependency_tree_matches(
+            transaction.paths.live_dependencies,
+            target,
+            "Activated dependency snapshot",
+        )
+
+    def _remove_transaction_path(self, path):
+        if not os.path.lexists(path):
+            return
+        if os.path.isdir(path) and not os.path.islink(path):
+            shutil.rmtree(path)
+        else:
+            os.unlink(path)
+        self._fsync_directory(os.path.dirname(path))
+
+    def _restore_component(
+        self,
+        live,
+        backup,
+        staged,
+        backup_authoritative=False,
+        activated_without_backup=False,
+    ):
+        if backup_authoritative and os.path.lexists(backup):
+            if os.path.lexists(live):
+                if os.path.lexists(staged):
+                    self._remove_transaction_path(staged)
+                os.replace(live, staged)
+                self._fsync_directory(os.path.dirname(live))
+                self._fsync_directory(os.path.dirname(staged))
+            os.replace(backup, live)
+            self._fsync_directory(os.path.dirname(backup))
+            self._fsync_directory(os.path.dirname(live))
+            return
+        if (
+            activated_without_backup
+            and os.path.lexists(live)
+            and not os.path.lexists(staged)
+        ):
+            os.replace(live, staged)
+            self._fsync_directory(os.path.dirname(live))
+            self._fsync_directory(os.path.dirname(staged))
+
+    def _rollback_locked(self, transaction, error=""):
+        if transaction.phase == "rolled_back":
+            return transaction
+        original_phase = (
+            transaction.rollback_from
+            if transaction.phase == "rollback_pending"
+            else transaction.phase
+        )
+        if transaction.phase != "rollback_pending":
+            transaction.rollback_from = original_phase
+        code_backup_authoritative = original_phase in {
+            "code_backed_up",
+            "dependencies_backup_pending",
+            "dependencies_backed_up",
+            "dependencies_activation_pending",
+            "dependencies_activated",
+            "code_activation_pending",
+            "release_activated",
+            "restart_pending",
+            "release_managed",
+            "rollback_pending",
+        }
+        if original_phase == "code_backup_pending":
+            code_backup_authoritative = bool(
+                os.path.lexists(transaction.paths.backup_code)
+                and not os.path.lexists(transaction.paths.live_code)
+            )
+        dependencies_backup_authoritative = original_phase in {
+            "dependencies_backed_up",
+            "dependencies_activation_pending",
+            "dependencies_activated",
+            "code_activation_pending",
+            "release_activated",
+            "restart_pending",
+            "release_managed",
+            "rollback_pending",
+        }
+        if original_phase == "dependencies_backup_pending":
+            dependencies_backup_authoritative = bool(
+                os.path.lexists(transaction.paths.backup_dependencies)
+                and not os.path.lexists(transaction.paths.live_dependencies)
+            )
+        code_may_be_activated = original_phase in {
+            "code_activation_pending",
+            "release_activated",
+            "restart_pending",
+            "release_managed",
+        }
+        dependencies_may_be_activated = original_phase in {
+            "dependencies_activation_pending",
+            "dependencies_activated",
+            "code_activation_pending",
+            "release_activated",
+            "restart_pending",
+            "release_managed",
+        }
+        self._set_phase(
+            transaction,
+            "rollback_pending",
+            error=error or transaction.error,
+        )
+        code_backup_matches = True
+        if code_backup_authoritative and not self._code_path_matches(
+            transaction.paths.backup_code,
+            transaction.plugin_key,
+            transaction.expected_current,
+        ):
+            code_backup_matches = self._code_path_matches(
+                transaction.paths.live_code,
+                transaction.plugin_key,
+                transaction.expected_current,
+            )
+            if code_backup_matches:
+                code_backup_authoritative = False
+        dependency_backup_matches = True
+        if (
+            dependencies_backup_authoritative
+            and not self._dependency_tree_matches(
+                transaction.paths.backup_dependencies,
+                transaction.dependency_state["expected"],
+                "Retained dependency backup",
+            )
+        ):
+            dependency_backup_matches = self._dependency_tree_matches(
+                transaction.paths.live_dependencies,
+                transaction.dependency_state["expected"],
+                "Restored dependency snapshot",
+            )
+            if dependency_backup_matches:
+                dependencies_backup_authoritative = False
+        if not code_backup_matches or not dependency_backup_matches:
+            rollback_error = (
+                "Rollback could not restore from the retained backup."
+            )
+            self._set_phase(
+                transaction,
+                "rollback_pending",
+                error=(error or transaction.error) + " " + rollback_error,
+            )
+            raise RuntimeError(rollback_error)
+        self._restore_component(
+            transaction.paths.live_code,
+            transaction.paths.backup_code,
+            transaction.paths.staged_code,
+            backup_authoritative=code_backup_authoritative,
+            activated_without_backup=code_may_be_activated,
+        )
+        self._restore_component(
+            transaction.paths.live_dependencies,
+            transaction.paths.backup_dependencies,
+            transaction.paths.staged_dependencies,
+            backup_authoritative=dependencies_backup_authoritative,
+            activated_without_backup=dependencies_may_be_activated,
+        )
+        code_restored = self._metadata_matches(transaction)
+        dependencies_restored = self._dependency_tree_matches(
+            transaction.paths.live_dependencies,
+            transaction.dependency_state["expected"],
+            "Restored dependency snapshot",
+        )
+        if not code_restored or not dependencies_restored:
+            rollback_error = (
+                "Rollback could not restore the expected installed state."
+            )
+            self._set_phase(
+                transaction,
+                "rollback_pending",
+                error=(error or transaction.error) + " " + rollback_error,
+            )
+            raise RuntimeError(rollback_error)
+        return self._set_phase(
+            transaction,
+            "rolled_back",
+            error=error or transaction.error,
+        )
+
+    def _activate_locked(self, transaction, validate_current=True):
+        if transaction.phase != "dependencies_staged":
+            raise RuntimeError(
+                "Transaction must reach dependencies_staged before activation."
+            )
+        self._validate_activation_paths(transaction)
+        if not self._staged_metadata_matches_target(transaction):
+            error = "Staged release metadata does not match the pinned target."
+            self._rollback_locked(transaction, error)
+            raise ValueError(error)
+        target_dependencies = transaction.dependency_state.get("target")
+        if target_dependencies is None or not self._dependency_tree_matches(
+            transaction.paths.staged_dependencies,
+            target_dependencies,
+            "Staged dependency snapshot",
+        ):
+            error = "Staged dependencies do not match their pinned snapshot."
+            self._rollback_locked(transaction, error)
+            raise ValueError(error)
+        if validate_current:
+            current_matches = self._metadata_matches(transaction)
+            dependencies_match = self._dependency_tree_matches(
+                transaction.paths.live_dependencies,
+                transaction.dependency_state["expected"],
+                "Installed dependency snapshot",
+            )
+            if not (current_matches and dependencies_match):
+                self._set_phase(
+                    transaction,
+                    "stale_target",
+                    error="Installed state no longer matches expected_current.",
+                )
+                raise RuntimeError(
+                    "Installed state no longer matches expected_current."
+                )
+        try:
+            self._replace_directory(
+                transaction,
+                transaction.paths.live_code,
+                transaction.paths.backup_code,
+                "code_backup_pending",
+                "code_backed_up",
+            )
+            self._replace_directory(
+                transaction,
+                transaction.paths.live_dependencies,
+                transaction.paths.backup_dependencies,
+                "dependencies_backup_pending",
+                "dependencies_backed_up",
+            )
+            self._replace_directory(
+                transaction,
+                transaction.paths.staged_dependencies,
+                transaction.paths.live_dependencies,
+                "dependencies_activation_pending",
+                "dependencies_activated",
+            )
+            self._replace_directory(
+                transaction,
+                transaction.paths.staged_code,
+                transaction.paths.live_code,
+                "code_activation_pending",
+                "release_activated",
+            )
+            return self._set_phase(transaction, "restart_pending")
+        except Exception as error:
+            self._rollback_locked(transaction, str(error))
+            raise
+
+    def activate(self, operation_id):
+        with self.operation_lock():
+            transaction = self._load_transaction(operation_id)
+            return self._activate_locked(transaction)
+
+    def rollback(self, operation_id):
+        with self.operation_lock():
+            transaction = self._load_transaction(operation_id)
+            if transaction.phase not in (
+                "restart_pending",
+                "release_managed",
+            ):
+                raise RuntimeError(
+                    "Only an activated release can be explicitly rolled back."
+                )
+            live_target_matches = self._release_tree_matches_target(
+                transaction.paths.live_code,
+                transaction,
+            ) and self._active_dependencies_match_target(transaction)
+            backup_matches = self._code_path_matches(
+                transaction.paths.backup_code,
+                transaction.plugin_key,
+                transaction.expected_current,
+            ) and self._dependency_tree_matches(
+                transaction.paths.backup_dependencies,
+                transaction.dependency_state["expected"],
+                "Retained dependency backup",
+            )
+            if not live_target_matches or not backup_matches:
+                raise RuntimeError(
+                    "Rollback snapshots no longer match the transaction."
+                )
+            return self._rollback_locked(transaction)
+
+    def mark_release_managed(self, operation_id):
+        with self.operation_lock():
+            transaction = self._load_transaction(operation_id)
+            if transaction.phase != "restart_pending":
+                raise RuntimeError(
+                    "Transaction must be restart_pending before completion."
+                )
+            return self._set_phase(transaction, "release_managed")
+
+    def _recover_transaction_locked(self, transaction):
+        if transaction.phase in RELEASE_TRANSACTION_FINAL_PHASES:
+            return transaction
+        if transaction.phase == "release_activated":
+            if (
+                self._active_dependencies_match_target(transaction)
+                and self._release_tree_matches_target(
+                    transaction.paths.live_code,
+                    transaction,
+                )
+            ):
+                return self._set_phase(transaction, "restart_pending")
+            return self._rollback_locked(
+                transaction,
+                "Activated release no longer matches the pinned target.",
+            )
+        if transaction.phase == "code_activation_pending":
+            live_code = transaction.paths.live_code
+            if (
+                os.path.isdir(live_code)
+                and not os.path.islink(live_code)
+                and self._active_dependencies_match_target(transaction)
+                and self._release_tree_matches_target(
+                    live_code,
+                    transaction,
+                )
+            ):
+                self._set_phase(transaction, "release_activated")
+                return self._set_phase(transaction, "restart_pending")
+        return self._rollback_locked(
+            transaction,
+            transaction.error
+            or "Recovered an interrupted release transaction.",
+        )
+
+    def recover_pending(self, blocking=True):
+        with self.operation_lock(blocking=blocking):
+            _manager, _plugins, state_root = self._manager_paths(create=True)
+            transaction_dir = os.path.join(state_root, "transactions")
+            for name in sorted(os.listdir(transaction_dir)):
+                if not name.endswith(".json"):
+                    continue
+                operation_id = name[:-5]
+                transaction = self._load_transaction(operation_id)
+                self._recover_transaction_locked(transaction)
 
 
 class RegistryEntry:
