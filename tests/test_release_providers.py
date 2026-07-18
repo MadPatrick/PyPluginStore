@@ -470,6 +470,188 @@ def test_gitlab_requests_include_standard_api_headers(
     )
 
 
+def test_forgejo_ref_prefix_query_requires_one_exact_match(
+    release_providers_module,
+):
+    adapter, repository, policy, transport, expected = forgejo_case(
+        release_providers_module
+    )
+    refs = transport.responses[expected["requests"][-1]]
+    prefix_match = copy.deepcopy(refs[0])
+    prefix_match["ref"] = "refs/tags/v1.4.0-rc.1"
+    refs.insert(0, prefix_match)
+
+    candidate = adapter.resolve(
+        repository, policy, transport, now=NOW
+    )
+
+    assert candidate.tag == "v1.4.0"
+
+    refs.append(copy.deepcopy(refs[-1]))
+    with pytest.raises(ValueError, match="ambiguous"):
+        adapter.resolve(repository, policy, transport, now=NOW)
+
+
+@pytest.mark.parametrize(
+    "refs_document",
+    [
+        pytest.param({}, id="missing-ref"),
+        pytest.param(
+            [{"ref": "refs/tags/v1.4.0", "object": None}],
+            id="missing-object",
+        ),
+        pytest.param(
+            [
+                {
+                    "ref": "refs/tags/v1.4.0",
+                    "object": {"type": "tree", "sha": "1" * 40},
+                }
+            ],
+            id="non-commit-target",
+        ),
+        pytest.param(
+            [
+                {
+                    "ref": "refs/tags/v1.4.0",
+                    "object": {"type": "commit", "sha": "short"},
+                }
+            ],
+            id="abbreviated-commit",
+        ),
+    ],
+)
+def test_forgejo_malformed_exact_ref_is_rejected(
+    release_providers_module, refs_document
+):
+    adapter, repository, policy, transport, expected = forgejo_case(
+        release_providers_module
+    )
+    transport.responses[expected["requests"][-1]] = refs_document
+
+    with pytest.raises(ValueError):
+        adapter.resolve(repository, policy, transport, now=NOW)
+
+
+def test_forgejo_peels_annotated_tag_object(release_providers_module):
+    adapter, repository, policy, transport, expected = forgejo_case(
+        release_providers_module
+    )
+    tag_sha = "a" * 40
+    commit = expected["commit"]
+    refs = transport.responses[expected["requests"][-1]]
+    refs[0]["object"] = {"type": "tag", "sha": tag_sha}
+    tag_url = (
+        "https://codeberg.org/api/v1/repos/team/example/git/tags/"
+        + tag_sha
+    )
+    transport.responses[tag_url] = {
+        "sha": tag_sha,
+        "object": {"type": "commit", "sha": commit},
+    }
+
+    candidate = adapter.resolve(
+        repository, policy, transport, now=NOW
+    )
+
+    assert candidate.commit == commit
+    assert transport.requests[-1] == tag_url
+
+
+def test_codeberg_allows_reviewed_default_provider_bases(
+    release_providers_module,
+):
+    adapter, repository, policy, transport, _ = forgejo_case(
+        release_providers_module
+    )
+    del repository["api_base"]
+    del repository["web_base"]
+
+    candidate = adapter.resolve(
+        repository, policy, transport, now=NOW
+    )
+
+    assert candidate.repository_identity == "codeberg.org/team/example"
+
+
+def test_custom_forgejo_requires_explicit_bases_before_requests(
+    release_providers_module,
+):
+    adapter, repository, policy, transport, _ = forgejo_case(
+        release_providers_module
+    )
+    repository["repository_identity"] = "forge.example/team/example"
+    del repository["api_base"]
+    del repository["web_base"]
+
+    with pytest.raises(ValueError, match="explicit"):
+        adapter.resolve(repository, policy, transport, now=NOW)
+
+    assert transport.requests == []
+
+
+def test_forgejo_release_listing_paginates_until_a_short_page(
+    release_providers_module,
+):
+    adapter, repository, policy, fixture_transport, expected = forgejo_case(
+        release_providers_module
+    )
+    first_url = expected["requests"][0]
+    second_url = first_url.replace("page=1", "page=2")
+    fixture_releases = fixture_transport.responses[first_url]
+    prerelease = next(
+        release for release in fixture_releases if release["prerelease"]
+    )
+    stable = next(
+        release
+        for release in fixture_releases
+        if not release["draft"] and not release["prerelease"]
+    )
+    transport = FixtureTransport(
+        {
+            first_url: [copy.deepcopy(prerelease) for _ in range(50)],
+            second_url: [copy.deepcopy(stable)],
+            expected["requests"][-1]: fixture_transport.responses[
+                expected["requests"][-1]
+            ],
+        }
+    )
+
+    candidate = adapter.resolve(
+        repository, policy, transport, now=NOW
+    )
+
+    assert candidate.tag == "v1.4.0"
+    assert transport.requests[:2] == [first_url, second_url]
+
+
+def test_forgejo_requests_include_standard_api_headers(
+    release_providers_module,
+):
+    adapter, repository, policy, fixture_transport, _ = forgejo_case(
+        release_providers_module
+    )
+
+    class HeaderRecordingTransport(FixtureTransport):
+        def __init__(self, responses):
+            super().__init__(responses)
+            self.options = []
+
+        def get_json(self, url, **kwargs):
+            self.options.append(copy.deepcopy(kwargs))
+            return super().get_json(url, **kwargs)
+
+    transport = HeaderRecordingTransport(fixture_transport.responses)
+
+    adapter.resolve(repository, policy, transport, now=NOW)
+
+    assert transport.options
+    assert all(
+        options["headers"]["Accept"] == "application/json"
+        and options["headers"]["User-Agent"]
+        for options in transport.options
+    )
+
+
 def test_forgejo_and_gitea_use_distinct_adapter_classes(
     release_providers_module,
 ):

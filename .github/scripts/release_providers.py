@@ -40,6 +40,16 @@ GITLAB_API_HEADERS = {
     "Accept": "application/json",
     "User-Agent": "PyPluginStore-Release-Scanner",
 }
+FORGEJO_API_HEADERS = {
+    "Accept": "application/json",
+    "User-Agent": "PyPluginStore-Release-Scanner",
+}
+CODEBERG_HOST = "codeberg.org"
+CODEBERG_API_BASE = "https://codeberg.org/api/v1"
+CODEBERG_WEB_BASE = "https://codeberg.org"
+FORGEJO_RELEASE_PAGE_SIZE = 50
+FORGEJO_RELEASE_MAX_PAGES = 20
+FORGEJO_TAG_MAX_DEREFERENCES = 8
 
 
 def _require_string(value, label, allow_empty=False):
@@ -769,6 +779,246 @@ class GitLabReleaseAdapter(ReleaseProviderAdapter):
             version=_version_from_tag(tag),
             tag=tag,
             released_at=release.get("released_at"),
+            source_revision=commit,
+            commit=commit,
+            source_path=policy.get("source_path", "."),
+            **artifact,
+        )
+
+
+def _require_forgejo_repository(repository):
+    """Validate Codeberg defaults or explicit custom Forgejo coordinates."""
+    if not isinstance(repository, dict):
+        raise ValueError("Forgejo repository configuration must be an object.")
+    identity = _require_repository_identity(
+        repository.get("repository_identity")
+    )
+    identity_parts = identity.split("/")
+    if len(identity_parts) != 3:
+        raise ValueError("Forgejo identity must contain one owner and repository.")
+    identity_host, identity_owner, identity_name = identity_parts
+
+    owner = _require_string(repository.get("owner"), "owner")
+    name = _require_string(repository.get("repository"), "repository")
+    for value, label in ((owner, "owner"), (name, "repository")):
+        if (
+            value != value.lower()
+            or value in (".", "..")
+            or "/" in value
+            or "\\" in value
+            or urllib.parse.quote(value, safe="") != value
+        ):
+            raise ValueError(label + " must be a canonical Forgejo path segment.")
+    if name.endswith(".git"):
+        raise ValueError("repository must not include a .git suffix.")
+    if [identity_owner, identity_name] != [owner, name]:
+        raise ValueError(
+            "Forgejo coordinates do not match repository_identity."
+        )
+
+    if identity_host == CODEBERG_HOST:
+        api_value = repository.get("api_base", CODEBERG_API_BASE)
+        web_value = repository.get("web_base", CODEBERG_WEB_BASE)
+    else:
+        if "api_base" not in repository or "web_base" not in repository:
+            raise ValueError(
+                "Custom Forgejo hosts require explicit api_base and web_base."
+            )
+        api_value = repository.get("api_base")
+        web_value = repository.get("web_base")
+    api_base = _require_https_base_url(api_value, "api_base")
+    web_base = _require_https_base_url(web_value, "web_base")
+    if urllib.parse.urlsplit(web_base).hostname != identity_host.split(":", 1)[0]:
+        raise ValueError(
+            "Forgejo web_base does not match repository_identity."
+        )
+    return identity, identity_host, owner, name, api_base, web_base
+
+
+def _forgejo_release_is_excluded(release):
+    """Require explicit Forgejo draft and prerelease classifications."""
+    for flag in ("draft", "prerelease"):
+        if flag not in release or type(release[flag]) is not bool:
+            raise ValueError("Forgejo release " + flag + " must be a boolean.")
+    return release["draft"] or release["prerelease"]
+
+
+class ForgejoReleaseAdapter(ReleaseProviderAdapter):
+    """Resolve Codeberg and explicitly configured Forgejo releases."""
+
+    provider = "forgejo"
+
+    def _get_json(self, transport, url):
+        return _transport_get_json(transport, url, FORGEJO_API_HEADERS)
+
+    def _list_releases(self, transport, api_repository_url):
+        """Read bounded release-list pages instead of created-at /latest."""
+        releases = []
+        for page in range(1, FORGEJO_RELEASE_MAX_PAGES + 1):
+            releases_url = (
+                api_repository_url
+                + "/releases?page="
+                + str(page)
+                + "&limit="
+                + str(FORGEJO_RELEASE_PAGE_SIZE)
+            )
+            page_document = self._get_json(transport, releases_url)
+            if not isinstance(page_document, list):
+                raise ValueError("Forgejo releases response must be a list.")
+            releases.extend(page_document)
+            if len(page_document) < FORGEJO_RELEASE_PAGE_SIZE:
+                return releases
+        raise ValueError("Forgejo release pagination exceeds the safety limit.")
+
+    def _resolve_commit(self, transport, api_repository_url, tag):
+        """Resolve one exact prefix-query ref and peel annotated tags safely."""
+        expected_ref = "refs/tags/" + tag
+        encoded_ref = urllib.parse.quote("tags/" + tag, safe="")
+        refs_url = api_repository_url + "/git/refs/" + encoded_ref
+        refs_document = self._get_json(transport, refs_url)
+        if isinstance(refs_document, dict):
+            refs = [refs_document]
+        elif isinstance(refs_document, list):
+            refs = refs_document
+        else:
+            raise ValueError("Forgejo tag references must be an object or list.")
+        if any(not isinstance(reference, dict) for reference in refs):
+            raise ValueError("Each Forgejo tag reference must be an object.")
+        exact_refs = [
+            reference
+            for reference in refs
+            if reference.get("ref") == expected_ref
+        ]
+        if len(exact_refs) != 1:
+            raise ValueError(
+                "Forgejo tag reference is missing or ambiguous."
+            )
+
+        target = exact_refs[0].get("object")
+        visited_tags = set()
+        dereferences = 0
+        while True:
+            if not isinstance(target, dict):
+                raise ValueError("Forgejo tag target must be an object.")
+            target_type = target.get("type")
+            target_sha = target.get("sha")
+            if target_type == "commit":
+                return _require_git_object_id(target_sha)
+            if target_type != "tag":
+                raise ValueError(
+                    "Forgejo tag must resolve to a commit or tag object."
+                )
+            tag_sha = _require_git_object_id(target_sha)
+            if tag_sha in visited_tags:
+                raise ValueError("Forgejo annotated tag chain contains a cycle.")
+            if dereferences >= FORGEJO_TAG_MAX_DEREFERENCES:
+                raise ValueError("Forgejo annotated tag chain exceeds the limit.")
+            visited_tags.add(tag_sha)
+            dereferences += 1
+
+            tag_url = api_repository_url + "/git/tags/" + tag_sha
+            tag_document = self._get_json(transport, tag_url)
+            if not isinstance(tag_document, dict):
+                raise ValueError("Forgejo annotated tag must be an object.")
+            if "sha" in tag_document:
+                document_sha = _require_git_object_id(tag_document.get("sha"))
+                if document_sha != tag_sha:
+                    raise ValueError(
+                        "Forgejo annotated tag response changed identity."
+                    )
+            target = tag_document.get("object")
+
+    def _select_artifact(self, release, policy, api_repository_url, commit):
+        """Return commit source archive or reviewed attached ZIP fields."""
+        artifact_kind = policy.get("artifact")
+        if artifact_kind == "source_zip":
+            return {
+                "artifact_kind": "source_zip",
+                "artifact_provenance": "forge_source_archive",
+                "artifact_url": (
+                    api_repository_url
+                    + "/archive/"
+                    + commit
+                    + ".zip"
+                ),
+                "artifact_size": None,
+                "provider_sha256": "",
+                "migration_eligible": True,
+            }
+        if artifact_kind != "asset_zip":
+            raise ValueError("Forgejo policy artifact must be source_zip or asset_zip.")
+
+        asset = select_asset(
+            release.get("assets"),
+            asset_name=policy.get("asset_name", ""),
+            asset_pattern=policy.get("asset_pattern", ""),
+        )
+        asset_name = asset.get("name")
+        if not asset_name.lower().endswith(".zip"):
+            raise ValueError("Configured Forgejo release asset must be a ZIP file.")
+        asset_size = asset.get("size")
+        if type(asset_size) is not int or asset_size <= 0:
+            raise ValueError("Forgejo release asset size must be positive.")
+        return {
+            "artifact_kind": "asset_zip",
+            "artifact_provenance": "attached_asset",
+            "artifact_url": asset.get("browser_download_url"),
+            "artifact_size": asset_size,
+            "provider_sha256": "",
+            "migration_eligible": False,
+        }
+
+    def resolve(self, repository, policy, transport, *, now=None):
+        """Resolve the newest stable release from a Forgejo release list."""
+        identity, _host, owner, name, api_base, _web_base = (
+            _require_forgejo_repository(repository)
+        )
+        if not isinstance(policy, dict):
+            raise ValueError("Forgejo release policy must be an object.")
+        if policy.get("channel") != "stable":
+            raise ValueError("Forgejo adapter currently supports only stable releases.")
+        tag_pattern = _require_string(
+            policy.get("tag_pattern"), "tag_pattern"
+        )
+        try:
+            re.compile(tag_pattern)
+        except re.error as error:
+            raise ValueError(
+                "tag_pattern is not a valid regular expression."
+            ) from error
+        if now is None:
+            now = datetime.now(timezone.utc)
+
+        api_repository_url = (
+            api_base
+            + "/repos/"
+            + urllib.parse.quote(owner, safe="")
+            + "/"
+            + urllib.parse.quote(name, safe="")
+        )
+        releases = self._list_releases(transport, api_repository_url)
+        release = select_latest_stable_release(
+            releases,
+            tag_pattern,
+            released_at_key="published_at",
+            excluded=_forgejo_release_is_excluded,
+            now=now,
+        )
+        tag = release.get("tag_name")
+        commit = self._resolve_commit(
+            transport, api_repository_url, tag
+        )
+        artifact = self._select_artifact(
+            release, policy, api_repository_url, commit
+        )
+
+        return ReleaseCandidate(
+            provider=self.provider,
+            repository_identity=identity,
+            release_id="forgejo:" + identity + ":" + tag,
+            version=_version_from_tag(tag),
+            tag=tag,
+            released_at=release.get("published_at"),
             source_revision=commit,
             commit=commit,
             source_path=policy.get("source_path", "."),
