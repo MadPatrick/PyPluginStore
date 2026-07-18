@@ -645,6 +645,9 @@ def test_allowlisted_cross_origin_redirect_strips_authorization_headers(
         headers={
             "Authorization": "Bearer scanner-secret",
             "Proxy-Authorization": "Basic proxy-secret",
+            "Cookie": "session=secret",
+            "Cookie2": "legacy=secret",
+            "PRIVATE-TOKEN": "gitlab-secret",
             "Accept": "application/zip",
         },
         allowed_origins=["https://cdn.example.test"],
@@ -662,6 +665,9 @@ def test_allowlisted_cross_origin_redirect_strips_authorization_headers(
     assert first_headers["proxy-authorization"] == "Basic proxy-secret"
     assert "authorization" not in redirected_headers
     assert "proxy-authorization" not in redirected_headers
+    assert "cookie" not in redirected_headers
+    assert "cookie2" not in redirected_headers
+    assert "private-token" not in redirected_headers
     assert redirected_headers["accept"] == "application/zip"
     assert redirected_headers["accept-encoding"] == "identity"
     assert result.final_url == target_url

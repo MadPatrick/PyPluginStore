@@ -19,6 +19,7 @@ SECRET_REQUEST_HEADERS = {
     "proxy-authorization",
     "cookie",
     "cookie2",
+    "private-token",
 }
 HEADER_NAME_PATTERN = re.compile(r"^[!#$%&'*+.^_`|~0-9A-Za-z-]+$")
 LOWER_SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")

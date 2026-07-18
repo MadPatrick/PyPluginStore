@@ -473,20 +473,65 @@ def default_secure_http_client():
 class SecureJsonTransport:
     """Decode one bounded HTTP download as strict provider JSON."""
 
-    def __init__(self, http_client, max_bytes=DEFAULT_MAX_JSON_SIZE):
+    def __init__(
+        self,
+        http_client,
+        max_bytes=DEFAULT_MAX_JSON_SIZE,
+        authentication_headers=None,
+    ):
         if not callable(getattr(http_client, "download", None)):
             raise ValueError("JSON http_client must provide download().")
         self.http_client = http_client
         self.max_bytes = _require_positive_integer(max_bytes, "JSON max_bytes")
+        if authentication_headers is None:
+            authentication_headers = {}
+        if not isinstance(authentication_headers, dict):
+            raise ValueError("JSON authentication headers must be an origin mapping.")
+        self.authentication_headers = {}
+        for origin, headers in authentication_headers.items():
+            normalized_origin = _require_https_origin(origin, "authentication origin")
+            if normalized_origin != origin:
+                raise ValueError("Authentication origins must be canonical.")
+            if not isinstance(headers, dict) or not headers:
+                raise ValueError("Authentication headers must be a non-empty mapping.")
+            clean_headers = {}
+            for name, value in headers.items():
+                name = _require_string(name, "authentication header name")
+                value = _require_string(value, "authentication header value")
+                if name.casefold() in {
+                    existing.casefold() for existing in clean_headers
+                }:
+                    raise ValueError("Authentication header names must be unique.")
+                clean_headers[name] = value
+            self.authentication_headers[origin] = clean_headers
+
+    @staticmethod
+    def _request_origin(url):
+        parsed = urllib.parse.urlsplit(_require_https_url(url, "provider URL"))
+        return _require_https_origin(
+            "https://" + parsed.netloc,
+            "provider URL origin",
+        )
 
     def get_json(self, url, headers=None):
         if headers is None:
             headers = {}
         if not isinstance(headers, dict):
             raise ValueError("JSON request headers must be a mapping.")
+        request_headers = dict(headers)
+        authentication = self.authentication_headers.get(
+            self._request_origin(url), {}
+        )
+        existing_names = {name.casefold() for name in request_headers}
+        for name, value in authentication.items():
+            if name.casefold() in existing_names:
+                raise ValueError(
+                    "Provider headers conflict with configured authentication."
+                )
+            request_headers[name] = value
         downloaded = self.http_client.download(
             url,
-            headers=dict(headers),
+            headers=request_headers,
             expected_sha256=None,
             expected_size=None,
             allowed_origins=[],
@@ -507,9 +552,22 @@ class SecureJsonTransport:
 
 def default_secure_json_transport():
     """Return a separately bounded provider-API JSON transport."""
+    authentication_headers = {}
+    github_token = os.environ.get("GITHUB_TOKEN")
+    if github_token:
+        authentication_headers["https://api.github.com"] = {
+            "Authorization": "Bearer "
+            + _require_string(github_token, "GITHUB_TOKEN")
+        }
+    gitlab_token = os.environ.get("GITLAB_TOKEN")
+    if gitlab_token:
+        authentication_headers["https://gitlab.com"] = {
+            "PRIVATE-TOKEN": _require_string(gitlab_token, "GITLAB_TOKEN")
+        }
     return SecureJsonTransport(
         _default_secure_client(DEFAULT_MAX_JSON_SIZE),
         max_bytes=DEFAULT_MAX_JSON_SIZE,
+        authentication_headers=authentication_headers,
     )
 
 

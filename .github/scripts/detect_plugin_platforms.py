@@ -4,6 +4,7 @@ import ast
 import json
 import os
 import re
+import sys
 import time
 import urllib.error
 import urllib.parse
@@ -12,6 +13,12 @@ import warnings
 
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+if SCRIPT_DIR not in sys.path:
+    sys.path.insert(0, SCRIPT_DIR)
+
+from registry_records import RegistryRecord, parse_registry_owner
+
+
 REPO_ROOT = os.path.abspath(os.path.join(SCRIPT_DIR, "../.."))
 REGISTRY_FILE = os.path.join(REPO_ROOT, "registry.json")
 PLATFORM_METADATA_FILE = os.path.join(REPO_ROOT, ".github", "platform_detection.json")
@@ -262,13 +269,8 @@ def quote_repo_path(path):
 
 
 def split_registry_owner(author):
-    author = str(author or "").strip().strip("/")
-    for host in SUPPORTED_GIT_HOSTS:
-        if author.lower() == host:
-            return host, ""
-        if author.lower().startswith(host + "/"):
-            return host, author[len(host) + 1:]
-    return DEFAULT_GIT_HOST, author
+    location = parse_registry_owner(author)
+    return location.host, location.owner_path
 
 
 def repository_path(owner, repo):
@@ -294,13 +296,15 @@ def get_repo_tree(owner, repo, branch):
             f"{quote_repo_path(path)}/git/trees/{quote_path_part(branch)}?recursive=1"
         )
         data = fetch_json(url)
-    else:
+    elif host == DEFAULT_GIT_HOST:
         url = (
             "https://api.github.com/repos/"
             f"{quote_repo_path(path)}/git/trees/"
             f"{quote_path_part(branch)}?recursive=1"
         )
         data = fetch_json(url)
+    else:
+        return None
 
     if not isinstance(data, dict):
         return None
@@ -326,12 +330,14 @@ def get_raw_file(owner, repo, branch, path):
         )
         return fetch_text(url)
 
-    url = (
-        "https://raw.githubusercontent.com/"
-        f"{quote_repo_path(repo_path)}/"
-        f"{quote_path_part(branch)}/{quote_repo_path(path)}"
-    )
-    return fetch_text(url)
+    if host == DEFAULT_GIT_HOST:
+        url = (
+            "https://raw.githubusercontent.com/"
+            f"{quote_repo_path(repo_path)}/"
+            f"{quote_path_part(branch)}/{quote_repo_path(path)}"
+        )
+        return fetch_text(url)
+    return None
 
 
 def normalize_platforms(platforms):
@@ -394,31 +400,17 @@ def set_registry_entry_platforms(data, platforms):
     platforms = normalize_platforms(platforms)
     if not platforms:
         return data
-
-    if isinstance(data, dict):
-        updated = dict(data)
-        updated["platforms"] = platforms
-        return updated
-
-    updated = list(data)
-    while len(updated) < 5:
-        updated.append("")
-    if len(updated) == 5:
-        updated.append(platforms)
-    else:
-        updated[5] = platforms
-    return updated
+    return RegistryRecord.from_entry("Plugin", data).with_platforms(
+        platforms
+    ).to_document()
 
 
 def registry_entry_identity(data):
-    if isinstance(data, dict):
-        owner = data.get("owner", data.get("author", ""))
-        repo = data.get("repository", data.get("repo", ""))
-        branch = data.get("branch", "master")
-        return owner, repo, branch
-    if isinstance(data, list) and len(data) >= 4:
-        return data[0], data[1], data[3]
-    return "", "", ""
+    try:
+        record = RegistryRecord.from_entry("Plugin", data)
+    except ValueError:
+        return "", "", ""
+    return record.owner, record.repository, record.branch
 
 
 def platform_metadata_identity(owner, repo, branch):

@@ -1494,3 +1494,50 @@ def test_default_construction_uses_a_separate_bounded_strict_json_transport(
             },
         )
     ]
+
+
+def test_secure_json_transport_scopes_authentication_to_exact_origin(
+    release_index_generation_module,
+):
+    module = release_index_generation_module
+
+    class JsonClient:
+        def __init__(self):
+            self.calls = []
+
+        def download(self, url, **kwargs):
+            self.calls.append((url, copy.deepcopy(kwargs)))
+            data = b"{}"
+            return Download(
+                data=data,
+                size=len(data),
+                sha256=hashlib.sha256(data).hexdigest(),
+                final_url=url,
+            )
+
+    client = JsonClient()
+    transport = module.SecureJsonTransport(
+        client,
+        authentication_headers={
+            "https://api.github.com": {
+                "Authorization": "Bearer scanner-secret"
+            }
+        },
+    )
+
+    transport.get_json(
+        "https://api.github.com/repos/example/plugin/releases",
+        headers={"Accept": "application/json"},
+    )
+    transport.get_json(
+        "https://github.example.test/api/v3/repos/example/plugin/releases",
+        headers={"Accept": "application/json"},
+    )
+
+    assert client.calls[0][1]["headers"] == {
+        "Accept": "application/json",
+        "Authorization": "Bearer scanner-secret",
+    }
+    assert client.calls[1][1]["headers"] == {
+        "Accept": "application/json"
+    }
