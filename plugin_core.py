@@ -5503,6 +5503,7 @@ RELEASE_TRANSACTION_OPERATIONS = {
     "release_migration",
 }
 RELEASE_TRANSACTION_FINAL_PHASES = {
+    "dependency_blocked",
     "release_managed",
     "restart_pending",
     "rolled_back",
@@ -5511,6 +5512,7 @@ RELEASE_TRANSACTION_FINAL_PHASES = {
 RELEASE_TRANSACTION_PHASES = RELEASE_TRANSACTION_FINAL_PHASES | {
     "created",
     "staged_verified",
+    "dependency_confirmation_required",
     "dependencies_staged",
     "code_backup_pending",
     "code_backed_up",
@@ -6709,9 +6711,56 @@ class ReleaseTransactionManager:
             raise ValueError("dependency_snapshot must be an object.")
         with self.operation_lock():
             transaction = self._load_transaction(operation_id)
-            if transaction.phase != "staged_verified":
+            if transaction.phase not in {
+                "staged_verified",
+                "dependency_confirmation_required",
+            }:
                 raise RuntimeError(
                     "Transaction must be staged_verified before dependencies."
+                )
+            self._require_real_directory(
+                transaction.paths.staged_dependencies,
+                "Staged dependency snapshot",
+            )
+            if transaction.phase == "dependency_confirmation_required":
+                target = transaction.dependency_state.get("target")
+                if target is None or not self._dependency_tree_matches(
+                    transaction.paths.staged_dependencies,
+                    target,
+                    "Confirmed dependency snapshot",
+                ):
+                    raise ValueError(
+                        "Confirmed dependencies do not match their pinned snapshot."
+                    )
+            else:
+                transaction.dependency_state["target"] = (
+                    self._dependency_tree_state(
+                        transaction.paths.staged_dependencies,
+                        "Staged dependency snapshot",
+                    )
+                )
+            transaction.dependency_snapshot = dependency_snapshot
+            transaction.phase = "dependencies_staged"
+            transaction.error = ""
+            self._write_transaction(transaction)
+            return transaction
+
+    def mark_dependency_confirmation_required(
+        self,
+        operation_id,
+        dependency_snapshot,
+    ):
+        dependency_snapshot = _transaction_json_copy(
+            dependency_snapshot,
+            "dependency_snapshot",
+        )
+        if not isinstance(dependency_snapshot, dict):
+            raise ValueError("dependency_snapshot must be an object.")
+        with self.operation_lock():
+            transaction = self._load_transaction(operation_id)
+            if transaction.phase != "staged_verified":
+                raise RuntimeError(
+                    "Transaction must be staged_verified before confirmation."
                 )
             self._require_real_directory(
                 transaction.paths.staged_dependencies,
@@ -6724,8 +6773,31 @@ class ReleaseTransactionManager:
                 )
             )
             transaction.dependency_snapshot = dependency_snapshot
-            transaction.phase = "dependencies_staged"
+            transaction.phase = "dependency_confirmation_required"
             transaction.error = ""
+            self._write_transaction(transaction)
+            return transaction
+
+    def mark_dependency_blocked(self, operation_id, reason, message):
+        reason = _require_nonempty_string(reason, "reason")
+        message = _require_nonempty_string(message, "message")
+        with self.operation_lock():
+            transaction = self._load_transaction(operation_id)
+            if transaction.phase not in {
+                "staged_verified",
+                "dependency_confirmation_required",
+            }:
+                raise RuntimeError(
+                    "Transaction must be staged_verified before blocking dependencies."
+                )
+            transaction.dependency_state["target"] = None
+            transaction.dependency_snapshot = {
+                "status": "dependency_blocked",
+                "reason": reason,
+                "message": message,
+            }
+            transaction.phase = "dependency_blocked"
+            transaction.error = message
             self._write_transaction(transaction)
             return transaction
 
@@ -7040,6 +7112,14 @@ class ReleaseTransactionManager:
                 error=(error or transaction.error) + " " + rollback_error,
             )
             raise RuntimeError(rollback_error)
+        if transaction.operation == "release_install":
+            for path in (
+                transaction.paths.staged_code,
+                transaction.paths.staged_dependencies,
+                transaction.paths.backup_code,
+                transaction.paths.backup_dependencies,
+            ):
+                self._remove_transaction_path(path)
         return self._set_phase(
             transaction,
             "rolled_back",
@@ -7189,6 +7269,8 @@ class ReleaseTransactionManager:
     def _recover_transaction_locked(self, transaction):
         if transaction.phase == "queued_locked":
             return transaction
+        if transaction.phase == "dependency_confirmation_required":
+            return transaction
         if transaction.phase in RELEASE_TRANSACTION_FINAL_PHASES:
             return transaction
         if transaction.phase == "release_activated":
@@ -7284,6 +7366,603 @@ class ReleaseTransactionManager:
                     if transaction.phase != "stale_target":
                         raise
             self._sync_pending_transactions_locked()
+
+
+class ReleaseDependencyError(RuntimeError):
+    """A dependency snapshot that cannot safely proceed to activation."""
+
+    status = "dependency_blocked"
+
+    def __init__(self, reason, message, manual_required=False):
+        super().__init__(message)
+        self.reason = str(reason)
+        self.message = str(message)
+        self.manual_required = bool(manual_required)
+
+
+@dataclass(frozen=True)
+class ReleaseDependencySnapshotResult:
+    """Auditable outcome of constructing a staged dependency snapshot."""
+
+    status: str
+    installer: str
+    command: list
+    requirements_file: str
+    compatibility_warnings: list
+    compatibility_conflicts: list
+    requires_confirmation: bool
+    compatibility_confirmed: bool
+
+    def to_document(self):
+        return {
+            "schema_version": 1,
+            "status": self.status,
+            "installer": self.installer,
+            "command": list(self.command),
+            "requirements_file": self.requirements_file,
+            "compatibility_warnings": list(self.compatibility_warnings),
+            "compatibility_conflicts": list(self.compatibility_conflicts),
+            "requires_confirmation": self.requires_confirmation,
+            "compatibility_confirmed": self.compatibility_confirmed,
+        }
+
+    @classmethod
+    def from_document(cls, document):
+        document = _require_document(
+            document,
+            "dependency snapshot",
+            (
+                "schema_version",
+                "status",
+                "installer",
+                "command",
+                "requirements_file",
+                "compatibility_warnings",
+                "compatibility_conflicts",
+                "requires_confirmation",
+                "compatibility_confirmed",
+            ),
+        )
+        if (
+            type(document["schema_version"]) is not int
+            or document["schema_version"] != 1
+        ):
+            raise ValueError("Dependency snapshot schema is unsupported.")
+        status = _require_nonempty_string(document["status"], "status")
+        if status not in {
+            "dependencies_staged",
+            "dependency_confirmation_required",
+        }:
+            raise ValueError("Dependency snapshot status is unsupported.")
+        installer = _require_nonempty_string(
+            document["installer"],
+            "installer",
+        )
+        if installer not in {"none", "pip", "uv"}:
+            raise ValueError("Dependency snapshot installer is unsupported.")
+        command = document["command"]
+        if not isinstance(command, list) or any(
+            not isinstance(part, str) or not part for part in command
+        ):
+            raise ValueError("Dependency snapshot command is invalid.")
+        requirements_file = document["requirements_file"]
+        if not isinstance(requirements_file, str):
+            raise ValueError("Dependency snapshot requirements path is invalid.")
+
+        def messages(name):
+            value = document[name]
+            if not isinstance(value, list) or any(
+                not isinstance(message, str) or not message
+                for message in value
+            ):
+                raise ValueError(name + " must contain non-empty messages.")
+            return list(value)
+
+        requires_confirmation = _require_boolean(
+            document["requires_confirmation"],
+            "requires_confirmation",
+        )
+        compatibility_confirmed = _require_boolean(
+            document["compatibility_confirmed"],
+            "compatibility_confirmed",
+        )
+        conflicts = messages("compatibility_conflicts")
+        if status == "dependency_confirmation_required" and (
+            not requires_confirmation
+            or compatibility_confirmed
+            or not conflicts
+        ):
+            raise ValueError("Dependency confirmation state is inconsistent.")
+        if status == "dependencies_staged" and requires_confirmation:
+            raise ValueError("Staged dependency state is inconsistent.")
+        if (installer == "none") != (command == []):
+            raise ValueError("Dependency installer command is inconsistent.")
+        return cls(
+            status=status,
+            installer=installer,
+            command=list(command),
+            requirements_file=requirements_file,
+            compatibility_warnings=messages("compatibility_warnings"),
+            compatibility_conflicts=conflicts,
+            requires_confirmation=requires_confirmation,
+            compatibility_confirmed=compatibility_confirmed,
+        )
+
+
+class _ReleaseDependencyFilesystem:
+    """Construct dependency trees without following filesystem links."""
+
+    def discard_tree(self, path):
+        path = os.path.abspath(str(path))
+        if not os.path.lexists(path):
+            return
+        path_stat = os.lstat(path)
+        if stat.S_ISDIR(path_stat.st_mode) and not stat.S_ISLNK(
+            path_stat.st_mode
+        ):
+            shutil.rmtree(path)
+        else:
+            os.unlink(path)
+
+    def _copy_file(self, source, destination, source_stat):
+        source_flags = os.O_RDONLY | getattr(os, "O_BINARY", 0)
+        source_flags |= getattr(os, "O_NOFOLLOW", 0)
+        destination_flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+        destination_flags |= getattr(os, "O_BINARY", 0)
+        source_descriptor = os.open(source, source_flags)
+        destination_descriptor = None
+        try:
+            opened_stat = os.fstat(source_descriptor)
+            if (
+                not stat.S_ISREG(opened_stat.st_mode)
+                or opened_stat.st_dev != source_stat.st_dev
+                or opened_stat.st_ino != source_stat.st_ino
+                or opened_stat.st_size != source_stat.st_size
+                or getattr(opened_stat, "st_nlink", 1) > 1
+            ):
+                raise ValueError("Dependency file changed while being copied.")
+            destination_descriptor = os.open(
+                destination,
+                destination_flags,
+                stat.S_IMODE(source_stat.st_mode),
+            )
+            while True:
+                chunk = os.read(source_descriptor, RELEASE_HTTP_CHUNK_SIZE)
+                if not chunk:
+                    break
+                view = memoryview(chunk)
+                while view:
+                    written = os.write(destination_descriptor, view)
+                    view = view[written:]
+            try:
+                os.fchmod(
+                    destination_descriptor,
+                    stat.S_IMODE(source_stat.st_mode),
+                )
+            except (AttributeError, OSError):
+                pass
+        finally:
+            os.close(source_descriptor)
+            if destination_descriptor is not None:
+                os.close(destination_descriptor)
+
+    def _copy_directory(self, source, destination, root_device):
+        with os.scandir(source) as entries:
+            entries = sorted(entries, key=lambda entry: entry.name)
+        for entry in entries:
+            entry_stat = entry.stat(follow_symlinks=False)
+            if entry_stat.st_dev != root_device:
+                raise ValueError(
+                    "Dependency snapshot may not cross filesystem boundaries."
+                )
+            target = os.path.join(destination, entry.name)
+            if stat.S_ISDIR(entry_stat.st_mode):
+                os.mkdir(target, stat.S_IMODE(entry_stat.st_mode))
+                self._copy_directory(entry.path, target, root_device)
+                continue
+            if (
+                not stat.S_ISREG(entry_stat.st_mode)
+                or stat.S_ISLNK(entry_stat.st_mode)
+                or getattr(entry_stat, "st_nlink", 1) > 1
+            ):
+                raise ValueError(
+                    "Dependency snapshot contains a link or special file."
+                )
+            self._copy_file(entry.path, target, entry_stat)
+
+    def snapshot_tree(self, source, destination):
+        source = os.path.abspath(str(source))
+        destination = os.path.abspath(str(destination))
+        if source == destination:
+            raise ValueError("Dependency snapshot paths must be distinct.")
+        self.discard_tree(destination)
+        os.makedirs(os.path.dirname(destination), exist_ok=True)
+        if not os.path.lexists(source):
+            os.mkdir(destination)
+            return
+        source_stat = os.lstat(source)
+        if (
+            not stat.S_ISDIR(source_stat.st_mode)
+            or stat.S_ISLNK(source_stat.st_mode)
+        ):
+            raise ValueError("Live dependencies must be a real directory.")
+        os.mkdir(destination, stat.S_IMODE(source_stat.st_mode))
+        try:
+            self._copy_directory(source, destination, source_stat.st_dev)
+        except Exception:
+            self.discard_tree(destination)
+            raise
+
+
+class _ReleaseDependencyCommandRunner:
+    """Discover and execute supported dependency installers."""
+
+    def available(self, command):
+        if command == "uv":
+            return shutil.which("uv") is not None
+        if command == "pip":
+            try:
+                __import__("pip")
+                return True
+            except ImportError:
+                return False
+        return False
+
+    def run(self, command, *, env=None):
+        return subprocess.run(
+            list(command),
+            env=env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            check=False,
+            timeout=900,
+        )
+
+
+class _ReleaseDependencyValidator:
+    """Perform the baseline structural validation for a staged snapshot."""
+
+    def validate(self, staged_dependencies, requirements_file):
+        del requirements_file
+        root = os.path.abspath(str(staged_dependencies))
+        try:
+            root_stat = os.lstat(root)
+            if (
+                not stat.S_ISDIR(root_stat.st_mode)
+                or stat.S_ISLNK(root_stat.st_mode)
+            ):
+                raise ValueError("Staged dependencies are not a real directory.")
+            stack = [root]
+            while stack:
+                directory = stack.pop()
+                with os.scandir(directory) as entries:
+                    entries = list(entries)
+                for entry in entries:
+                    entry_stat = entry.stat(follow_symlinks=False)
+                    if entry_stat.st_dev != root_stat.st_dev:
+                        raise ValueError(
+                            "Staged dependencies cross a filesystem boundary."
+                        )
+                    if stat.S_ISDIR(entry_stat.st_mode):
+                        stack.append(entry.path)
+                    elif (
+                        not stat.S_ISREG(entry_stat.st_mode)
+                        or stat.S_ISLNK(entry_stat.st_mode)
+                        or getattr(entry_stat, "st_nlink", 1) > 1
+                    ):
+                        raise ValueError(
+                            "Staged dependencies contain a link or special file."
+                        )
+        except (OSError, ValueError) as error:
+            return {
+                "valid": False,
+                "message": str(error),
+                "warnings": [],
+                "conflicts": [],
+            }
+        return {
+            "valid": True,
+            "message": "",
+            "warnings": [],
+            "conflicts": [],
+        }
+
+
+class ReleaseDependencySnapshotService:
+    """Build and validate shared dependencies before atomic activation."""
+
+    def __init__(
+        self,
+        plugin,
+        *,
+        transaction_manager=None,
+        command_runner=None,
+        filesystem=None,
+        validator=None,
+    ):
+        if plugin is None:
+            raise ValueError("plugin is required.")
+        self.plugin = plugin
+        self.transaction_manager = (
+            transaction_manager or ReleaseTransactionManager(plugin)
+        )
+        self.command_runner = command_runner or _ReleaseDependencyCommandRunner()
+        self.filesystem = filesystem or _ReleaseDependencyFilesystem()
+        self.validator = validator or _ReleaseDependencyValidator()
+
+    def _requirements_path(self, transaction, requirements_file):
+        staged_code = os.path.abspath(str(transaction.paths.staged_code))
+        if requirements_file is None:
+            requirements_file = os.path.join(staged_code, "requirements.txt")
+        requirements_file = os.path.abspath(str(requirements_file))
+        try:
+            contained = os.path.commonpath(
+                (staged_code, requirements_file)
+            ) == staged_code
+        except ValueError:
+            contained = False
+        if not contained:
+            raise ValueError(
+                "Dependency requirements must belong to staged release code."
+            )
+        return requirements_file
+
+    def _messages(self, validation, name):
+        messages = validation.get(name, [])
+        if not isinstance(messages, (list, tuple)) or any(
+            not isinstance(message, str) or not message
+            for message in messages
+        ):
+            raise ValueError(name + " must contain non-empty messages.")
+        return list(messages)
+
+    def _block(
+        self,
+        operation_id,
+        staged_dependencies,
+        reason,
+        message,
+        *,
+        manual_required=False,
+    ):
+        cleanup_error = None
+        try:
+            self.filesystem.discard_tree(staged_dependencies)
+        except Exception as error:
+            cleanup_error = error
+        if cleanup_error is not None:
+            message += " Staged cleanup also failed: " + str(cleanup_error)
+        self.transaction_manager.mark_dependency_blocked(
+            operation_id,
+            reason,
+            message,
+        )
+        raise ReleaseDependencyError(
+            reason,
+            message,
+            manual_required=manual_required,
+        )
+
+    def _confirm_existing(
+        self,
+        transaction,
+        requirements_file,
+        compatibility_confirmed,
+    ):
+        result = ReleaseDependencySnapshotResult.from_document(
+            transaction.dependency_snapshot
+        )
+        if result.status != "dependency_confirmation_required":
+            raise ValueError("Dependency confirmation snapshot is invalid.")
+        if result.requirements_file != requirements_file:
+            raise ValueError(
+                "Dependency confirmation does not match the requirements file."
+            )
+        if not compatibility_confirmed:
+            return result
+        confirmed = ReleaseDependencySnapshotResult(
+            status="dependencies_staged",
+            installer=result.installer,
+            command=list(result.command),
+            requirements_file=result.requirements_file,
+            compatibility_warnings=list(result.compatibility_warnings),
+            compatibility_conflicts=list(result.compatibility_conflicts),
+            requires_confirmation=False,
+            compatibility_confirmed=True,
+        )
+        self.transaction_manager.mark_dependencies_staged(
+            transaction.operation_id,
+            confirmed.to_document(),
+        )
+        return confirmed
+
+    def stage(
+        self,
+        operation_id,
+        *,
+        requirements_file=None,
+        installer="auto",
+        compatibility_confirmed=False,
+    ):
+        transaction = self.transaction_manager.load_transaction(operation_id)
+        requirements_file = self._requirements_path(
+            transaction,
+            requirements_file,
+        )
+        if transaction.phase == "dependency_confirmation_required":
+            return self._confirm_existing(
+                transaction,
+                requirements_file,
+                bool(compatibility_confirmed),
+            )
+        if transaction.phase != "staged_verified":
+            raise RuntimeError(
+                "Transaction must be staged_verified before dependencies."
+            )
+        if installer not in {"auto", "pip", "uv"}:
+            raise ValueError("installer must be auto, pip, or uv.")
+
+        live_dependencies = os.path.abspath(
+            str(transaction.paths.live_dependencies)
+        )
+        staged_dependencies = os.path.abspath(
+            str(transaction.paths.staged_dependencies)
+        )
+        try:
+            self.filesystem.snapshot_tree(
+                live_dependencies,
+                staged_dependencies,
+            )
+        except Exception as error:
+            self._block(
+                transaction.operation_id,
+                staged_dependencies,
+                "snapshot_failed",
+                "Dependency snapshot failed: " + str(error),
+            )
+
+        selected_installer = "none"
+        command = []
+        requirements_present = os.path.lexists(requirements_file)
+        if requirements_present:
+            try:
+                requirements_stat = os.lstat(requirements_file)
+            except OSError as error:
+                self._block(
+                    transaction.operation_id,
+                    staged_dependencies,
+                    "validation_failed",
+                    "Dependency requirements could not be read: " + str(error),
+                )
+            if (
+                not stat.S_ISREG(requirements_stat.st_mode)
+                or stat.S_ISLNK(requirements_stat.st_mode)
+            ):
+                self._block(
+                    transaction.operation_id,
+                    staged_dependencies,
+                    "validation_failed",
+                    "Dependency requirements must be a regular file.",
+                )
+            candidates = ("uv", "pip") if installer == "auto" else (installer,)
+            selected_installer = next(
+                (
+                    candidate
+                    for candidate in candidates
+                    if self.command_runner.available(candidate)
+                ),
+                "",
+            )
+            if not selected_installer:
+                self._block(
+                    transaction.operation_id,
+                    staged_dependencies,
+                    "installer_unavailable",
+                    "No supported dependency installer is available; manual "
+                    "dependency handling is required.",
+                    manual_required=True,
+                )
+            if selected_installer == "uv":
+                command = [
+                    "uv",
+                    "pip",
+                    "install",
+                    "--python",
+                    sys.executable,
+                    "--target",
+                    staged_dependencies,
+                    "-r",
+                    requirements_file,
+                ]
+            else:
+                command = [
+                    sys.executable,
+                    "-m",
+                    "pip",
+                    "install",
+                    "--target",
+                    staged_dependencies,
+                    "-r",
+                    requirements_file,
+                ]
+            try:
+                completed = self.command_runner.run(command, env=None)
+            except Exception as error:
+                self._block(
+                    transaction.operation_id,
+                    staged_dependencies,
+                    "install_failed",
+                    "Dependency installation failed: " + str(error),
+                )
+            if completed.returncode != 0:
+                detail = str(completed.stderr or completed.stdout or "").strip()
+                message = "Dependency installation failed."
+                if detail:
+                    message += " " + detail
+                self._block(
+                    transaction.operation_id,
+                    staged_dependencies,
+                    "install_failed",
+                    message,
+                )
+
+        try:
+            validation = self.validator.validate(
+                staged_dependencies,
+                requirements_file,
+            )
+            if not isinstance(validation, Mapping):
+                raise ValueError("Dependency validator returned an invalid result.")
+            warnings = self._messages(validation, "warnings")
+            conflicts = self._messages(validation, "conflicts")
+            valid = validation.get("valid") is True
+            validation_message = validation.get("message", "")
+            if not isinstance(validation_message, str):
+                raise ValueError("Dependency validation message must be text.")
+        except Exception as error:
+            self._block(
+                transaction.operation_id,
+                staged_dependencies,
+                "validation_failed",
+                "Dependency validation failed: " + str(error),
+            )
+        if not valid:
+            self._block(
+                transaction.operation_id,
+                staged_dependencies,
+                "validation_failed",
+                validation_message or "Dependency validation failed.",
+            )
+
+        requires_confirmation = bool(
+            conflicts and not compatibility_confirmed
+        )
+        result = ReleaseDependencySnapshotResult(
+            status=(
+                "dependency_confirmation_required"
+                if requires_confirmation
+                else "dependencies_staged"
+            ),
+            installer=selected_installer,
+            command=list(command),
+            requirements_file=requirements_file,
+            compatibility_warnings=warnings,
+            compatibility_conflicts=conflicts,
+            requires_confirmation=requires_confirmation,
+            compatibility_confirmed=bool(compatibility_confirmed),
+        )
+        if requires_confirmation:
+            self.transaction_manager.mark_dependency_confirmation_required(
+                transaction.operation_id,
+                result.to_document(),
+            )
+        else:
+            self.transaction_manager.mark_dependencies_staged(
+                transaction.operation_id,
+                result.to_document(),
+            )
+        return result
 
 
 class RegistryEntry:
