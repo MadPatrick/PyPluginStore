@@ -1,5 +1,32 @@
 # Maintainer Runs
 
+## 2026-07-18 - Release-first implementation and multi-forge pilot
+
+Scope:
+- Completed `ISSUE:64` locally through the Conductor release-first track.
+- Finished GitHub, GitLab, Codeberg/Forgejo, Gitea, and generic provider contracts,
+  including live failure/no-release classification and authenticated discovery.
+- Implemented pinned Release install/update, dependency snapshots, durable
+  rollback, explicit Git retention, and safe Git-to-release upgrade migration.
+- Published the initial 47-entry index: 46 GitHub and one GitLab release.
+
+Verification:
+- `pytest -q`: 1109 passed.
+- Release-focused suite: 830 passed.
+- Registry validation passed for all 257 records; generated runtime freshness,
+  Python compilation, workflow YAML linting, and diff checks passed.
+- Manual Linux, Windows, and Domoticz verification was waived by the user.
+
+Notes:
+- Both Codeberg/Forgejo entries currently have no published release. Gitea and
+  generic have no registered pilot entry; provider fixtures remain authoritative
+  until live candidates exist.
+- One archive was rejected for a Unicode/case-fold path collision and one missing
+  repository remained a provider failure; neither entered the index.
+- No push, issue comment, label, close, or other public GitHub action was taken.
+- The preserved autostash and three pre-existing untracked maintainer notes remain
+  untouched.
+
 ## 2026-07-18 - Maintenance recovery, CI hardening, and release-first design
 
 Scope:

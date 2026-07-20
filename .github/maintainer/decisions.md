@@ -49,6 +49,11 @@ Implementation notes:
   the canonical tree, and uses durable same-filesystem transaction journals.
 - Automatic migration blocks dirty or ambiguous trees and unknown local files;
   reviewed mutable paths can be preserved with separate audit hashes.
+- Completed the release-aware runtime, rollback lifecycle, dependency snapshots,
+  channel UI, and content-bound Git migration confirmation flow.
+- Published an initial 47-entry index: 46 GitHub releases and one GitLab release.
+  Both registered Codeberg/Forgejo repositories currently report no release;
+  Gitea and generic remain covered by provider contracts without live pilot claims.
 - The unsigned v1 index explicitly does not claim protection against compromise
   of the PyPluginStore distribution channel; signed TUF-style metadata is future
   hardening.
@@ -56,7 +61,10 @@ Implementation notes:
 Verification:
 - Research covered current registry release availability and official GitHub,
   GitLab, Forgejo, Gitea, Python archive, and TUF documentation.
-- `python .github/scripts/validate_plugins.py`: passed for 256 plugins.
+- `pytest -q`: 1109 passed.
+- `python .github/scripts/validate_plugins.py`: passed for 257 registry records.
+- Generated runtime freshness, Python compilation, workflow YAML linting, and
+  diff checks passed. Manual host verification was waived by the user.
 
 ## 2026-07-16 - Safe UI management for registry_local.json
 

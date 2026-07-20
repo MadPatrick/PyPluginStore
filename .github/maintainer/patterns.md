@@ -18,5 +18,7 @@
 - Contributor PRs often include useful product intent with mechanical diff issues; preserve the intent and rework in a smaller local patch.
 - GitHub Actions should default to read-only, elevate permissions only on the trusted publishing job, avoid persisted checkout credentials for untrusted code, and pin every external action to a reviewed full commit SHA.
 - Public forge release discovery belongs in repository automation; runtime hosts should consume one provider-neutral, digest-pinned index instead of calling GitHub, GitLab, Forgejo, or Gitea APIs.
+- Provider `404` responses are not interchangeable: GitHub/GitLab can use them for missing or private repositories, while Forgejo/Gitea may expose a missing release collection that means no published releases. Preserve that distinction in reports.
+- Forge-generated archives need an explicit public `User-Agent`, canonical timestamp normalization, and separate transport/tree hashes; commit-addressed contents can remain equivalent even when regenerated compression bytes change.
 - Release artifacts never silently fall back to a branch update after verification failure. Automatic Git-to-release migration requires source provenance, safe ancestry, a clean checkout, and no unknown local files.
 - Sequence and expiry in an unsigned update index are operational staleness guards, not cryptographic rollback/freeze protection; document the trust boundary and reserve signed metadata for that claim.

@@ -17,10 +17,10 @@
     "summary": "Local commits are ready for review and push. After pinned workflows reach master, enable full-SHA action enforcement and evaluate the documented default-branch ruleset before activation."
   },
   "last_verification": {
-    "pytest": "231 passed",
+    "pytest": "1109 passed",
     "generator_parity": "passed",
-    "registry_validation": "passed for 256 entries",
-    "workflows": "actionlint 1.7.12 passed; latest remote Linux, Windows, CodeQL, release, and weekly scan runs passed",
+    "registry_validation": "passed for 257 records",
+    "workflows": "yamllint passed; release workflow security tests passed in the full suite",
     "dependabot_alerts": "0",
     "code_scanning_alerts": "0",
     "secret_scanning_alerts": "0"
