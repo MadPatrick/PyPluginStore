@@ -264,11 +264,23 @@ To install dependencies for a specific plugin manually:
 
 ## 📚 For Plugin Developers
 
-To add your plugin to the manager, simply submit a Pull Request to update `registry.json` in this repository.
+To add your plugin to the manager, submit a Pull Request that adds a named object to `registry.json`:
+
+```json
+"ExamplePlugin": {
+    "owner": "example-owner",
+    "repository": "domoticz-example-plugin",
+    "description": "Example plugin for Domoticz",
+    "branch": "main",
+    "platforms": ["linux", "windows"]
+}
+```
+
+GitHub owners use the account or organization name. Use `gitlab.com/group/subgroup` or `codeberg.org/owner` for those hosters. Omit `platforms` when support is unknown. Legacy positional entries remain readable during the staged object-record migration; object entries require PyPluginStore v2.10.0 or newer, and GitLab/Codeberg Git management requires v2.15.0 or newer.
 
 When a Pull Request modifying `registry.json` is merged, a GitHub Action automatically updates the registry metadata including the latest repository push timestamps.
 
-Public registry entries can include platform metadata with `["linux"]`, `["windows"]`, or `["linux", "windows"]`. Plugins without platform metadata are shown as unknown rather than blocked.
+Public registry entries can use `["linux"]`, `["windows"]`, or `["linux", "windows"]` for `platforms`. Plugins without platform metadata are shown as unknown rather than blocked.
 
 CI validation checks that every public registry entry points to an existing root-level `plugin.py`. Release discovery for GitHub, GitLab, Codeberg/Forgejo, Gitea, and generic HTTPS manifests is normalized into the provider-neutral `release_index.json`; runtime installations never depend on forge-specific APIs. Maintainer tooling and generated-file workflow notes are documented in [CONTRIBUTING.md](CONTRIBUTING.md).
 

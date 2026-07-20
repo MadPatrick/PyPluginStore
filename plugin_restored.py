@@ -66,6 +66,27 @@ class BasePlugin:
         self.plugin_data = {}
         self.last_update_date = None
 
+    def normalize_registry_data(self, registry):
+        normalized = {}
+        for key, data in dict(registry or {}).items():
+            if isinstance(data, dict):
+                entry = [
+                    data.get("owner", data.get("author", "")),
+                    data.get("repository", data.get("repo", "")),
+                    data.get("description", ""),
+                    data.get("branch", "master"),
+                ]
+                updated_at = data.get("updated_at", "")
+                platforms = data.get("platforms", [])
+                if updated_at or platforms:
+                    entry.append(updated_at)
+                if platforms:
+                    entry.append(platforms)
+                normalized[key] = entry
+            else:
+                normalized[key] = data
+        return normalized
+
     def fetch_registry(self):
 
         registry_url = "https://raw.githubusercontent.com/adrighem/PyPluginStore/refs/heads/master/registry.json"
@@ -74,7 +95,9 @@ class BasePlugin:
             req = urllib.request.Request(registry_url)
             with urllib.request.urlopen(req, timeout=5) as response:
                 if response.status == 200:
-                    self.plugin_data = json.loads(response.read().decode('utf-8'))
+                    self.plugin_data = self.normalize_registry_data(
+                        json.loads(response.read().decode('utf-8'))
+                    )
                     Domoticz.Log("Successfully fetched plugin registry from GitHub.")
                 else:
                     Domoticz.Error("Failed to fetch registry, status code: " + str(response.status))
@@ -84,7 +107,7 @@ class BasePlugin:
             local_reg = os.path.join(os.path.abspath(os.path.join(Parameters.get("HomeFolder", str(os.getcwd()) + "/"), "..", "..")), "plugins", os.path.basename(os.path.normpath(Parameters.get('HomeFolder', str(os.getcwd()) + '/'))), "registry.json")
             if os.path.isfile(local_reg):
                 with open(local_reg, 'r') as f:
-                    self.plugin_data = json.load(f)
+                    self.plugin_data = self.normalize_registry_data(json.load(f))
                 Domoticz.Log("Loaded plugin registry from local file.")
             else:
                 Domoticz.Error("No local registry found. Plugins cannot be managed.")

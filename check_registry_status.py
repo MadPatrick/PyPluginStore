@@ -1,30 +1,16 @@
 import json
 import os
-import urllib.request
-import urllib.parse
-from urllib.error import HTTPError
+import sys
 import time
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 REGISTRY_FILE = os.path.join(SCRIPT_DIR, 'registry.json')
+SCRIPTS_DIR = os.path.join(SCRIPT_DIR, ".github", "scripts")
+if SCRIPTS_DIR not in sys.path:
+    sys.path.insert(0, SCRIPTS_DIR)
 
-def get_repo_info(owner, repo):
-    url = f'https://api.github.com/repos/{owner}/{repo}'
-    headers = {'User-Agent': 'Domoticz-Plugin-Scanner', 'Accept': 'application/vnd.github.v3+json'}
-
-    token = os.environ.get('GITHUB_TOKEN')
-    if token:
-        headers['Authorization'] = f'token {token}'
-
-    req = urllib.request.Request(url, headers=headers)
-    try:
-        with urllib.request.urlopen(req) as response:
-            return json.loads(response.read().decode())
-    except HTTPError as e:
-        if e.code == 404:
-            return "DELETED"
-        print(f"Error fetching {owner}/{repo}: {e}")
-        return None
+from registry_records import RegistryRecord
+from scan_github_plugins import get_repo_info
 
 def main():
     with open(REGISTRY_FILE, 'r') as f:
@@ -35,10 +21,10 @@ def main():
     for key, data in list(registry.items()):
         if key == "Idle": continue
 
-        owner = data[0]
-        repo_name = data[1]
-        desc = data[2]
-        branch = data[3]
+        record = RegistryRecord.from_entry(key, data)
+        owner = record.owner
+        repo_name = record.repository
+        desc = record.description
 
         print(f"Checking {owner}/{repo_name}...", end=' ', flush=True)
 

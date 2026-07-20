@@ -2709,26 +2709,25 @@
             "linux"
         ]
     ],
-    "domoticz-aqi-poland": [
-        "mgrom",
-        "domoticz-aqi-poland",
-        "A Python plugin for Domoticz to create devices with PM2.5 and PM10 based on http://api.gios.gov.pl",
-        "master"
-    ],
-    "BeemEnergy": [
-        "fratton",
-        "BeemEnergy",
-        "eem Energy Plugin for Domoticz home automation",
-        "main"
-    ],
-    "Domoticz-Xiaomi-Purifier-4-Pro": [
-        "blooesky",
-        "Domoticz-Xiaomi-Purifier-4-Pro",
-        "Local Domoticz plugin for Xiaomi Smart Air Purifier 4 Pro (zhimi.airp.vb4).",
-        "main",
-        "",
-        [
+    "domoticz-aqi-poland": {
+        "owner": "mgrom",
+        "repository": "domoticz-aqi-poland",
+        "description": "A Python plugin for Domoticz to create devices with PM2.5 and PM10 based on http://api.gios.gov.pl",
+        "branch": "master"
+    },
+    "BeemEnergy": {
+        "owner": "fratton",
+        "repository": "BeemEnergy",
+        "description": "eem Energy Plugin for Domoticz home automation",
+        "branch": "main"
+    },
+    "Domoticz-Xiaomi-Purifier-4-Pro": {
+        "owner": "blooesky",
+        "repository": "Domoticz-Xiaomi-Purifier-4-Pro",
+        "description": "Local Domoticz plugin for Xiaomi Smart Air Purifier 4 Pro (zhimi.airp.vb4).",
+        "branch": "main",
+        "platforms": [
             "linux"
         ]
-    ]
+    }
 }

@@ -2,6 +2,13 @@
 
 PyPluginStore prefers a verified stable release when the public registry and its matching `release_index.json` authorize one. Certification is a reviewed, per-plugin opt-in: publishing a release on a supported host does not activate Release by itself. Git remains supported for plugins without a certified release and for users who explicitly keep an existing Git checkout on Git.
 
+The two files have different responsibilities:
+
+- `registry.json` identifies the plugin repository and its reviewed delivery policy. For GitHub, GitLab, and Codeberg entries with no explicit `delivery` override, the default is `release_if_indexed` with Git still supported. Other providers require a complete reviewed policy.
+- `release_index.json` authorizes one exact release revision and archive after repository automation has downloaded and certified it. The index is hash-bound to the exact `registry.json` bytes.
+
+The weekly scan proposes both files together in a pull request. A registry entry alone never proves that a release is safe. If a plugin has no certified index entry and has never been release-managed, PyPluginStore uses Git. After a plugin has been release-managed, invalid or expired release metadata blocks the operation instead of silently changing it back to Git.
+
 ## How release-first selection works
 
 Release discovery happens in repository automation, not on the Domoticz host. GitHub, GitLab, Codeberg/Forgejo, Gitea, and generic HTTPS manifest adapters all produce the same provider-neutral descriptor: repository identity, release ID, version, immutable commit or source revision, archive URL and length, archive SHA-256, canonical tree SHA-256, and archive layout.

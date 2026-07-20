@@ -21,7 +21,6 @@ from detect_plugin_platforms import (
     normalize_platforms,
     platform_metadata_identity,
     save_platform_metadata,
-    set_registry_entry_platforms,
     update_platform_metadata_entry,
 )
 from registry_records import (
@@ -108,11 +107,17 @@ def prune_stale_update_times(update_times, registry):
         del update_times[key]
     return stale_keys
 
+
 def build_registry_entry(owner, repo_name, description, branch, platforms=None):
-    entry = [owner, repo_name, description, branch]
+    entry = {
+        "owner": owner,
+        "repository": repo_name,
+        "description": description,
+        "branch": branch,
+    }
     normalized_platforms = normalize_platforms(platforms)
     if normalized_platforms:
-        entry = set_registry_entry_platforms(entry, normalized_platforms)
+        entry["platforms"] = normalized_platforms
     return entry
 
 
