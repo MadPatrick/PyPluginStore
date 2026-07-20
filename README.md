@@ -1,6 +1,6 @@
 # PyPluginStore for Domoticz (PyPluginStore)
 
-A robust and modern plugin manager for Domoticz that allows you to install and automatically update other Python plugins from GitHub, Codeberg, and GitLab.
+A robust and modern plugin manager for Domoticz that installs and updates Python plugins from verified releases or Git repositories. Release discovery supports GitHub, GitLab, Codeberg/Forgejo, Gitea, and reviewed generic HTTPS manifests without making the Domoticz runtime forge-specific.
 
 **Supported platforms:** PyPluginStore supports Linux, including Raspberry Pi, and Windows Domoticz installations with Python plugin support. Individual third-party plugins may still be Linux-only or Windows-only depending on their own dependencies and OS integrations.
 
@@ -15,8 +15,10 @@ A robust and modern plugin manager for Domoticz that allows you to install and a
 *   **Custom Plugin Store UI:** A clean, modern web interface accessible from the Domoticz **Custom** menu.
 *   **Search, Sort & Filter:** Find plugins in the registry with type-ahead search, sorting, and installed-plugin filtering.
 *   **Install, Remove & Update:** Manage Domoticz Python plugins without manual folder management.
+*   **Release-First Delivery:** Uses checksum-pinned stable release archives when the public release index has certified one, with Git retained as a supported channel.
+*   **Safe Git Migration:** Existing Git installs migrate during their normal Update flow only after repository, ancestry, local-file, dependency, and rollback checks pass.
 *   **Self Update:** PyPluginStore appears in the store under its installed folder name, so it can update itself like any other plugin.
-*   **Update Status Checks:** Installed plugins show whether their git checkout is current or has updates available.
+*   **Update Status Checks:** Cards show the active Release or Git channel, versions, verification state, migration blockers, and rollback availability.
 *   **Auto Updates & Notifications:** Automatically update installed plugins or run in notification-only mode.
 *   **Restart Domoticz:** Request a Domoticz service restart from the Plugin Store UI after installs or updates.
 *   **Dependency Management:** Install plugin dependencies with `uv` (recommended) or `pip`, or manage them manually.
@@ -146,6 +148,20 @@ Open **Local registry** in the Plugin Store header to add, edit, or delete entri
 
 The manager validates entries without contacting the repository and saves changes atomically. Existing manual files remain supported. See the [`registry_local.json` how-to](docs/registry_local.md) for the UI workflow, advanced object-style examples, and GitHub, GitLab, Codeberg, SSH, and local repository sources. If a plugin card shows **Repo mismatch**, see the [Repo Mismatch warning](docs/registry_local.md#repo-mismatch-warning).
 
+Local registry entries remain Git-managed. Release delivery is enabled only by the reviewed public registry and its matching release index.
+
+### Release and Git Channels
+
+Release is the primary channel when PyPluginStore has a fresh, certified release target. Certification is a reviewed, per-plugin opt-in through `release_index.json`; merely publishing a release on a supported forge does not activate it. A plugin that has never been release-managed continues using Git when no certified target exists. Local registry entries and the guarded PyPluginStore self-update also remain Git-managed. **Use Git** records an explicit keep-Git preference for an existing Git checkout.
+
+Once Release has been activated for a plugin, missing, expired, invalid, or mismatched release metadata blocks the operation instead of silently falling back to Git. Existing Git installations are not replaced in bulk: selecting **Update** runs a read-only migration preflight first and leaves the checkout untouched when it finds unsupported history, submodules, a repository mismatch, or local data that has not been approved. A clean checkout migrates only when the pinned release commit equals or descends from the installed commit. Safe reviewed local data can require exact manual approval, while an ahead or diverged checkout also requires explicit downgrade confirmation.
+
+Release archives are downloaded by immutable source revision, checked against their published byte length and SHA-256 digest, extracted with portable path and size limits, compiled and identity-checked, then activated together with a complete staged dependency snapshot. A failed release operation never falls back to a branch update.
+
+A release-managed folder has no Git metadata. PyPluginStore therefore refuses a direct **Use Git** switch unless it can follow a separately verified replacement path. Restore a verified Git migration backup with **Rollback** when one is available; a fresh clone must be a distinct, explicitly confirmed operation. Without either safeguard, the installed release is left untouched.
+
+See [Release and Git management](docs/release_management.md) for migration decisions, preservation approval, restart behavior, backup rollback, and troubleshooting.
+
 ### Restart Button
 
 The **Restart Domoticz** button asks the host OS to restart Domoticz. This is not handled by a Domoticz JSON API endpoint.
@@ -232,7 +248,7 @@ Restart command diagnostics are written to `restart_domoticz.log` in the PyPlugi
 
 If you prefer to manage dependencies manually or are on a system where automatic installation is restricted, you can install the required libraries for your plugins manually.
 
-PyPluginStore looks for shared dependencies in its own `.shared_deps` directory and adds it to `sys.path`.
+PyPluginStore looks for shared dependencies in its own `.shared_deps` directory and adds it to `sys.path`. Release operations build and validate a complete replacement snapshot before changing live code; manual commands below remain available when automatic dependency installation is blocked.
 
 To install dependencies for a specific plugin manually:
 1.  Check the `requirements.txt` file in the plugin's folder.
@@ -254,12 +270,12 @@ When a Pull Request modifying `registry.json` is merged, a GitHub Action automat
 
 Public registry entries can include platform metadata with `["linux"]`, `["windows"]`, or `["linux", "windows"]`. Plugins without platform metadata are shown as unknown rather than blocked.
 
-CI validation checks that every public registry entry points to an existing root-level `plugin.py`. Maintainer tooling and generated-file workflow notes are documented in [CONTRIBUTING.md](CONTRIBUTING.md).
+CI validation checks that every public registry entry points to an existing root-level `plugin.py`. Release discovery for GitHub, GitLab, Codeberg/Forgejo, Gitea, and generic HTTPS manifests is normalized into the provider-neutral `release_index.json`; runtime installations never depend on forge-specific APIs. Maintainer tooling and generated-file workflow notes are documented in [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ---
 
 ## ⚠️ Security Warning
-Auto-updating plugins without manually reviewing the code changes exposes your system to whatever the developer pushes. By using auto-update, you trust the developers of your installed plugins.
+Auto-updating plugins without manually reviewing the code changes exposes your system to code published by plugin developers. Release checksums prevent unreviewed artifact mutation outside the accepted index, but they do not make third-party plugin code trustworthy. By using auto-update, you still trust the plugin developer and the PyPluginStore registry distribution channel.
 
 ## 💬 Discussion & Support
 Join the conversation on the official Domoticz forums:

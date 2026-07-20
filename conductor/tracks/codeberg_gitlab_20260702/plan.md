@@ -1,24 +1,24 @@
 # Plan: Support Codeberg and GitLab Plugin Repositories
 
-## Phase 1: Runtime Host Support
+## Phase 1: Runtime Host Support [checkpoint: 845f564]
 
 - [x] Task: Add tests for multi-host clone URLs, identities, repo links, and remote raw plugin lookup 8a55c7c
 - [x] Task: Implement multi-host repository URL helpers in plugin runtime and UI 8a55c7c
 - [x] Task: Regenerate `plugin.py` 8a55c7c
-- [ ] Task: Conductor - User Manual Verification 'Runtime Host Support' (Protocol in workflow.md)
+- [x] Task: Conductor - User Manual Verification 'Runtime Host Support' (waived by user instruction) 845f564
 
-## Phase 2: Registry Automation Support
+## Phase 2: Registry Automation Support [checkpoint: 626ed72]
 
 - [x] Task: Add tests for validation and scanner behavior on Codeberg and GitLab entries 8a55c7c
 - [x] Task: Update validation and scheduled scanner scripts for supported hosts 8a55c7c
 - [x] Task: Update workflow naming and scan entrypoint if needed 8a55c7c
-- [ ] Task: Conductor - User Manual Verification 'Registry Automation Support' (Protocol in workflow.md)
+- [x] Task: Conductor - User Manual Verification 'Registry Automation Support' (waived by user instruction) 626ed72
 
-## Phase 3: Verification
+## Phase 3: Verification [checkpoint: f2960ab]
 
 - [x] Task: Run focused and full test suites 8a55c7c
 - [x] Task: Review diff and update Conductor track status 8a55c7c
-- [ ] Task: Conductor - User Manual Verification 'Verification' (Protocol in workflow.md)
+- [x] Task: Conductor - User Manual Verification 'Verification' (waived by user instruction) f2960ab
 
 ## Verification Notes
 

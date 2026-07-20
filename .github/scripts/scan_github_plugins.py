@@ -24,6 +24,11 @@ from detect_plugin_platforms import (
     set_registry_entry_platforms,
     update_platform_metadata_entry,
 )
+from registry_records import (
+    RegistryRecord,
+    normalize_repository_identity,
+    parse_registry_owner,
+)
 
 REGISTRY_FILE = os.path.join(SCRIPT_DIR, '../../registry.json')
 UPDATE_TIMES_FILE = os.path.join(SCRIPT_DIR, '../../update_times.json')
@@ -45,13 +50,8 @@ def is_valid_plugin_repo(repo_name):
     return bool(repo_name) and not repo_name.startswith('.') and '/' not in repo_name and '\\' not in repo_name
 
 def split_registry_owner(author):
-    author = str(author or "").strip().strip("/")
-    for host in SUPPORTED_GIT_HOSTS:
-        if author.lower() == host:
-            return host, ""
-        if author.lower().startswith(host + "/"):
-            return host, author[len(host) + 1:]
-    return DEFAULT_GIT_HOST, author
+    location = parse_registry_owner(author)
+    return location.host, location.owner_path
 
 
 def get_registry_owner(host, owner_path):
@@ -63,8 +63,7 @@ def get_registry_owner(host, owner_path):
 
 
 def get_repository_identity(owner, repo):
-    host, owner_path = split_registry_owner(owner)
-    return f"{host}/{owner_path}/{repo}".lower()
+    return normalize_repository_identity(owner, repo)
 
 
 def normalize_full_name(owner, repo):
@@ -276,7 +275,10 @@ def get_repo_info(owner, repo):
         return get_gitlab_repo_info(owner_path, repo)
     if host == "codeberg.org":
         return get_codeberg_repo_info(owner_path, repo)
-    return get_github_repo_info(owner_path, repo)
+    if host == DEFAULT_GIT_HOST:
+        return get_github_repo_info(owner_path, repo)
+    print(f"Skipping metadata refresh for unsupported scanner host {host}")
+    return None
 
 def search_github():
     # Multiple queries to be more comprehensive
@@ -389,7 +391,9 @@ def main():
         if key == "Idle": continue
 
         data = registry[key]
-        owner, repo_name = data[0], data[1]
+        registry_record = RegistryRecord.from_entry(key, data)
+        owner = registry_record.owner
+        repo_name = registry_record.repository
 
         block_reason = get_repo_block_reason(owner, repo_name)
         if block_reason:
@@ -412,8 +416,8 @@ def main():
             else:
                 # Update metadata. Registry branches are curated and must not
                 # follow repository default-branch changes automatically.
-                updated_desc = info.get('description') or data[2]
-                registry_branch = data[3]
+                updated_desc = info.get('description') or registry_record.description
+                registry_branch = registry_record.branch
                 updated_at = info.get('pushed_at') or info.get('updated_at')
                 current_platforms = get_registry_entry_platforms(data)
                 platform_decision = detect_platforms_for_repo(owner, repo_name, registry_branch, info)
@@ -429,7 +433,7 @@ def main():
                 )
 
                 # Check if changed
-                if (updated_desc != data[2] or
+                if (updated_desc != registry_record.description or
                     update_times.get(key) != updated_at or
                     next_platforms != current_platforms):
 
@@ -445,13 +449,12 @@ def main():
                             f"    platforms {current_platforms or ['unknown']} -> {next_platforms} "
                             f"({decision_confidence(platform_decision)}, {platform_policy})"
                         )
-                    registry[key] = build_registry_entry(
-                        owner,
-                        repo_name,
-                        updated_desc,
-                        registry_branch,
-                        next_platforms
-                    )
+                    updated_record = registry_record.with_description(updated_desc)
+                    if next_platforms:
+                        updated_record = updated_record.with_platforms(
+                            next_platforms
+                        )
+                    registry[key] = updated_record.to_document()
                     if updated_at:
                         update_times[key] = updated_at
                     stats["updated"] += 1
@@ -480,9 +483,9 @@ def main():
     print("Searching for new plugins...")
     new_items = search_repositories()
     existing_full_names = {
-        get_repository_identity(v[0], v[1])
-        for k, v in registry.items()
-        if k != "Idle" and isinstance(v, list) and len(v) >= 2
+        RegistryRecord.from_entry(key, value).repository_identity
+        for key, value in registry.items()
+        if key != "Idle"
     }
 
     for repo in new_items:

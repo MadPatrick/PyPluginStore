@@ -944,6 +944,62 @@
         letter-spacing: 0;
     }
 
+    #pypluginstore-container .channel-badge {
+        display: inline-block;
+        padding: 2px 8px;
+        border-radius: 10px;
+        font-size: 0.7em;
+        font-weight: 600;
+        letter-spacing: 0;
+    }
+
+    #pypluginstore-container .channel-badge-release {
+        background: var(--pps-primary-tint);
+        color: var(--pps-primary);
+        border: 1px solid var(--pps-primary-border);
+    }
+
+    #pypluginstore-container .channel-badge-git {
+        background: var(--pps-badge-muted-bg);
+        color: var(--pps-text-muted);
+        border: 1px solid var(--pps-badge-muted-border);
+    }
+
+    #pypluginstore-container .release-status-detail,
+    #pypluginstore-container .release-error-detail {
+        display: inline-block;
+        margin-block-start: 4px;
+        font-weight: 600;
+    }
+
+    #pypluginstore-container .release-status-detail {
+        color: var(--pps-text-muted);
+    }
+
+    #pypluginstore-container .release-error-detail {
+        color: var(--pps-warning);
+    }
+
+    #pypluginstore-container .btn-channel {
+        background: var(--pps-primary-tint) !important;
+        color: var(--pps-primary) !important;
+        border: 1px solid var(--pps-primary-border) !important;
+    }
+
+    #pypluginstore-container .btn-channel:hover {
+        background: var(--pps-primary-tint-hover) !important;
+    }
+
+    #pypluginstore-container .btn-rollback {
+        background: var(--pps-danger-tint) !important;
+        color: var(--pps-danger) !important;
+        border: 1px solid var(--pps-danger-border) !important;
+    }
+
+    #pypluginstore-container .btn-rollback:hover {
+        background: var(--pps-danger-tint-hover) !important;
+    }
+
     #pypluginstore-container .platform-badges {
         display: flex;
         align-items: center;
@@ -1172,6 +1228,7 @@
     let localCache = [];
     let updateStatusCache = {};
     let versionsCache = {};
+    let managementCache = {};
     let platformCache = {};
     let installedMatchDetailsCache = {};
     let managerKey = null;
@@ -2511,6 +2568,7 @@
                 localCache = response.local_plugins || [];
                 updateStatusCache = response.update_status || {};
                 versionsCache = response.versions || {};
+                managementCache = response.management || {};
                 platformCache = response.platforms || {};
                 installedMatchDetailsCache = response.installed_match_details || {};
                 managerKey = response.manager_key || null;
@@ -3163,6 +3221,106 @@
         statusBadges.appendChild(badge);
     }
 
+    function releaseChannelLabel(state) {
+        if (!state || state.channel === undefined) return '';
+        if (state.channel === 'release') return 'Release';
+        if (state.channel === 'git') return 'Git';
+        return '';
+    }
+
+    function formatReleaseManagementStatus(state) {
+        if (!state) return '';
+        const channel = state.channel === 'release' ? 'Release' :
+            (state.channel === 'git' ? 'Git' : '');
+        const version = state.available_version || state.installed_version || '';
+        const revision = state.available_revision !== null && state.available_revision !== undefined ?
+            state.available_revision : state.installed_revision;
+        const target = [
+            version ? 'v' + String(version).replace(/^v/i, '') : '',
+            revision !== null && revision !== undefined ? 'revision ' + revision : ''
+        ].filter(Boolean).join(', ');
+        const details = [];
+
+        if (state.status === 'verification_failed') {
+            details.push('Verification failed' + (state.verification_message ? ': ' + state.verification_message : ''));
+        } else if (state.status === 'release_metadata_unavailable') {
+            details.push('Release metadata unavailable' + (state.verification_message ? ': ' + state.verification_message : ''));
+        } else if (String(state.status || '').indexOf('migration_blocked') === 0) {
+            details.push('Migration blocked' + (state.migration_message ? ': ' + state.migration_message : ''));
+        } else if (state.status === 'migration_waiting_for_release') {
+            details.push('Migration waiting for release' + (state.migration_message ? ': ' + state.migration_message : ''));
+        } else if (state.status === 'git_available') {
+            details.push('Git update available');
+        } else if (state.status === 'git_current') {
+            details.push('Git current');
+        } else if (state.status === 'rollback_available') {
+            const rollbackVersion = state.rollback_version ? 'v' + String(state.rollback_version).replace(/^v/i, '') : '';
+            const rollbackRevision = state.rollback_revision !== null && state.rollback_revision !== undefined ? 'revision ' + state.rollback_revision : '';
+            details.push('Rollback available' + ([rollbackVersion, rollbackRevision].filter(Boolean).length ? ': ' + [rollbackVersion, rollbackRevision].filter(Boolean).join(', ') : ''));
+        } else if (state.status === 'migration_available') {
+            details.push('Release migration available' + (target ? ': ' + target : ''));
+        } else if (state.status === 'available') {
+            details.push((target ? target + ' — ' : '') + 'available');
+        } else if (state.status === 'current') {
+            details.push((target ? target + ' — ' : '') + 'current');
+        } else if (state.status) {
+            details.push(String(state.status).replace(/_/g, ' '));
+        }
+
+        if (state.restart_pending) details.push('Restart required');
+        return [channel, ...details].filter(Boolean).join(' · ');
+    }
+
+    function releaseManagementActions(state, context) {
+        const actions = [];
+        const installed = Boolean(context && context.installed);
+        if (!installed) return actions;
+        if (!state) {
+            if (context && context.isGit && !context.isManager) actions.push('update');
+            return actions;
+        }
+        if (state.restart_pending) {
+            if (state.rollback_available) actions.push('rollback');
+            return actions;
+        }
+        if (state.updateable) actions.push('update');
+        if (state.channel === 'release') {
+            if (state.rollback_available) actions.push('rollback');
+            if (state.git_supported) actions.push('use_git');
+        } else if (state.channel === 'git' && state.release_available) {
+            actions.push('use_release');
+        }
+        return actions;
+    }
+
+    function buildReleaseConfirmationPayload(action, pluginKey, token) {
+        if (!['update', 'use_git', 'use_release', 'rollback'].includes(action)) {
+            throw new Error('Unsupported release management action.');
+        }
+        if (typeof pluginKey !== 'string' || !pluginKey || pluginKey.length > 128) {
+            throw new Error('Invalid plugin key.');
+        }
+        if (typeof token !== 'string' || !token || token.length > 512) {
+            throw new Error('Invalid confirmation token.');
+        }
+        return { plugin_key: pluginKey, confirmation_token: token };
+    }
+
+    async function handleReleaseManagementAction(action, pluginKey) {
+        let response = await sendCommand(action, { plugin_key: pluginKey });
+        if (response && response.status === 'confirmation_required' && response.challenge) {
+            if (!response.challenge.message || !response.challenge.token) {
+                throw new Error('The confirmation challenge is incomplete.');
+            }
+            if (!confirm(response.challenge.message)) return response;
+            response = await sendCommand(
+                action,
+                buildReleaseConfirmationPayload(action, pluginKey, response.challenge.token)
+            );
+        }
+        return response;
+    }
+
     function renderPlugins(pluginData, installedList) {
         const container = document.getElementById('plugins-list');
         if (!container) return;
@@ -3197,6 +3355,7 @@
             const displayName = formatPluginDisplayName(key);
             const matchDetails = installedMatchDetailsCache[key] || {};
             const isGit = matchDetails.is_git !== false;
+            const management = managementCache[key] || null;
             const hasRepoMismatch = Boolean(matchDetails.registry_mismatch || matchDetails.repo_mismatch || matchDetails.branch_mismatch || updateStatus === 'mismatch');
             const isManager = key === managerKey;
 
@@ -3237,12 +3396,20 @@
                 badge.textContent = 'Installed';
                 headerMain.appendChild(badge);
 
-                if (isGit === false) {
+                if (isGit === false && !(management && management.channel === 'release')) {
                     const nonGitBadge = document.createElement('span');
                     nonGitBadge.className = 'non-git-badge';
                     nonGitBadge.textContent = 'Non-Git';
                     nonGitBadge.title = 'This plugin was not installed using Git/GitHub. Updates through PyPluginStore are not available.';
                     statusBadges.appendChild(nonGitBadge);
+                }
+
+                const channelLabel = releaseChannelLabel(management);
+                if (channelLabel) {
+                    const channelBadge = document.createElement('span');
+                    channelBadge.className = 'channel-badge channel-badge-' + management.channel;
+                    channelBadge.textContent = channelLabel;
+                    statusBadges.appendChild(channelBadge);
                 }
 
                 if (hasRepoMismatch) {
@@ -3306,6 +3473,17 @@
                 }
             }
 
+            if (isInstalled && management) {
+                const managementDetail = document.createElement('span');
+                const isManagementError = management.status === 'verification_failed' ||
+                    management.status === 'release_metadata_unavailable' ||
+                    String(management.status || '').indexOf('migration_blocked') === 0;
+                managementDetail.className = isManagementError ? 'release-error-detail' : 'release-status-detail';
+                managementDetail.textContent = formatReleaseManagementStatus(management);
+                meta.appendChild(document.createElement('br'));
+                meta.appendChild(managementDetail);
+            }
+
             if (isManager) {
                 renderSelfUpdateState(meta);
             }
@@ -3333,8 +3511,18 @@
             actions.appendChild(repoLink);
 
             if (isInstalled) {
+                const managementActions = releaseManagementActions(management, {
+                    installed: isInstalled,
+                    isGit: isGit,
+                    isManager: isManager
+                });
                 const updateButton = document.createElement('button');
-                if (isGit === false) {
+                const releaseUpdateable = management && management.channel === 'release' && management.updateable;
+                if (!managementActions.includes('update')) {
+                    updateButton.className = 'btn-update btn-update-disabled';
+                    updateButton.title = management && management.restart_pending ? 'Restart required before another update' : 'Updates are unavailable';
+                    updateButton.disabled = true;
+                } else if (isGit === false && !releaseUpdateable) {
                     updateButton.className = 'btn-update btn-update-disabled';
                     updateButton.title = 'Cannot update non-Git plugins';
                     updateButton.disabled = true;
@@ -3363,6 +3551,36 @@
                 updateButton.type = 'button';
                 updateButton.textContent = 'Update';
                 actions.appendChild(updateButton);
+
+                if (managementActions.includes('use_git')) {
+                    const useGitButton = document.createElement('button');
+                    useGitButton.className = 'btn-channel';
+                    useGitButton.dataset.key = key;
+                    useGitButton.dataset.action = 'use_git';
+                    useGitButton.type = 'button';
+                    useGitButton.textContent = 'Use Git';
+                    actions.appendChild(useGitButton);
+                }
+
+                if (managementActions.includes('use_release')) {
+                    const useReleaseButton = document.createElement('button');
+                    useReleaseButton.className = 'btn-channel';
+                    useReleaseButton.dataset.key = key;
+                    useReleaseButton.dataset.action = 'use_release';
+                    useReleaseButton.type = 'button';
+                    useReleaseButton.textContent = 'Use Release';
+                    actions.appendChild(useReleaseButton);
+                }
+
+                if (managementActions.includes('rollback')) {
+                    const rollbackButton = document.createElement('button');
+                    rollbackButton.className = 'btn-rollback';
+                    rollbackButton.dataset.key = key;
+                    rollbackButton.dataset.action = 'rollback';
+                    rollbackButton.type = 'button';
+                    rollbackButton.textContent = 'Rollback';
+                    actions.appendChild(rollbackButton);
+                }
 
                 if (key !== managerKey) {
                     const removeButton = document.createElement('button');
@@ -3404,7 +3622,10 @@
 
         setStatus(`Executing ${action} for ${pluginKey}... This may take a moment.`);
         try {
-            const response = await sendCommand(action, { plugin_key: pluginKey });
+            const isReleaseManagementAction = ['update', 'use_git', 'use_release', 'rollback'].includes(action);
+            const response = isReleaseManagementAction ?
+                await handleReleaseManagementAction(action, pluginKey) :
+                await sendCommand(action, { plugin_key: pluginKey });
             if (response && response.status === 'success') {
                 const successMessage = response.message || `Successfully completed ${action} for ${pluginKey}. Domoticz restart may be required.`;
                 alert(successMessage);
@@ -3457,6 +3678,7 @@
                 localCache = response.local_plugins || localCache;
                 updateStatusCache = response.update_status || {};
                 versionsCache = response.versions || versionsCache;
+                managementCache = response.management || managementCache;
                 platformCache = response.platforms || platformCache;
                 installedMatchDetailsCache = response.installed_match_details || installedMatchDetailsCache;
                 managerKey = response.manager_key || managerKey;

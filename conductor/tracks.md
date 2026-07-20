@@ -9,10 +9,15 @@ This file tracks all major tracks for the project. Each track has its own detail
 
 ---
 
-## [~] Track: Support Codeberg and GitLab plugin repositories
+## [x] Track: Support Codeberg and GitLab plugin repositories
 *Link: [./conductor/tracks/codeberg_gitlab_20260702/](./conductor/tracks/codeberg_gitlab_20260702/)*
 
 ---
 
 ## [x] Track: Robust PyPluginStore Self-Update State
 *Link: [./conductor/tracks/self_update_state_20260709/](./conductor/tracks/self_update_state_20260709/)*
+
+---
+
+## [x] Track: Release-first plugin installation and updates
+*Link: [./conductor/tracks/release_first_plugin_management_20260718/](./conductor/tracks/release_first_plugin_management_20260718/)*

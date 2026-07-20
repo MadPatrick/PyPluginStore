@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "release_id": "generic:downloads.example.test/example:v1.4.0",
+  "version": "1.4.0",
+  "released_at": "2026-07-17T09:00:00Z",
+  "url": "https://downloads.example.test/example/v1.4.0/domoticz-plugin.zip",
+  "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "size": 56789,
+  "source_revision": "release-2026-07-17-v1.4.0",
+  "source_path": "plugin"
+}

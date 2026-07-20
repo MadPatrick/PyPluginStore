@@ -1,6 +1,7 @@
 import os
 import sys
 import json
+import hashlib
 import subprocess
 import time
 
@@ -11,6 +12,7 @@ if SCRIPT_DIR not in sys.path:
 REGISTRY_FILE_PATH = os.path.join(SCRIPT_DIR, '../../registry.json')
 UPDATE_TIMES_FILE_PATH = os.path.join(SCRIPT_DIR, '../../update_times.json')
 PLATFORM_METADATA_FILE_PATH = os.path.join(SCRIPT_DIR, '../../.github/platform_detection.json')
+RELEASE_INDEX_FILE_PATH = os.path.join(SCRIPT_DIR, '../../release_index.json')
 DEFAULT_GIT_HOST = "github.com"
 SUPPORTED_GIT_HOSTS = ("github.com", "gitlab.com", "codeberg.org")
 VALID_PLATFORM_METADATA_SOURCES = {"unknown", "legacy_detected", "detected", "reviewed"}
@@ -29,6 +31,8 @@ try:
 except ImportError:
     check_root_plugin_py = None
 
+from registry_records import RegistryRecord, parse_registry_owner
+
 def load_registry():
     print(f"Checking if registry file exists at: {REGISTRY_FILE_PATH}")
     if not os.path.isfile(REGISTRY_FILE_PATH):
@@ -46,12 +50,13 @@ def load_registry():
         if key == "Idle":
             continue
         validate_registry_entry(key, data)
+        record = RegistryRecord.from_entry(key, data)
         plugin_data[key] = {
             "key": key,
-            "author": data[0],
-            "repository": data[1],
-            "description": data[2],
-            "branch": data[3]
+            "author": record.owner,
+            "repository": record.repository,
+            "description": record.description,
+            "branch": record.branch,
         }
     return plugin_data
 
@@ -96,7 +101,9 @@ def validate_platform_metadata(registry_data):
         if not isinstance(entry, dict):
             raise ValueError(f"Platform metadata entry '{key}' must be an object.")
 
-        registry_platforms = normalize_platforms(registry_data[key][5] if len(registry_data[key]) > 5 else [])
+        registry_platforms = RegistryRecord.from_entry(
+            key, registry_data[key]
+        ).platforms
         metadata_platforms = normalize_platforms(entry.get("registry_platforms", []))
         if metadata_platforms != registry_platforms:
             raise ValueError(f"Platform metadata entry '{key}' does not match registry platforms.")
@@ -127,45 +134,40 @@ def validate_update_times(registry_data):
 
 
 def validate_registry_entry(key, data):
-    if not isinstance(data, list) or len(data) < 4:
-        raise ValueError(f"Plugin '{key}' must be a list with owner, repository, description and branch.")
-
-    if not key or key.startswith(".") or "/" in key or "\\" in key:
-        raise ValueError(f"Plugin key '{key}' is invalid. Keys must be visible folder names without path separators.")
-
-    for index, field_name in enumerate(("author", "repository", "description", "branch")):
-        if not isinstance(data[index], str) or not data[index].strip():
-            raise ValueError(f"Plugin '{key}' has an invalid {field_name}.")
-
-    repository = data[1]
-    if repository.startswith(".") or "/" in repository or "\\" in repository:
-        raise ValueError(f"Plugin '{key}' has an invalid repository name '{repository}'.")
-
-    if len(data) > 5:
-        platforms = data[5]
-        if isinstance(platforms, str):
-            platforms = [platforms]
-        if not isinstance(platforms, list) or not platforms:
-            raise ValueError(f"Plugin '{key}' has invalid platform metadata.")
-        for platform_name in platforms:
-            if str(platform_name).strip().lower() not in {"linux", "windows"}:
-                raise ValueError(f"Plugin '{key}' has unsupported platform '{platform_name}'.")
+    RegistryRecord.from_entry(key, data)
 
 
 def split_registry_owner(author):
-    author = str(author or "").strip().strip("/")
-    for host in SUPPORTED_GIT_HOSTS:
-        if author.lower() == host:
-            return host, ""
-        if author.lower().startswith(host + "/"):
-            return host, author[len(host) + 1:]
-    return DEFAULT_GIT_HOST, author
+    location = parse_registry_owner(author)
+    return location.host, location.owner_path
 
 
 def build_repository_url(author, repository):
-    host, owner_path = split_registry_owner(author)
-    path_parts = [part for part in (owner_path + "/" + repository).split("/") if part]
-    return "https://" + host + "/" + "/".join(path_parts)
+    location = parse_registry_owner(author)
+    return (
+        location.web_base
+        + "/"
+        + location.owner_path
+        + "/"
+        + repository
+    )
+
+
+def validate_release_index_binding(
+    registry_path=REGISTRY_FILE_PATH,
+    index_path=RELEASE_INDEX_FILE_PATH,
+):
+    """Require the generated index to bind the exact registry file bytes."""
+    with open(registry_path, "rb") as registry_file:
+        registry_bytes = registry_file.read()
+    with open(index_path, "r", encoding="utf-8") as index_file:
+        index = json.load(index_file)
+    if not isinstance(index, dict):
+        raise ValueError("Release index must contain a JSON object.")
+    expected = hashlib.sha256(registry_bytes).hexdigest()
+    if index.get("registry_sha256") != expected:
+        raise ValueError("Release index registry binding does not match registry bytes.")
+    return True
 
 
 def validate_repository(author, repository, branch):
@@ -199,7 +201,7 @@ def validate_root_plugin_py(key, author, repository, branch, opener=None, sleepe
     for attempt in range(1, ROOT_PLUGIN_MAX_ATTEMPTS + 1):
         result = check_root_plugin_py(
             key,
-            [author, repository, "", branch],
+            [author, repository, "Plugin", branch],
             opener=opener,
         )
         if result.status == "present":
@@ -223,6 +225,8 @@ def validate_root_plugin_py(key, author, repository, branch, opener=None, sleepe
 def main():
     print("Loading registry file...")
     plugin_data = load_registry()
+    if os.path.isfile(RELEASE_INDEX_FILE_PATH):
+        validate_release_index_binding()
     print(f"Loaded {len(plugin_data)} plugins.")
 
     if not plugin_data:

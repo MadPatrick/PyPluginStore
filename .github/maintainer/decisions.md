@@ -1,5 +1,71 @@
 # Maintainer Decisions
 
+## 2026-07-18 - Minimize GitHub Actions authority
+
+Decision: keep workflow defaults read-only, grant write permissions only to the
+trusted jobs that publish releases or repository changes, and pin third-party
+actions to reviewed full commit SHAs.
+
+Rationale:
+- Pull-request code must be able to verify generated output without receiving a
+  repository write token or persisted checkout credentials.
+- Per-job elevation makes each publishing path visible and keeps unrelated jobs
+  within the repository's read-only token default.
+- Immutable action references prevent a moved tag from changing trusted workflow
+  code without review.
+
+Implementation notes:
+- Added a read-only pull-request freshness job for generated `plugin.py` and kept
+  write access only in the trusted `master` push job.
+- Scoped Release Please and weekly scanner permissions to their publishing jobs.
+- Pinned checkout, setup-python, Release Please, and create-pull-request actions.
+- Changed the repository's default workflow token to read-only and disabled
+  workflow pull-request review approval.
+- Documented the staged default-branch ruleset and delayed SHA enforcement until
+  the pinned workflow definitions reach `master`.
+
+Verification:
+- `pytest -q -p no:cacheprovider`: 231 passed.
+- `actionlint` 1.7.12: passed.
+
+## 2026-07-18 - Use a provider-neutral release index
+
+Decision: make validated, digest-pinned release ZIPs the preferred plugin delivery
+channel per certified registry entry while retaining Git as a supported channel.
+
+Rationale:
+- Forge discovery in repository automation avoids runtime API limits and prevents
+  GitHub-specific behavior from becoming part of the Domoticz plugin protocol.
+- A normalized index gives GitHub, GitLab, Forgejo/Codeberg, Gitea, and generic
+  HTTPS releases one runtime contract.
+- Only 54 of 256 repositories currently report a latest stable release candidate,
+  before archive validation, so rollout must be progressive.
+- Existing Git checkouts need ancestry, local-data, staged replacement, and
+  rollback checks before their `.git` directory can be removed.
+
+Implementation notes:
+- Added a Conductor specification and phased implementation plan for `ISSUE:64`.
+- V1 prefers forge-generated source ZIPs, validates ZIPs before mutation, hashes
+  the canonical tree, and uses durable same-filesystem transaction journals.
+- Automatic migration blocks dirty or ambiguous trees and unknown local files;
+  reviewed mutable paths can be preserved with separate audit hashes.
+- Completed the release-aware runtime, rollback lifecycle, dependency snapshots,
+  channel UI, and content-bound Git migration confirmation flow.
+- Published an initial 47-entry index: 46 GitHub releases and one GitLab release.
+  Both registered Codeberg/Forgejo repositories currently report no release;
+  Gitea and generic remain covered by provider contracts without live pilot claims.
+- The unsigned v1 index explicitly does not claim protection against compromise
+  of the PyPluginStore distribution channel; signed TUF-style metadata is future
+  hardening.
+
+Verification:
+- Research covered current registry release availability and official GitHub,
+  GitLab, Forgejo, Gitea, Python archive, and TUF documentation.
+- `pytest -q`: 1109 passed.
+- `python .github/scripts/validate_plugins.py`: passed for 257 registry records.
+- Generated runtime freshness, Python compilation, workflow YAML linting, and
+  diff checks passed. Manual host verification was waived by the user.
+
 ## 2026-07-16 - Safe UI management for registry_local.json
 
 Decision: manage local registry entries through backend-owned, revisioned CRUD actions and one accessible native dialog.
@@ -18,6 +84,26 @@ Implementation notes:
 Verification:
 - `pytest -q`: 226 passed.
 - Manual verification on pietje passed all documented steps.
+
+## 2026-07-06 - Bound registry validation Git checks
+
+Decision: registry validation must apply a timeout to each `git ls-remote` repository check.
+
+Rationale:
+- During maintenance, `python .github/scripts/validate_plugins.py` blocked in a `subprocess.run()` call while validating `evcc_domoticz`.
+- The registry currently has 254 entries; one slow remote should fail that entry cleanly instead of blocking the entire release check.
+- Root `plugin.py` HTTP validation already has a timeout, so the Git branch existence check should have the same bounded behavior.
+
+Implementation notes:
+- Added `GIT_REMOTE_TIMEOUT_SECONDS = 30`.
+- `validate_repository()` now passes that timeout to `subprocess.run()` and returns `False` on `subprocess.TimeoutExpired`.
+- Existing command-shape tests now assert the timeout, and a new regression test covers timeout handling.
+
+Verification:
+- `pytest tests/test_registry_scripts.py -q`: 67 passed.
+- `pytest -q`: 178 passed.
+- `python .github/scripts/validate_plugins.py`: passed for 254 plugins.
+- `git diff --check`: passed.
 
 ## 2026-07-06 - Accept action-less API error responses by transaction ID
 

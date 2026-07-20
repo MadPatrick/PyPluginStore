@@ -19,6 +19,38 @@ python .github/scripts/cleanup_registry.py --apply
 
 The cleanup script supports GitHub, Codeberg, and GitLab entries. Dry-run is the default; `--apply` removes missing entries from `registry.json`, `update_times.json`, and `.github/platform_detection.json`.
 
+## Release index maintenance
+
+Stable release discovery is provider-neutral at runtime. The scanner has separate adapters and contract fixtures for GitHub, GitLab, Codeberg/Forgejo, Gitea, and generic HTTPS manifests, then emits one reviewed `release_index.json` bound to the exact `registry.json` bytes. Provider support does not mean that a suitable registered release currently exists on every provider.
+
+Use a staged report-only and pilot workflow:
+
+1. Inspect candidates without changing the tracked index. A cache avoids repeating provider and archive requests, and an output file keeps the provider-specific coverage and exclusion report for review:
+
+```bash
+python .github/scripts/generate_release_index.py \
+  --report-only \
+  --cache /tmp/pypluginstore-release-candidates.json \
+  --report-output /tmp/pypluginstore-release-report.json
+```
+
+2. Review repository identity, tag policy, immutable source revision, archive layout, canonical tree, mutable paths, migration eligibility, predecessor lineage, provider failures, and explicit no-release results. Release participation is per plugin; do not activate a provider or the whole registry as a flag-day change.
+
+3. Pilot suitable registered GitHub and GitLab releases. Codeberg/Forgejo, Gitea, and generic manifest behavior remains covered by provider-contract fixtures and live endpoint responses until a registered plugin publishes a release suitable for certification. Do not claim live release coverage from fixtures alone.
+
+4. Update the index only for candidates that passed review, then validate the exact registry/index pair:
+
+```bash
+python .github/scripts/generate_release_index.py \
+  --update \
+  --cache /tmp/pypluginstore-release-candidates.json
+python .github/scripts/validate_plugins.py
+```
+
+5. Review the generated diff through a pull request. The weekly workflow performs the report-only preview before generation and proposes index changes; scanner automation must not push target metadata directly. Keep per-entry Git opt-outs and provider/source-path overrides available as coverage expands.
+
+Do not hand a forge API response directly to the runtime or silently fall back to Git after a release failure. A higher per-plugin revision must name the accepted predecessor lineage; changed bytes or trees require a new reviewed revision. An existing release-managed installation with unavailable metadata must remain blocked, while a plugin that has never activated Release may continue on Git.
+
 ## Generated plugin.py
 
 `plugin.py` is generated from `plugin_core.py` plus the Domoticz XML header. If you edit `plugin_core.py`, run:

@@ -1,0 +1,11 @@
+[
+  {
+    "ref": "refs/tags/v1.4.0",
+    "url": "https://codeberg.org/api/v1/repos/team/example/git/refs/tags/v1.4.0",
+    "object": {
+      "type": "commit",
+      "sha": "3333333333333333333333333333333333333333",
+      "url": "https://codeberg.org/api/v1/repos/team/example/git/commits/3333333333333333333333333333333333333333"
+    }
+  }
+]

@@ -14,19 +14,47 @@ on:
       - 'registry.json'
       - 'update_times.json'
       - 'plugin_core.py'
+      - 'plugin.py'
       - '.github/scripts/generate_plugin.py'
+      - '.github/workflows/generate_plugin.yml'
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  generate:
+  verify:
+    if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository without persisted credentials
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: '3.x'
+
+      - name: Generate plugin.py
+        run: python .github/scripts/generate_plugin.py
+
+      - name: Verify plugin.py is current
+        run: git diff --exit-code -- plugin.py
+
+  generate:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout trusted branch
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: '3.x'
 
@@ -34,10 +62,12 @@ jobs:
         run: python .github/scripts/generate_plugin.py
 
       - name: Commit and push changes
-        if: github.event_name == 'push'
         run: |
+          if git diff --quiet -- plugin.py; then
+            exit 0
+          fi
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
           git add plugin.py
-          git commit -m "Auto-generate plugin.py from registry.json" || exit 0
+          git commit -m "Auto-generate plugin.py from registry.json"
           git push

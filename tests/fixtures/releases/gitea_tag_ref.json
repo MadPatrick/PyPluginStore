@@ -1,0 +1,11 @@
+[
+  {
+    "ref": "refs/tags/v1.4.0",
+    "url": "https://gitea.example/api/v1/repos/team/example/git/refs/tags/v1.4.0",
+    "object": {
+      "type": "commit",
+      "sha": "4444444444444444444444444444444444444444",
+      "url": "https://gitea.example/api/v1/repos/team/example/git/commits/4444444444444444444444444444444444444444"
+    }
+  }
+]

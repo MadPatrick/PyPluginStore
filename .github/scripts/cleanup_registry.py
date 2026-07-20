@@ -10,6 +10,12 @@ import urllib.request
 
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+if SCRIPT_DIR not in sys.path:
+    sys.path.insert(0, SCRIPT_DIR)
+
+from registry_records import RegistryRecord, parse_registry_owner
+
+
 REPO_ROOT = os.path.abspath(os.path.join(SCRIPT_DIR, "../.."))
 REGISTRY_FILE = os.path.join(REPO_ROOT, "registry.json")
 UPDATE_TIMES_FILE = os.path.join(REPO_ROOT, "update_times.json")
@@ -35,13 +41,8 @@ class CheckResult:
 
 
 def split_registry_owner(author):
-    author = str(author or "").strip().strip("/")
-    for host in SUPPORTED_GIT_HOSTS:
-        if author.lower() == host:
-            return host, ""
-        if author.lower().startswith(host + "/"):
-            return host, author[len(host) + 1:]
-    return DEFAULT_GIT_HOST, author
+    location = parse_registry_owner(author)
+    return location.host, location.owner_path
 
 
 def quote_path_part(value):
@@ -53,16 +54,10 @@ def quote_repo_path(path):
 
 
 def raw_plugin_url(author, repository, branch):
-    host, owner_path = split_registry_owner(author)
-    repo_path = "/".join(part for part in (owner_path + "/" + repository).split("/") if part)
-    repo_path = quote_repo_path(repo_path)
-    branch = quote_path_part(branch)
-
-    if host == "gitlab.com":
-        return f"https://gitlab.com/{repo_path}/-/raw/{branch}/plugin.py"
-    if host == "codeberg.org":
-        return f"https://codeberg.org/{repo_path}/raw/branch/{branch}/plugin.py"
-    return f"https://raw.githubusercontent.com/{repo_path}/{branch}/plugin.py"
+    return RegistryRecord.from_entry(
+        "Plugin",
+        [author, repository, "Plugin", branch],
+    ).raw_plugin_url
 
 
 def headers_for_url(url):
@@ -101,14 +96,12 @@ def save_json_file(path, data):
 
 
 def check_root_plugin_py(key, data, opener=None):
-    if not isinstance(data, list) or len(data) < 4:
-        return CheckResult(key, "invalid-entry", reason="registry entry is not a four-field list")
+    try:
+        record = RegistryRecord.from_entry(key, data)
+    except ValueError as error:
+        return CheckResult(key, "invalid-entry", reason=str(error))
 
-    author, repository, branch = data[0], data[1], data[3]
-    if not all(isinstance(value, str) and value.strip() for value in (author, repository, branch)):
-        return CheckResult(key, "invalid-entry", reason="registry entry has blank author, repository, or branch")
-
-    url = raw_plugin_url(author, repository, branch)
+    url = record.raw_plugin_url
     request = urllib.request.Request(url, headers=headers_for_url(url))
     opener = opener or urllib.request.urlopen
 
