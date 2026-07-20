@@ -224,6 +224,51 @@ def test_runtime_does_not_infer_codeload_for_noncanonical_github_urls(
     assert strategy._allowed_origins(entry, release) == []
 
 
+def test_self_hosted_web_base_does_not_allow_runtime_redirects(
+    plugin_core_module,
+    tmp_path,
+):
+    _plugin, strategy, _manager, _http, _dependencies = make_strategy(
+        plugin_core_module,
+        tmp_path,
+    )
+    identity = "gitea.example.test/owner/example-plugin"
+    policy = plugin_core_module.DeliveryPolicy.from_document(
+        {
+            "schema_version": 1,
+            "preferred": "release_if_indexed",
+            "git_supported": True,
+            "release": {
+                "provider": "gitea",
+                "tag_pattern": r"^v[0-9]+\.[0-9]+\.[0-9]+$",
+                "api_base": "https://gitea.example.test/api/v1",
+                "web_base": "https://gitea.example.test",
+                "release_page_size": 50,
+            },
+        },
+        identity,
+    )
+    entry = plugin_core_module.RegistryEntry(
+        "ExamplePlugin",
+        "https://gitea.example.test/owner",
+        "example-plugin",
+        "Example plugin",
+        "main",
+        delivery=policy,
+    )
+    release = replace(
+        descriptor(plugin_core_module),
+        provider="gitea",
+        repository_identity=identity,
+        artifact=replace(
+            descriptor(plugin_core_module).artifact,
+            url="https://gitea.example.test/api/v1/archive.zip",
+        ),
+    )
+
+    assert strategy._allowed_origins(entry, release) == []
+
+
 def test_release_failure_aborts_without_falling_back_to_git(
     plugin_core_module, tmp_path
 ):

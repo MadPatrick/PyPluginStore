@@ -1769,13 +1769,15 @@ class ReleasePolicy:
     source_path: str
     mutable_paths: list
     api_base: str = ""
+    web_base: str = ""
+    release_page_size: int = 0
     manifest_url: str = ""
     asset_name: str = ""
     asset_pattern: str = ""
     allowed_origins: list = None
 
     @classmethod
-    def from_document(cls, document):
+    def from_document(cls, document, repository_identity=""):
         """Parse and validate the release portion of a delivery policy."""
         document = _require_document(
             document,
@@ -1790,8 +1792,10 @@ class ReleasePolicy:
                 "channel",
                 "manifest_url",
                 "mutable_paths",
+                "release_page_size",
                 "source_path",
                 "tag_pattern",
+                "web_base",
             ),
         )
         provider = _require_nonempty_string(
@@ -1799,6 +1803,26 @@ class ReleasePolicy:
         ).lower()
         if provider not in RELEASE_PROVIDERS:
             raise ValueError("delivery.release.provider is not supported.")
+
+        identity_host = str(repository_identity or "").split("/", 1)[0]
+        expected_provider = {
+            "github.com": "github",
+            "gitlab.com": "gitlab",
+            "codeberg.org": "forgejo",
+        }.get(identity_host)
+        if (
+            expected_provider
+            and provider not in (expected_provider, "generic")
+        ):
+            raise ValueError("Release provider does not match registry host.")
+        if (
+            identity_host
+            and identity_host not in ("github.com", "gitlab.com", "codeberg.org")
+            and provider in ("github", "gitlab")
+        ):
+            raise ValueError(
+                "Custom GitHub and GitLab release hosts are not supported."
+            )
 
         channel = _require_nonempty_string(
             document.get("channel", "stable"), "delivery.release.channel"
@@ -1847,6 +1871,54 @@ class ReleasePolicy:
         api_base = document.get("api_base", "")
         if api_base:
             api_base = _require_https_url(api_base, "delivery.release.api_base")
+            if urllib.parse.urlparse(api_base).query:
+                raise ValueError(
+                    "delivery.release.api_base must not contain a query."
+                )
+            api_base = api_base.rstrip("/")
+        web_base = document.get("web_base", "")
+        if web_base:
+            web_base = _require_https_url(web_base, "delivery.release.web_base")
+            if urllib.parse.urlparse(web_base).query:
+                raise ValueError(
+                    "delivery.release.web_base must not contain a query."
+                )
+            web_base = web_base.rstrip("/")
+        page_size_present = "release_page_size" in document
+        release_page_size = document.get("release_page_size", 0)
+        if page_size_present and (
+            type(release_page_size) is not int
+            or not 1 <= release_page_size <= 100
+        ):
+            raise ValueError(
+                "delivery.release.release_page_size must be between 1 and 100."
+            )
+
+        if provider in ("forgejo", "gitea"):
+            if not identity_host:
+                raise ValueError(
+                    "Forgejo and Gitea policies require a valid repository identity."
+                )
+            codeberg_defaults = (
+                provider == "forgejo" and identity_host == "codeberg.org"
+            )
+            if not codeberg_defaults and (
+                not api_base or not web_base or not page_size_present
+            ):
+                raise ValueError(
+                    "Custom Forgejo and Gitea policies require api_base, "
+                    "web_base, and release_page_size."
+                )
+            if web_base and identity_host:
+                web_host = _repository_host(urllib.parse.urlparse(web_base))
+                if web_host != identity_host:
+                    raise ValueError(
+                        "delivery.release.web_base does not match registry host."
+                    )
+        elif api_base or web_base or page_size_present:
+            raise ValueError(
+                "Host capability fields are only valid for Forgejo and Gitea."
+            )
         manifest_url = document.get("manifest_url", "")
         if manifest_url:
             manifest_url = _require_https_url(
@@ -1908,6 +1980,8 @@ class ReleasePolicy:
             source_path=source_path,
             mutable_paths=mutable_paths,
             api_base=api_base,
+            web_base=web_base,
+            release_page_size=release_page_size,
             manifest_url=manifest_url,
             asset_name=asset_name,
             asset_pattern=asset_pattern,
@@ -1945,7 +2019,7 @@ class DeliveryPolicy:
         )
 
     @classmethod
-    def from_document(cls, document):
+    def from_document(cls, document, repository_identity=""):
         """Parse a versioned registry delivery policy."""
         document = _require_document(
             document,
@@ -1968,7 +2042,7 @@ class DeliveryPolicy:
         )
         release_document = document.get("release")
         release = (
-            ReleasePolicy.from_document(release_document)
+            ReleasePolicy.from_document(release_document, repository_identity)
             if release_document is not None
             else None
         )
@@ -9616,7 +9690,10 @@ class RegistryService:
                     delivery = DeliveryPolicy.git_only()
                 else:
                     delivery = (
-                        DeliveryPolicy.from_document(data["delivery"])
+                        DeliveryPolicy.from_document(
+                            data["delivery"],
+                            normalize_repository_identity(author, repository),
+                        )
                         if "delivery" in data
                         else DeliveryPolicy.implicit()
                     )
