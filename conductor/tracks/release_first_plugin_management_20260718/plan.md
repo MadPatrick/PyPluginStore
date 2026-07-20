@@ -46,9 +46,9 @@
 
 ## Phase 5: Git-to-Release Upgrade Migration
 
-- [ ] Task: Add failing migration tests for clean/equal, clean/descendant, dirty, ahead, diverged, submodule, index-lock, missing-Git, and repository-mismatch states
-- [ ] Task: Add failing preservation tests for approved mutable overlays, unknown tracked/untracked blockers, collisions, escaping links, caches, Unicode normalization, Windows case-folding, and audit hashes
-- [ ] Task: Implement migration preflight and explicit blocked states
+- [x] Task: Add migration tests for clean/equal, clean/descendant, dirty, ahead, diverged, submodule, index-lock, missing-Git, and repository-mismatch states `2d62822`
+- [x] Task: Add preservation tests for approved mutable overlays, unknown tracked/untracked blockers, collisions, escaping links, caches, Unicode normalization, Windows case-folding, and audit hashes `81dd483`
+- [x] Task: Implement migration preflight and explicit blocked states `2d62822`
 - [ ] Task: Implement reviewed preservation policy, explicit manual inventory approval, and staged Git-to-release replacement during update
 - [ ] Task: Implement safe automatic-update migration rules and explicit downgrade/Git-channel confirmation
 - [ ] Task: Add migration source and preserved-path audit data to install metadata and rollback
