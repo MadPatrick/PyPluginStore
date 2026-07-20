@@ -170,7 +170,7 @@
     "ems-gateway": [
         "bbqkees",
         "ems-esp-domoticz-plugin",
-        "Domoticz plugin for the EMS Wi-Fi Gateway with Proddy's EMS-ESP firmware ",
+        "Domoticz plugin for the EMS Wi-Fi Gateway with Proddy's EMS-ESP firmware",
         "main",
         "",
         [
@@ -180,7 +180,7 @@
     "Domoticz-EVCC-IO-Plugin": [
         "galadril",
         "Domoticz-EVCC-IO-Plugin",
-        "Domoticz evcc.io plugin to fetch state ",
+        "Domoticz evcc.io plugin to fetch state",
         "main",
         "",
         [
@@ -418,7 +418,7 @@
     "WLED": [
         "frustreermeneer",
         "domoticz-wled-plugin",
-        "Domoticz Plugin for WLED ",
+        "Domoticz Plugin for WLED",
         "master",
         "",
         [
@@ -721,7 +721,7 @@
     "WeatherInfo": [
         "MadPatrick",
         "domoticz_weatherinfo",
-        "Weather forecast for Domoticz based on Buienradar and Open-Meteo",
+        "Rain forecast based on Buienradar",
         "main",
         "",
         [
@@ -859,7 +859,7 @@
     "Zigbee2Tasmoticz": [
         "fleinze",
         "Zigbee2Tasmoticz",
-        "a Domoticz plugin for Zigbee2Tasmota. Fork of foba-1/Tasmoticz ",
+        "a Domoticz plugin for Zigbee2Tasmota. Fork of foba-1/Tasmoticz",
         "main-domoticzex",
         "",
         [
@@ -1009,7 +1009,7 @@
     "domoticz_reolink": [
         "j-b-n",
         "domoticz_reolink",
-        "Domoticz plugin for use with Reolink cameras. ",
+        "Domoticz plugin for use with Reolink cameras.",
         "main",
         "",
         [
@@ -1084,7 +1084,7 @@
     "Domoticz-PiHole-Control": [
         "janreimen",
         "Domoticz-PiHole-Control",
-        "Domoticz Plugin to integrate PiHole with https Support, forked from ",
+        "Domoticz Plugin to integrate PiHole with https Support, forked from",
         "main",
         "",
         [
@@ -1150,7 +1150,7 @@
     "Domoticz-Enigma2": [
         "kofec",
         "Domoticz-Enigma2",
-        "Enigma2 Plugin for domoticz ",
+        "Enigma2 Plugin for domoticz",
         "master",
         "",
         [
@@ -1244,7 +1244,7 @@
     "DomoticzNestPlugin": [
         "lbartuzi",
         "DomoticzNestPlugin",
-        "Not a perfect plugin but it works. ",
+        "Not a perfect plugin but it works.",
         "main",
         "",
         [
@@ -2267,7 +2267,7 @@
     "rest980-domoticz": [
         "damsma",
         "rest980-domoticz",
-        " Domoticz plugin to control your iRobot Roomba 980 with koalazak/rest980",
+        "Domoticz plugin to control your iRobot Roomba 980 with koalazak/rest980",
         "master",
         "",
         [
@@ -2368,7 +2368,7 @@
     "domoticz-plugin-indoor-air-quality-monitor": [
         "rwbl",
         "domoticz-plugin-indoor-air-quality-monitor",
-        "Measure, from an Indoor Air Quality Station (using TinkerForge Building Blocks), the Air Quality Index & Accuracy, Air Pressure, Humidity, Temperature, Illuminance and display the values in Domoticz Home Automation System. ",
+        "Measure, from an Indoor Air Quality Station (using TinkerForge Building Blocks), the Air Quality Index & Accuracy, Air Pressure, Humidity, Temperature, Illuminance and display the values in Domoticz Home Automation System.",
         "master",
         "",
         [
@@ -2432,7 +2432,7 @@
     "fmi": [
         "Keles75",
         "fmi",
-        "Find my iPhone plug-in for Domoticz. ",
+        "Find my iPhone plug-in for Domoticz.",
         "master",
         "",
         [
@@ -2696,7 +2696,7 @@
     "Domoticz-Indevolt-plugin": [
         "marceldbo",
         "Domoticz-Indevolt-plugin",
-        "A plugin for the Indevolt Solid and Powerflex home batteries",
+        "A Domoticz plugin for the Indevolt SolidFlex and Powerflex home batteries",
         "main"
     ],
     "Zonneplan-Domoticz-Plugin": [
@@ -2704,6 +2704,28 @@
         "Zonneplan-Domoticz-Plugin",
         "Zonneplan-Domoticz-Plugin plugin for Domoticz",
         "master",
+        "",
+        [
+            "linux"
+        ]
+    ],
+    "domoticz-aqi-poland": [
+        "mgrom",
+        "domoticz-aqi-poland",
+        "A Python plugin for Domoticz to create devices with PM2.5 and PM10 based on http://api.gios.gov.pl",
+        "master"
+    ],
+    "BeemEnergy": [
+        "fratton",
+        "BeemEnergy",
+        "eem Energy Plugin for Domoticz home automation",
+        "main"
+    ],
+    "Domoticz-Xiaomi-Purifier-4-Pro": [
+        "blooesky",
+        "Domoticz-Xiaomi-Purifier-4-Pro",
+        "Local Domoticz plugin for Xiaomi Smart Air Purifier 4 Pro (zhimi.airp.vb4).",
+        "main",
         "",
         [
             "linux"
