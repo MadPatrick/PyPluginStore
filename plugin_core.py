@@ -7313,6 +7313,116 @@ class ReleaseTransactionManager:
         with self.operation_lock():
             return self._load_transaction(operation_id)
 
+    def _transactions_locked(self, plugin_key=None):
+        """Load validated journals in durable creation order."""
+        if plugin_key is not None:
+            plugin_key = _require_plugin_key(plugin_key)
+        _manager, _plugins, state_root = self._manager_paths(create=True)
+        transaction_dir = os.path.join(state_root, "transactions")
+        transactions = []
+        for name in sorted(os.listdir(transaction_dir)):
+            if not name.endswith(".json"):
+                continue
+            transaction = self._load_transaction(name[:-5])
+            if plugin_key is None or transaction.plugin_key == plugin_key:
+                transactions.append(transaction)
+        return sorted(
+            transactions,
+            key=lambda item: (item.created_at, item.operation_id),
+        )
+
+    def _rollback_snapshots_match_locked(self, transaction):
+        """Verify both sides of a retained rollback set before exposing it."""
+        if (
+            transaction.operation == "release_install"
+            or transaction.phase not in {"restart_pending", "release_managed"}
+        ):
+            return False
+        return bool(
+            self._release_tree_matches_target(
+                transaction.paths.live_code,
+                transaction,
+            )
+            and self._active_dependencies_match_target(transaction)
+            and self._code_path_matches(
+                transaction.paths.backup_code,
+                transaction.plugin_key,
+                transaction.expected_current,
+            )
+            and self._dependency_tree_matches(
+                transaction.paths.backup_dependencies,
+                transaction.dependency_state["expected"],
+                "Retained dependency backup",
+            )
+        )
+
+    def _latest_verified_rollback_locked(self, plugin_key):
+        for transaction in reversed(
+            self._transactions_locked(plugin_key)
+        ):
+            if self._rollback_snapshots_match_locked(transaction):
+                return transaction
+        return None
+
+    def plugin_lifecycle_state(self, plugin_key):
+        """Return verified rollback and restart state for one plugin."""
+        plugin_key = _require_plugin_key(plugin_key)
+        with self.operation_lock():
+            transactions = self._transactions_locked(plugin_key)
+            rollback = self._latest_verified_rollback_locked(plugin_key)
+            restart_pending = False
+            for transaction in reversed(transactions):
+                if transaction.phase == "restart_pending":
+                    restart_pending = bool(
+                        self._release_tree_matches_target(
+                            transaction.paths.live_code,
+                            transaction,
+                        )
+                        and self._active_dependencies_match_target(transaction)
+                    )
+                    if restart_pending:
+                        break
+                if (
+                    transaction.phase == "rolled_back"
+                    and transaction.rollback_from
+                    in {"restart_pending", "release_managed"}
+                ):
+                    restart_pending = bool(
+                        self._metadata_matches(transaction)
+                        and self._dependency_tree_matches(
+                            transaction.paths.live_dependencies,
+                            transaction.dependency_state["expected"],
+                            "Restored dependency snapshot",
+                        )
+                    )
+                    if restart_pending:
+                        break
+
+            rollback_version = ""
+            rollback_revision = None
+            if (
+                rollback is not None
+                and rollback.expected_current.get("management_mode")
+                == "release"
+            ):
+                try:
+                    metadata = InstallMetadataService(self.plugin).read(
+                        rollback.paths.backup_code
+                    )
+                except ValueError:
+                    metadata = None
+                if metadata is not None:
+                    rollback_version = metadata.version
+                    rollback_revision = metadata.release_revision
+
+            return {
+                "rollback": rollback,
+                "rollback_available": rollback is not None,
+                "rollback_version": rollback_version,
+                "rollback_revision": rollback_revision,
+                "restart_pending": restart_pending,
+            }
+
     def _validate_descriptors(self, operation, expected_current, target):
         if operation not in RELEASE_TRANSACTION_OPERATIONS:
             raise ValueError("Release transaction operation is unsupported.")
@@ -8357,14 +8467,107 @@ class ReleaseTransactionManager:
                 )
             return self._rollback_locked(transaction)
 
+    def _prune_older_backups_locked(self, transaction):
+        """Retain only the backup belonging to the verified live release."""
+        if not self._rollback_snapshots_match_locked(transaction):
+            return
+        for previous in self._transactions_locked(transaction.plugin_key):
+            if previous.operation_id == transaction.operation_id:
+                continue
+            for path in (
+                previous.paths.backup_code,
+                previous.paths.backup_dependencies,
+            ):
+                self._remove_transaction_path(path)
+
+    def _mark_release_managed_locked(self, transaction):
+        if transaction.phase not in {"restart_pending", "release_managed"}:
+            raise RuntimeError(
+                "Transaction must be restart_pending before completion."
+            )
+        if not (
+            self._release_tree_matches_target(
+                transaction.paths.live_code,
+                transaction,
+            )
+            and self._active_dependencies_match_target(transaction)
+        ):
+            raise RuntimeError(
+                "Activated release no longer matches the pinned target."
+            )
+        if transaction.phase == "restart_pending":
+            self._set_phase(transaction, "release_managed")
+        self._prune_older_backups_locked(transaction)
+        return transaction
+
     def mark_release_managed(self, operation_id):
         with self.operation_lock():
             transaction = self._load_transaction(operation_id)
-            if transaction.phase != "restart_pending":
-                raise RuntimeError(
-                    "Transaction must be restart_pending before completion."
-                )
-            return self._set_phase(transaction, "release_managed")
+            return self._mark_release_managed_locked(transaction)
+
+    def finalize_startup(self, blocking=True):
+        """Recover durable work, then finish restart-bound transactions."""
+        self.recover_pending(blocking=blocking)
+        finalized = []
+        with self.operation_lock(blocking=blocking):
+            transactions = self._transactions_locked()
+            finalized_plugins = set()
+            for transaction in reversed(transactions):
+                if transaction.phase != "restart_pending":
+                    continue
+                if transaction.plugin_key in finalized_plugins:
+                    finalized.append(
+                        self._set_phase(
+                            transaction,
+                            "stale_target",
+                            error=(
+                                "A newer release transaction superseded this "
+                                "restart-pending operation."
+                            ),
+                        )
+                    )
+                    continue
+                if (
+                    self._release_tree_matches_target(
+                        transaction.paths.live_code,
+                        transaction,
+                    )
+                    and self._active_dependencies_match_target(transaction)
+                ):
+                    finalized.append(
+                        self._mark_release_managed_locked(transaction)
+                    )
+                else:
+                    finalized.append(
+                        self._rollback_locked(
+                            transaction,
+                            "Activated release did not survive restart verification.",
+                        )
+                    )
+                finalized_plugins.add(transaction.plugin_key)
+
+            for transaction in self._transactions_locked():
+                if not (
+                    transaction.phase == "rolled_back"
+                    and transaction.rollback_from
+                    in {"restart_pending", "release_managed"}
+                ):
+                    continue
+                if not (
+                    self._metadata_matches(transaction)
+                    and self._dependency_tree_matches(
+                        transaction.paths.live_dependencies,
+                        transaction.dependency_state["expected"],
+                        "Restored dependency snapshot",
+                    )
+                ):
+                    raise RuntimeError(
+                        "Rolled-back release did not survive restart verification."
+                    )
+                transaction.rollback_from = ""
+                self._write_transaction(transaction)
+                finalized.append(transaction)
+        return finalized
 
     def _recover_transaction_locked(self, transaction):
         if transaction.phase == "queued_locked":
@@ -12893,6 +13096,23 @@ class BasePlugin:
                     preference = self.channel_preference_service.get(identity)
                 except ValueError:
                     preference = None
+            try:
+                lifecycle = self.release_transaction_manager.plugin_lifecycle_state(
+                    plugin_key
+                )
+            except (OSError, RuntimeError, ValueError) as error:
+                Domoticz.Error(
+                    "Could not verify release lifecycle state for "
+                    + plugin_key
+                    + ": "
+                    + str(error)
+                )
+                lifecycle = {
+                    "rollback_available": False,
+                    "rollback_version": "",
+                    "rollback_revision": None,
+                    "restart_pending": False,
+                }
 
             if metadata_invalid:
                 status = "verification_failed"
@@ -12972,10 +13192,10 @@ class BasePlugin:
                 "verification_message": reason,
                 "migration_status": migration_status,
                 "migration_message": reason if migration_status.startswith("migration_") else "",
-                "rollback_available": False,
-                "rollback_version": "",
-                "rollback_revision": None,
-                "restart_pending": False,
+                "rollback_available": lifecycle["rollback_available"],
+                "rollback_version": lifecycle["rollback_version"],
+                "rollback_revision": lifecycle["rollback_revision"],
+                "restart_pending": lifecycle["restart_pending"],
                 "git_supported": entry.delivery.git_supported,
                 "release_available": release is not None,
             }
@@ -13166,6 +13386,21 @@ class BasePlugin:
             warn_msg = f"PyPluginStore is in '{current_folder}'. It is strongly advised to rename the folder to start with '00-' (e.g., '00-PyPluginStore') so it loads first."
             Domoticz.Error(warn_msg)
             self.sendDomoticzNotification("PyPluginStore Setup Warning", warn_msg)
+
+        try:
+            finalized_transactions = (
+                self.release_transaction_manager.finalize_startup()
+            )
+            if finalized_transactions:
+                Domoticz.Log(
+                    "Recovered "
+                    + str(len(finalized_transactions))
+                    + " release transaction(s) during startup."
+                )
+        except Exception as error:
+            Domoticz.Error(
+                "Release transaction startup recovery failed: " + str(error)
+            )
 
         # Inject shared dependencies into sys.path
         shared_deps_dir = host.shared_deps_dir()
@@ -13472,6 +13707,278 @@ class BasePlugin:
                 self.queuePendingOperation("remove", plugin_key)
                 return False, "Plugin files are in use; removal queued for the next startup."
             return False, str(e)
+
+    def _release_action_confirmation(
+        self,
+        *,
+        kind,
+        action,
+        plugin_key,
+        target,
+        confirmation_token,
+    ):
+        """Issue or consume an opaque action token bound to current state."""
+        binding = {
+            "action": action,
+            "plugin_key": plugin_key,
+            "target": target,
+        }
+        inventory_sha256 = hashlib.sha256(
+            json.dumps(
+                binding,
+                ensure_ascii=False,
+                separators=(",", ":"),
+                sort_keys=True,
+            ).encode("utf-8")
+        ).hexdigest()
+        coordinator = self.install_update_strategy
+        if not confirmation_token:
+            return {
+                "status": "confirmation_required",
+                "challenge": coordinator.issue_confirmation_challenge(
+                    kind=kind,
+                    plugin_key=plugin_key,
+                    action=action,
+                    target=target,
+                    inventory_sha256=inventory_sha256,
+                ),
+            }
+        coordinator.consume_confirmation_challenge(
+            token=confirmation_token,
+            plugin_key=plugin_key,
+            action=action,
+            target=target,
+            inventory_sha256=inventory_sha256,
+        )
+        return None
+
+    def _release_action_context(self, entry, trigger):
+        context = self.getReleaseManagementContext(
+            entry,
+            operation="update",
+            trigger=trigger,
+        )
+        error = str(context.get("error") or "")
+        if error:
+            raise RuntimeError(error)
+        return context
+
+    def _channel_action_target(self, entry, context, channel):
+        release = context.get("release")
+        target = {
+            "repository_identity": normalize_repository_identity(
+                entry.author,
+                entry.repository,
+            ),
+            "channel": channel,
+            "installed_mode": context.get("installed_mode", "absent"),
+            "current_preference": context.get("channel_preference") or "",
+        }
+        installed_release = context.get("installed_release")
+        if installed_release is not None:
+            target["installed_release_id"] = installed_release.release_id
+            target["installed_revision"] = installed_release.release_revision
+        if release is not None:
+            target.update(
+                {
+                    "release_id": release.release_id,
+                    "release_revision": release.revision,
+                    "commit": release.commit,
+                    "source_revision": release.source_revision,
+                    "artifact_tree_sha256": release.artifact.tree_sha256,
+                }
+            )
+        return target
+
+    def executeReleaseManagementAction(
+        self,
+        *,
+        action,
+        plugin_key,
+        confirmation_token="",
+        trigger="manual",
+    ):
+        """Execute a confirmed rollback or explicit channel preference."""
+        try:
+            if action not in {"rollback", "use_git", "use_release"}:
+                raise ValueError("Release management action is unsupported.")
+            if trigger != "manual":
+                raise ValueError(
+                    "Release management actions require a manual trigger."
+                )
+            plugin_key = self.get_host().validate_plugin_key(plugin_key)
+            entry = self.get_registry_entry(plugin_key)
+            if entry is None:
+                raise ValueError("Plugin was not found in the registry.")
+            if plugin_key == self.get_current_plugin_folder():
+                raise ValueError(
+                    "Release-based manager self-update is not supported."
+                )
+
+            identity = normalize_repository_identity(
+                entry.author,
+                entry.repository,
+            )
+            if not identity:
+                raise ValueError("Plugin repository identity is invalid.")
+
+            if action == "rollback":
+                lifecycle = (
+                    self.release_transaction_manager.plugin_lifecycle_state(
+                        plugin_key
+                    )
+                )
+                transaction = lifecycle.get("rollback")
+                if transaction is None:
+                    raise RuntimeError(
+                        "No verified retained backup is available."
+                    )
+                target = {
+                    "operation_id": transaction.operation_id,
+                    "current": transaction.target,
+                    "rollback": transaction.expected_current,
+                    "dependency_state": transaction.dependency_state,
+                    "updated_at": transaction.updated_at,
+                }
+                confirmation = self._release_action_confirmation(
+                    kind="rollback",
+                    action=action,
+                    plugin_key=plugin_key,
+                    target=target,
+                    confirmation_token=confirmation_token,
+                )
+                if confirmation is not None:
+                    return confirmation
+                rolled_back = self.release_transaction_manager.rollback(
+                    transaction.operation_id
+                )
+                if (
+                    rolled_back.expected_current.get("management_mode")
+                    == "git"
+                ):
+                    self.channel_preference_service.set(identity, "keep_git")
+                return {
+                    "status": "success",
+                    "message": "Retained backup restored; restart required.",
+                    "restart_pending": True,
+                }
+
+            context = self._release_action_context(entry, trigger)
+            installed_mode = context.get("installed_mode")
+            if installed_mode == "absent":
+                raise RuntimeError("Plugin is not installed.")
+
+            if action == "use_git":
+                if not entry.delivery.git_supported:
+                    raise RuntimeError(
+                        "The registry does not permit Git management."
+                    )
+                target = self._channel_action_target(entry, context, "git")
+                confirmation = self._release_action_confirmation(
+                    kind="channel_switch",
+                    action=action,
+                    plugin_key=plugin_key,
+                    target=target,
+                    confirmation_token=confirmation_token,
+                )
+                if confirmation is not None:
+                    return confirmation
+                plugin_dir = self.resolve_installed_plugin_dir(plugin_key)
+                git_dir = os.path.join(plugin_dir, ".git")
+                if (
+                    not os.path.isdir(git_dir)
+                    or os.path.islink(git_dir)
+                ):
+                    raise RuntimeError(
+                        "A safe release-to-Git channel switch is not available."
+                    )
+                self.channel_preference_service.set(identity, "keep_git")
+                return {
+                    "status": "success",
+                    "message": "Git management selected.",
+                    "restart_pending": False,
+                }
+
+            selection = self.release_metadata_selection
+            release = context.get("release")
+            if (
+                not selection.release_authorized
+                or release is None
+                or context.get("tombstone") is not None
+            ):
+                raise RuntimeError(
+                    "No authorized release is available for this plugin."
+                )
+            target = self._channel_action_target(entry, context, "release")
+            confirmation = self._release_action_confirmation(
+                kind="channel_switch",
+                action=action,
+                plugin_key=plugin_key,
+                target=target,
+                confirmation_token=confirmation_token,
+            )
+            if confirmation is not None:
+                return confirmation
+
+            if installed_mode == "release":
+                self.channel_preference_service.set(identity, "release")
+                return {
+                    "status": "success",
+                    "message": "Release management selected.",
+                    "restart_pending": False,
+                }
+
+            decision_context = dict(context)
+            index_sequence = decision_context.pop("index_sequence", 0)
+            decision_context.pop("error", None)
+            decision_context["channel_preference"] = "release"
+            decision = self.install_update_strategy.decide(
+                entry,
+                operation="update",
+                trigger=trigger,
+                **decision_context,
+            )
+            decision = replace(
+                decision,
+                index_sequence=index_sequence,
+            )
+            if decision.route != "release_migration":
+                raise RuntimeError(
+                    decision.reason
+                    or "Git-to-release migration is not available."
+                )
+            success, message = self.install_update_strategy.execute(
+                entry,
+                decision,
+            )
+            if not success:
+                raise RuntimeError(
+                    message or "Git-to-release migration failed."
+                )
+            plugin_dir = self.resolve_installed_plugin_dir(plugin_key)
+            installed_release = self.install_metadata_service.read(plugin_dir)
+            if (
+                installed_release is None
+                or installed_release.release_id != release.release_id
+                or installed_release.release_revision != release.revision
+                or installed_release.artifact_tree_sha256
+                != release.artifact.tree_sha256
+            ):
+                raise RuntimeError(
+                    "Migrated release could not be verified."
+                )
+            self.channel_preference_service.set(identity, "release")
+            return {
+                "status": "success",
+                "message": message or "Release migration staged.",
+                "restart_pending": True,
+            }
+        except (OSError, ReleaseConfirmationError, RuntimeError, ValueError) as error:
+            return {
+                "status": "error",
+                "message": str(error),
+                "restart_pending": False,
+            }
 
     def handleApiCommand(self, payload):
         # Ensure action is a safe string
