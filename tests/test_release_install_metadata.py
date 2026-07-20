@@ -93,6 +93,19 @@ def test_install_metadata_supports_generic_immutable_source_revision(
     assert metadata.to_document() == document
 
 
+def test_install_metadata_records_optional_git_migration_audit(plugin_core_module):
+    document = install_metadata_document(
+        migration_source_commit="9" * 40,
+        migration_inventory_sha256="8" * 64,
+    )
+
+    metadata = plugin_core_module.InstallMetadata.from_document(document)
+
+    assert metadata.migration_source_commit == "9" * 40
+    assert metadata.migration_inventory_sha256 == "8" * 64
+    assert metadata.to_document() == document
+
+
 def invalid_install_metadata_documents():
     cases = []
 
@@ -140,6 +153,21 @@ def invalid_install_metadata_documents():
     add("invalid-index-sequence", index_sequence=0)
     add("invalid-release-timestamp", released_at="not-a-timestamp")
     add("invalid-install-timestamp", installed_at="2026-07-18")
+    add(
+        "invalid-migration-commit",
+        migration_source_commit="main",
+        migration_inventory_sha256="8" * 64,
+    )
+    add(
+        "invalid-migration-inventory",
+        migration_source_commit="9" * 40,
+        migration_inventory_sha256="A" * 64,
+    )
+    add(
+        "empty-migration-audit",
+        migration_source_commit="",
+        migration_inventory_sha256="",
+    )
 
     return cases
 
@@ -158,6 +186,17 @@ def test_install_metadata_rejects_boolean_integer_fields(plugin_core_module):
 
         with pytest.raises(ValueError):
             plugin_core_module.InstallMetadata.from_document(document)
+
+
+def test_install_metadata_requires_complete_migration_audit(plugin_core_module):
+    for field, value in (
+        ("migration_source_commit", "9" * 40),
+        ("migration_inventory_sha256", "8" * 64),
+    ):
+        with pytest.raises(ValueError, match="migration"):
+            plugin_core_module.InstallMetadata.from_document(
+                install_metadata_document(**{field: value})
+            )
 
 
 def test_install_metadata_service_returns_none_when_metadata_is_absent(

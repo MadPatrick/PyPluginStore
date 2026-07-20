@@ -4974,6 +4974,8 @@ class InstallMetadata:
     index_sequence: int
     installed_at: str
     source_revision: str = ""
+    migration_source_commit: str = ""
+    migration_inventory_sha256: str = ""
 
     @classmethod
     def from_document(cls, document):
@@ -5000,7 +5002,11 @@ class InstallMetadata:
                 "index_sequence",
                 "installed_at",
             ),
-            ("source_revision",),
+            (
+                "source_revision",
+                "migration_source_commit",
+                "migration_inventory_sha256",
+            ),
         )
         if (
             type(document["schema"]) is not int
@@ -5047,6 +5053,26 @@ class InstallMetadata:
         )
         if not commit and not source_revision:
             raise ValueError("Install metadata requires an immutable source revision.")
+
+        migration_source_present = "migration_source_commit" in document
+        migration_inventory_present = (
+            "migration_inventory_sha256" in document
+        )
+        if migration_source_present != migration_inventory_present:
+            raise ValueError(
+                "Git migration metadata requires both audit fields."
+            )
+        migration_source_commit = ""
+        migration_inventory_sha256 = ""
+        if migration_source_present:
+            migration_source_commit = _require_git_commit(
+                document["migration_source_commit"],
+                "migration_source_commit",
+            )
+            migration_inventory_sha256 = _require_sha256(
+                document["migration_inventory_sha256"],
+                "migration_inventory_sha256",
+            )
 
         tag = document["tag"]
         if (
@@ -5132,6 +5158,8 @@ class InstallMetadata:
             ),
             installed_at=installed_at,
             source_revision=source_revision,
+            migration_source_commit=migration_source_commit,
+            migration_inventory_sha256=migration_inventory_sha256,
         )
 
     def to_document(self):
@@ -5160,6 +5188,13 @@ class InstallMetadata:
         }
         if self.source_revision:
             document["source_revision"] = self.source_revision
+        if self.migration_source_commit:
+            document["migration_source_commit"] = (
+                self.migration_source_commit
+            )
+            document["migration_inventory_sha256"] = (
+                self.migration_inventory_sha256
+            )
         return document
 
 
@@ -10539,6 +10574,10 @@ class GitMigrationPreflight:
 class ReleaseInstallUpdateStrategy:
     """Install one index-pinned release through the hardened transaction path."""
 
+    RUNTIME_ARTIFACT_HEADERS = {
+        "User-Agent": "PyPluginStore-Release-Runtime",
+    }
+
     def __init__(
         self,
         plugin,
@@ -10550,6 +10589,7 @@ class ReleaseInstallUpdateStrategy:
         validator=None,
         metadata_service=None,
         preservation_service=None,
+        migration_preflight=None,
         limits=None,
     ):
         if plugin is None:
@@ -10576,6 +10616,7 @@ class ReleaseInstallUpdateStrategy:
             plugin
         )
         self.preservation_service = preservation_service
+        self.migration_preflight = migration_preflight
 
     def _preservation(self):
         if self.preservation_service is None:
@@ -10584,6 +10625,14 @@ class ReleaseInstallUpdateStrategy:
                 raise RuntimeError("Release preservation is not configured.")
             self.preservation_service = service_type(self.plugin)
         return self.preservation_service
+
+    def _preflight(self):
+        if self.migration_preflight is None:
+            self.migration_preflight = GitMigrationPreflight(
+                self.plugin,
+                preservation_service=self._preservation(),
+            )
+        return self.migration_preflight
 
     def _operation_id(self):
         return "release-" + hashlib.sha256(os.urandom(32)).hexdigest()[:24]
@@ -10631,12 +10680,34 @@ class ReleaseInstallUpdateStrategy:
             )
         return plugin_dir, metadata
 
-    def _expected_current(self, entry, operation):
+    def _expected_current(
+        self,
+        entry,
+        operation,
+        migration_preflight=None,
+    ):
         if operation == "release_install":
             plugin_dir = self.plugin.get_host().resolve_plugin_dir(entry.key)
             if os.path.lexists(plugin_dir):
                 raise ValueError("Plugin folder already exists.")
             return {"management_mode": "absent"}, None, None
+        if operation == "release_migration":
+            if not isinstance(
+                migration_preflight,
+                GitMigrationPreflightResult,
+            ):
+                raise ValueError(
+                    "A validated Git migration preflight is required."
+                )
+            plugin_dir = self.plugin.resolve_installed_plugin_dir(entry.key)
+            return (
+                {
+                    "management_mode": "git",
+                    "commit": migration_preflight.installed_commit,
+                },
+                plugin_dir,
+                None,
+            )
         plugin_dir, metadata = self._installed_metadata(entry)
         expected = {
             "management_mode": "release",
@@ -10678,29 +10749,36 @@ class ReleaseInstallUpdateStrategy:
         validation,
         index_sequence,
         preserved_files,
+        migration_preflight=None,
     ):
-        return InstallMetadata.from_document(
-            {
-                "schema": INSTALL_METADATA_SCHEMA_VERSION,
-                "plugin_key": entry.key,
-                "management_mode": "release",
-                "repository_identity": release.repository_identity,
-                "version": release.version,
-                "tag": release.tag,
-                "release_id": release.release_id,
-                "release_revision": release.revision,
-                "released_at": release.released_at,
-                "commit": release.commit,
-                "source_revision": release.source_revision,
-                "artifact_sha256": release.artifact.sha256,
-                "artifact_tree_sha256": release.artifact.tree_sha256,
-                "artifact_provenance": release.artifact.provenance,
-                "artifact_files": validation.artifact_files,
-                "preserved_files": preserved_files,
-                "index_sequence": index_sequence,
-                "installed_at": self._installed_at(release),
-            }
-        )
+        document = {
+            "schema": INSTALL_METADATA_SCHEMA_VERSION,
+            "plugin_key": entry.key,
+            "management_mode": "release",
+            "repository_identity": release.repository_identity,
+            "version": release.version,
+            "tag": release.tag,
+            "release_id": release.release_id,
+            "release_revision": release.revision,
+            "released_at": release.released_at,
+            "commit": release.commit,
+            "source_revision": release.source_revision,
+            "artifact_sha256": release.artifact.sha256,
+            "artifact_tree_sha256": release.artifact.tree_sha256,
+            "artifact_provenance": release.artifact.provenance,
+            "artifact_files": validation.artifact_files,
+            "preserved_files": preserved_files,
+            "index_sequence": index_sequence,
+            "installed_at": self._installed_at(release),
+        }
+        if migration_preflight is not None:
+            document["migration_source_commit"] = (
+                migration_preflight.installed_commit
+            )
+            document["migration_inventory_sha256"] = (
+                migration_preflight.inventory_sha256
+            )
+        return InstallMetadata.from_document(document)
 
     def _apply_update_preservation(
         self,
@@ -10734,6 +10812,26 @@ class ReleaseInstallUpdateStrategy:
         )
         return dict(result.preserved_files)
 
+    def _apply_migration_preservation(
+        self,
+        migration_preflight,
+        staged_code,
+        trigger,
+        approved_inventory_sha256=None,
+    ):
+        inventory = migration_preflight.preservation_inventory
+        if not isinstance(inventory, ReleasePreservationInventory):
+            raise ValueError(
+                "Git migration preservation inventory is unavailable."
+            )
+        result = self._preservation().apply_overlay(
+            inventory,
+            staged_dir=staged_code,
+            trigger=trigger,
+            approved_inventory_sha256=approved_inventory_sha256,
+        )
+        return dict(result.preserved_files)
+
     def _abort(self, operation_id, error):
         if not operation_id:
             return
@@ -10754,6 +10852,7 @@ class ReleaseInstallUpdateStrategy:
         index_sequence,
         approved_inventory_sha256=None,
         compatibility_confirmed=False,
+        migration_preflight=None,
     ):
         if trigger not in ReleaseManagementCoordinator.TRIGGERS:
             raise ValueError(
@@ -10775,7 +10874,11 @@ class ReleaseInstallUpdateStrategy:
         operation_id = ""
         try:
             expected_current, installed_dir, installed_metadata = (
-                self._expected_current(entry, operation)
+                self._expected_current(
+                    entry,
+                    operation,
+                    migration_preflight,
+                )
             )
             operation_id = self._operation_id()
             transaction = self.transaction_manager.create_transaction(
@@ -10791,6 +10894,7 @@ class ReleaseInstallUpdateStrategy:
             self.http_client.download_to_path(
                 release.artifact.url,
                 archive_path,
+                headers=dict(self.RUNTIME_ARTIFACT_HEADERS),
                 expected_sha256=release.artifact.sha256,
                 expected_size=release.artifact.size,
                 allowed_origins=self._allowed_origins(entry),
@@ -10827,12 +10931,20 @@ class ReleaseInstallUpdateStrategy:
                     trigger,
                     approved_inventory_sha256,
                 )
+            elif operation == "release_migration":
+                preserved_files = self._apply_migration_preservation(
+                    migration_preflight,
+                    transaction.paths.staged_code,
+                    trigger,
+                    approved_inventory_sha256,
+                )
             metadata = self._metadata(
                 entry,
                 release,
                 validation,
                 index_sequence,
                 preserved_files,
+                migration_preflight,
             )
             self.metadata_service.write(
                 transaction.paths.staged_code, metadata
@@ -10910,6 +11022,32 @@ class ReleaseInstallUpdateStrategy:
             index_sequence=self._index_sequence(),
         )
 
+    def preflight_migration(self, entry, release, trigger):
+        """Evaluate one Git checkout without fetching or changing it."""
+        if trigger not in ReleaseManagementCoordinator.TRIGGERS:
+            raise ValueError(
+                "Migration trigger must be manual or automatic."
+            )
+        if not isinstance(release, ReleaseDescriptor):
+            raise ValueError("A validated release target is required.")
+        if not release.artifact.migration_eligible or not release.commit:
+            raise ValueError(
+                "The selected release is not migration eligible."
+            )
+        plugin_dir = self.plugin.resolve_installed_plugin_dir(entry.key)
+        release_policy = getattr(entry.delivery, "release", None)
+        mutable_paths = list(
+            getattr(release_policy, "mutable_paths", []) or []
+        )
+        return self._preflight().evaluate(
+            plugin_key=entry.key,
+            plugin_dir=plugin_dir,
+            repository_identity=release.repository_identity,
+            release_commit=release.commit,
+            trigger=trigger,
+            mutable_paths=mutable_paths,
+        )
+
     def migrate(
         self,
         entry,
@@ -10917,9 +11055,66 @@ class ReleaseInstallUpdateStrategy:
         trigger,
         *,
         index_sequence=None,
+        approved_inventory_sha256=None,
+        downgrade_confirmed=False,
     ):
-        del entry, release, trigger, index_sequence
-        return False, "Git-to-release migration preflight is not configured."
+        if index_sequence is None:
+            try:
+                index_sequence = self._index_sequence()
+            except ValueError as error:
+                return False, str(error)
+
+        try:
+            preflight = self.preflight_migration(
+                entry,
+                release,
+                trigger,
+            )
+        except (OSError, ReleasePreservationError, ValueError) as error:
+            return False, str(error)
+
+        inventory = preflight.preservation_inventory
+        approval_paths = []
+        if isinstance(inventory, ReleasePreservationInventory):
+            approval_paths = sorted(
+                set(inventory.unknown_paths)
+                | set(inventory.tracked_changes)
+                | set(inventory.approval_required_paths)
+            )
+        if preflight.requires_confirmation and not downgrade_confirmed:
+            return False, preflight.message or (
+                "Migration requires explicit downgrade confirmation."
+            )
+        if approval_paths and (
+            approved_inventory_sha256 != preflight.inventory_sha256
+        ):
+            return False, (
+                "Migration requires exact approval of the current local-data "
+                "inventory."
+            )
+        manually_authorized = bool(
+            trigger == "manual"
+            and (
+                preflight.requires_confirmation
+                or preflight.requires_approval
+            )
+        )
+        if not preflight.allowed and not manually_authorized:
+            return False, preflight.message or preflight.reason or (
+                "Git-to-release migration is not available."
+            )
+        if not preflight.installed_commit or inventory is None:
+            return False, "Git migration preflight is incomplete."
+
+        return self._execute(
+            entry,
+            release,
+            trigger,
+            "release_migration",
+            index_sequence=index_sequence,
+            approved_inventory_sha256=approved_inventory_sha256,
+            migration_preflight=preflight,
+        )
 
 
 class ReleaseConfirmationError(RuntimeError):
@@ -13133,6 +13328,47 @@ class BasePlugin:
                 )
                 status = decision.status
                 reason = decision.reason
+                if (
+                    decision.route == "release_migration"
+                    and release is not None
+                ):
+                    release_strategy = getattr(
+                        self.install_update_strategy,
+                        "release_strategy",
+                        None,
+                    )
+                    preflight_migration = getattr(
+                        release_strategy,
+                        "preflight_migration",
+                        None,
+                    )
+                    try:
+                        if not callable(preflight_migration):
+                            raise RuntimeError(
+                                "Git migration preflight is unavailable."
+                            )
+                        preflight = preflight_migration(
+                            entry,
+                            release,
+                            "manual",
+                        )
+                        status = preflight.status
+                        if status not in {
+                            "migration_available",
+                            "migration_blocked_local_changes",
+                            "migration_blocked_local_files",
+                            "migration_waiting_for_release",
+                        }:
+                            status = "migration_waiting_for_release"
+                        reason = preflight.message or preflight.reason
+                    except (
+                        OSError,
+                        ReleasePreservationError,
+                        RuntimeError,
+                        ValueError,
+                    ) as error:
+                        status = "migration_waiting_for_release"
+                        reason = str(error)
 
             version_info = versions.get(plugin_key, {})
             installed_version = (
@@ -13716,41 +13952,47 @@ class BasePlugin:
         plugin_key,
         target,
         confirmation_token,
+        inventory_sha256="",
+        message="",
     ):
         """Issue or consume an opaque action token bound to current state."""
-        binding = {
-            "action": action,
-            "plugin_key": plugin_key,
-            "target": target,
-        }
-        inventory_sha256 = hashlib.sha256(
-            json.dumps(
-                binding,
-                ensure_ascii=False,
-                separators=(",", ":"),
-                sort_keys=True,
-            ).encode("utf-8")
-        ).hexdigest()
+        if not inventory_sha256:
+            binding = {
+                "action": action,
+                "plugin_key": plugin_key,
+                "target": target,
+            }
+            inventory_sha256 = hashlib.sha256(
+                json.dumps(
+                    binding,
+                    ensure_ascii=False,
+                    separators=(",", ":"),
+                    sort_keys=True,
+                ).encode("utf-8")
+            ).hexdigest()
         coordinator = self.install_update_strategy
         if not confirmation_token:
+            challenge = coordinator.issue_confirmation_challenge(
+                kind=kind,
+                plugin_key=plugin_key,
+                action=action,
+                target=target,
+                inventory_sha256=inventory_sha256,
+            )
+            if message:
+                challenge["message"] = message
             return {
                 "status": "confirmation_required",
-                "challenge": coordinator.issue_confirmation_challenge(
-                    kind=kind,
-                    plugin_key=plugin_key,
-                    action=action,
-                    target=target,
-                    inventory_sha256=inventory_sha256,
-                ),
-            }
-        coordinator.consume_confirmation_challenge(
+                "challenge": challenge,
+            }, ""
+        approved_digest = coordinator.consume_confirmation_challenge(
             token=confirmation_token,
             plugin_key=plugin_key,
             action=action,
             target=target,
             inventory_sha256=inventory_sha256,
         )
-        return None
+        return None, approved_digest
 
     def _release_action_context(self, entry, trigger):
         context = self.getReleaseManagementContext(
@@ -13798,9 +14040,14 @@ class BasePlugin:
         confirmation_token="",
         trigger="manual",
     ):
-        """Execute a confirmed rollback or explicit channel preference."""
+        """Execute a confirmed migration, rollback, or channel preference."""
         try:
-            if action not in {"rollback", "use_git", "use_release"}:
+            if action not in {
+                "rollback",
+                "update",
+                "use_git",
+                "use_release",
+            }:
                 raise ValueError("Release management action is unsupported.")
             if trigger != "manual":
                 raise ValueError(
@@ -13840,12 +14087,14 @@ class BasePlugin:
                     "dependency_state": transaction.dependency_state,
                     "updated_at": transaction.updated_at,
                 }
-                confirmation = self._release_action_confirmation(
+                confirmation, _approved_digest = (
+                    self._release_action_confirmation(
                     kind="rollback",
                     action=action,
                     plugin_key=plugin_key,
                     target=target,
                     confirmation_token=confirmation_token,
+                    )
                 )
                 if confirmation is not None:
                     return confirmation
@@ -13874,12 +14123,14 @@ class BasePlugin:
                         "The registry does not permit Git management."
                     )
                 target = self._channel_action_target(entry, context, "git")
-                confirmation = self._release_action_confirmation(
+                confirmation, _approved_digest = (
+                    self._release_action_confirmation(
                     kind="channel_switch",
                     action=action,
                     plugin_key=plugin_key,
                     target=target,
                     confirmation_token=confirmation_token,
+                    )
                 )
                 if confirmation is not None:
                     return confirmation
@@ -13909,24 +14160,33 @@ class BasePlugin:
                 raise RuntimeError(
                     "No authorized release is available for this plugin."
                 )
-            target = self._channel_action_target(entry, context, "release")
-            confirmation = self._release_action_confirmation(
-                kind="channel_switch",
-                action=action,
-                plugin_key=plugin_key,
-                target=target,
-                confirmation_token=confirmation_token,
-            )
-            if confirmation is not None:
-                return confirmation
-
-            if installed_mode == "release":
+            if installed_mode == "release" and action == "use_release":
+                target = self._channel_action_target(
+                    entry,
+                    context,
+                    "release",
+                )
+                confirmation, _approved_digest = (
+                    self._release_action_confirmation(
+                        kind="channel_switch",
+                        action=action,
+                        plugin_key=plugin_key,
+                        target=target,
+                        confirmation_token=confirmation_token,
+                    )
+                )
+                if confirmation is not None:
+                    return confirmation
                 self.channel_preference_service.set(identity, "release")
                 return {
                     "status": "success",
                     "message": "Release management selected.",
                     "restart_pending": False,
                 }
+            if installed_mode != "git":
+                raise RuntimeError(
+                    "The requested release migration is not applicable."
+                )
 
             decision_context = dict(context)
             index_sequence = decision_context.pop("index_sequence", 0)
@@ -13947,9 +14207,117 @@ class BasePlugin:
                     decision.reason
                     or "Git-to-release migration is not available."
                 )
-            success, message = self.install_update_strategy.execute(
+            release_strategy = getattr(
+                self.install_update_strategy,
+                "release_strategy",
+                None,
+            )
+            preflight_migration = getattr(
+                release_strategy,
+                "preflight_migration",
+                None,
+            )
+            if not callable(preflight_migration):
+                raise RuntimeError(
+                    "Git-to-release migration is not configured."
+                )
+            preflight = preflight_migration(
                 entry,
-                decision,
+                release,
+                trigger,
+            )
+            manually_authorizable = bool(
+                preflight.allowed
+                or preflight.requires_approval
+                or preflight.requires_confirmation
+            )
+            if not manually_authorizable:
+                raise RuntimeError(
+                    preflight.message
+                    or preflight.reason
+                    or "Git-to-release migration is not available."
+                )
+            if not preflight.inventory_sha256:
+                raise RuntimeError(
+                    "Git migration inventory could not be verified."
+                )
+            target = self._channel_action_target(
+                entry,
+                context,
+                "release",
+            )
+            target["migration_source_commit"] = (
+                preflight.installed_commit
+            )
+            target["migration_relationship"] = preflight.relationship
+            target["migration_reason"] = preflight.reason
+            migration_inventory = preflight.preservation_inventory
+            requires_inventory_approval = bool(
+                isinstance(
+                    migration_inventory,
+                    ReleasePreservationInventory,
+                )
+                and (
+                    migration_inventory.unknown_paths
+                    or migration_inventory.tracked_changes
+                    or migration_inventory.approval_required_paths
+                )
+            )
+            target["requires_inventory_approval"] = (
+                requires_inventory_approval
+            )
+            target["requires_downgrade_confirmation"] = bool(
+                preflight.requires_confirmation
+            )
+            confirmation_message = (
+                "Switch this plugin from Git to the pinned Release channel?"
+            )
+            if (
+                preflight.requires_confirmation
+                and requires_inventory_approval
+            ):
+                confirmation_message = (
+                    "The pinned release does not contain the installed Git "
+                    "commit. Confirm preserving the reviewed local-data "
+                    "inventory and replacing the checkout with this release."
+                )
+            elif preflight.requires_confirmation:
+                confirmation_message = (
+                    "The pinned release does not contain the installed Git "
+                    "commit. Confirm replacing it with the reviewed release."
+                )
+            elif requires_inventory_approval:
+                confirmation_message = (
+                    "Confirm preserving the reviewed local-data inventory and "
+                    "switching this plugin from Git to Release."
+                )
+            confirmation, approved_digest = (
+                self._release_action_confirmation(
+                    kind="git_migration",
+                    action=action,
+                    plugin_key=plugin_key,
+                    target=target,
+                    confirmation_token=confirmation_token,
+                    inventory_sha256=preflight.inventory_sha256,
+                    message=confirmation_message,
+                )
+            )
+            if confirmation is not None:
+                return confirmation
+            migrate = getattr(release_strategy, "migrate", None)
+            if not callable(migrate):
+                raise RuntimeError(
+                    "Git-to-release migration is not configured."
+                )
+            success, message = migrate(
+                entry,
+                release,
+                trigger,
+                index_sequence=index_sequence,
+                approved_inventory_sha256=approved_digest,
+                downgrade_confirmed=bool(
+                    preflight.requires_confirmation
+                ),
             )
             if not success:
                 raise RuntimeError(
@@ -13979,6 +14347,26 @@ class BasePlugin:
                 "message": str(error),
                 "restart_pending": False,
             }
+
+    def _manual_update_uses_release_migration(self, entry):
+        """Return whether the current manual Update route changes channel."""
+        try:
+            plugin_dir = self.resolve_installed_plugin_dir(entry.key)
+            git_dir = os.path.join(plugin_dir, ".git")
+            if not os.path.isdir(git_dir) or os.path.islink(git_dir):
+                return False
+            context = dict(self._release_action_context(entry, "manual"))
+            context.pop("index_sequence", None)
+            context.pop("error", None)
+            decision = self.install_update_strategy.decide(
+                entry,
+                operation="update",
+                trigger="manual",
+                **context,
+            )
+            return decision.route == "release_migration"
+        except (OSError, RuntimeError, ValueError):
+            return False
 
     def handleApiCommand(self, payload):
         # Ensure action is a safe string
@@ -14149,6 +14537,24 @@ class BasePlugin:
             plugin_key = payload.get("plugin_key")
             entry = self.get_registry_entry(plugin_key)
             if entry is not None:
+                if self._manual_update_uses_release_migration(entry):
+                    confirmation_token = payload.get(
+                        "confirmation_token",
+                        "",
+                    )
+                    if not isinstance(confirmation_token, str):
+                        confirmation_token = ""
+                    result = self.executeReleaseManagementAction(
+                        action="update",
+                        plugin_key=plugin_key,
+                        confirmation_token=confirmation_token,
+                        trigger="manual",
+                    )
+                    response = dict(result)
+                    response["action"] = action
+                    response["plugin_key"] = plugin_key
+                    self.sendApiResponse(response)
+                    return
                 update_success, update_message = self.UpdatePythonPlugin(entry.author, entry.repository, plugin_key)
                 if update_success:
                     response = {"status": "success", "action": action, "plugin_key": plugin_key}

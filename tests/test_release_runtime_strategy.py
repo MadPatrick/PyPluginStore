@@ -3,6 +3,7 @@ import os
 from types import SimpleNamespace
 
 from plugin_core_helpers import configure_home
+from test_release_migration import initialize_repository
 
 
 COMMIT = "1" * 40
@@ -10,7 +11,7 @@ TREE = "a" * 64
 ARCHIVE = "b" * 64
 
 
-def descriptor(plugin_core_module):
+def descriptor(plugin_core_module, commit=COMMIT):
     return plugin_core_module.ReleaseDescriptor.from_document(
         {
             "revision": 2,
@@ -21,18 +22,18 @@ def descriptor(plugin_core_module):
             "version": "2.0.0",
             "tag": "v2.0.0",
             "released_at": "2026-07-18T07:00:00Z",
-            "commit": COMMIT,
+            "commit": commit,
             "artifact": {
                 "kind": "source_zip",
                 "provenance": "forge_source_archive",
                 "migration_eligible": True,
                 "url": "https://github.com/owner/example-plugin/archive/"
-                + COMMIT
+                + commit
                 + ".zip",
                 "sha256": ARCHIVE,
                 "size": 3,
                 "tree_sha256": TREE,
-                "root_prefix": "example-plugin-" + COMMIT,
+                "root_prefix": "example-plugin-" + commit,
                 "source_path": ".",
             },
         }
@@ -174,6 +175,9 @@ def test_release_install_uses_pinned_pipeline_and_writes_audit_metadata(
     ]
     assert http.calls[0][2]["expected_sha256"] == ARCHIVE
     assert http.calls[0][2]["expected_size"] == 3
+    assert http.calls[0][2]["headers"] == {
+        "User-Agent": "PyPluginStore-Release-Runtime",
+    }
     assert len(dependencies.calls) == 1
     metadata = plugin.install_metadata_service.read(
         manager.transaction.paths.staged_code
@@ -198,3 +202,81 @@ def test_release_failure_aborts_without_falling_back_to_git(
     assert result == (False, "artifact digest mismatch")
     assert [call[0] for call in manager.calls] == ["create", "abort"]
     assert dependencies.calls == []
+
+
+def test_clean_git_checkout_migrates_through_the_same_pinned_pipeline(
+    plugin_core_module, tmp_path
+):
+    plugin, strategy, manager, http, dependencies = make_strategy(
+        plugin_core_module, tmp_path
+    )
+    plugins_dir = plugin.get_host().plugins_dir()
+    repository, installed_commit = initialize_repository(
+        os.path.join(plugins_dir, "ExamplePlugin")
+    )
+    plugin.installed_plugin_folders["ExamplePlugin"] = "ExamplePlugin"
+    entry = plugin.get_registry_entry("ExamplePlugin")
+
+    result = strategy.migrate(
+        entry,
+        descriptor(plugin_core_module, installed_commit),
+        "automatic",
+        index_sequence=42,
+    )
+
+    assert result == (
+        True,
+        "Release 2.0.0 staged successfully; restart required.",
+    )
+    create = manager.calls[0]
+    assert create[0] == "create"
+    assert create[1]["operation"] == "release_migration"
+    assert create[1]["expected_current"] == {
+        "management_mode": "git",
+        "commit": installed_commit,
+    }
+    assert [call[0] for call in manager.calls] == [
+        "create",
+        "verified",
+        "activate",
+    ]
+    assert len(http.calls) == 1
+    assert len(dependencies.calls) == 1
+    metadata = plugin.install_metadata_service.read(
+        manager.transaction.paths.staged_code
+    )
+    assert metadata.migration_source_commit == installed_commit
+    assert len(metadata.migration_inventory_sha256) == 64
+    assert metadata.preserved_files == {}
+    assert repository.is_dir()
+
+
+def test_dirty_git_checkout_is_blocked_before_download_or_transaction(
+    plugin_core_module, tmp_path
+):
+    plugin, strategy, manager, http, dependencies = make_strategy(
+        plugin_core_module, tmp_path
+    )
+    plugins_dir = plugin.get_host().plugins_dir()
+    repository, installed_commit = initialize_repository(
+        os.path.join(plugins_dir, "ExamplePlugin")
+    )
+    (repository / "README.md").write_text(
+        "local change\n", encoding="utf-8"
+    )
+    plugin.installed_plugin_folders["ExamplePlugin"] = "ExamplePlugin"
+    entry = plugin.get_registry_entry("ExamplePlugin")
+
+    success, message = strategy.migrate(
+        entry,
+        descriptor(plugin_core_module, installed_commit),
+        "automatic",
+        index_sequence=42,
+    )
+
+    assert success is False
+    assert "tracked" in message.lower() or "local" in message.lower()
+    assert manager.calls == []
+    assert http.calls == []
+    assert dependencies.calls == []
+    assert (repository / ".git").is_dir()

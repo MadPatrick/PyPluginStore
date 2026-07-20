@@ -3294,7 +3294,7 @@
     }
 
     function buildReleaseConfirmationPayload(action, pluginKey, token) {
-        if (!['use_git', 'use_release', 'rollback'].includes(action)) {
+        if (!['update', 'use_git', 'use_release', 'rollback'].includes(action)) {
             throw new Error('Unsupported release management action.');
         }
         if (typeof pluginKey !== 'string' || !pluginKey || pluginKey.length > 128) {
@@ -3622,7 +3622,7 @@
 
         setStatus(`Executing ${action} for ${pluginKey}... This may take a moment.`);
         try {
-            const isReleaseManagementAction = ['use_git', 'use_release', 'rollback'].includes(action);
+            const isReleaseManagementAction = ['update', 'use_git', 'use_release', 'rollback'].includes(action);
             const response = isReleaseManagementAction ?
                 await handleReleaseManagementAction(action, pluginKey) :
                 await sendCommand(action, { plugin_key: pluginKey });
