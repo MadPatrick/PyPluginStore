@@ -11,10 +11,14 @@ Scope:
 - Published the initial 47-entry index: 46 GitHub and one GitLab release.
 
 Verification:
-- `pytest -q`: 1109 passed.
-- Release-focused suite: 830 passed.
-- Registry validation passed for all 257 records; generated runtime freshness,
-  Python compilation, workflow YAML linting, and diff checks passed.
+- `pytest -q`: 1118 passed.
+- Release-focused suite: 839 passed.
+- Registry schema and release-index binding passed for all 256 managed records;
+  the earlier rollout validation covered the full 257-record registry.
+- Generated runtime freshness, Python compilation, workflow security tests,
+  workflow YAML parsing, and diff checks passed. Plain `yamllint` continues to
+  report pre-existing style violations in untouched workflows.
+- Final security review found no release, correctness, or security blockers.
 - Manual Linux, Windows, and Domoticz verification was waived by the user.
 
 Notes:

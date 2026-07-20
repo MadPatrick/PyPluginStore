@@ -22,6 +22,9 @@ Implementation:
 - Release-first selection, safe ZIP staging, dependency snapshots, rollback, UI status/actions, and Git-to-release migration are implemented in the Conductor track.
 - Migration preflight is read-only and forge-neutral. Automatic migration requires a clean equal/descendant checkout; manual migration uses one-use content-bound approval for local data and ahead/diverged replacement.
 - The initial reviewed `release_index.json` contains 47 commit-addressed source archives. Git remains the fallback before Release activation and an explicit choice for existing Git checkouts; release-managed failures remain fail-closed.
+- Migration approval and retained rollback are bound to the complete Git content snapshot and revalidated after the checkout rename.
+- Long-running hosts revoke release authority when an in-memory index expires. Git fallback remains policy-driven, while release-managed failures stay fail-closed.
+- GitHub runtime downloads permit only the canonical API-to-codeload redirect for the exact pinned commit.
 
 Recommended next step:
 - Review and push the local commits, let the weekly report/PR workflow refresh the expiring index, and monitor the GitHub/GitLab pilot before expanding coverage.
@@ -34,7 +37,8 @@ Public action:
 - None taken.
 
 Verification:
-- `pytest -q`: 1109 passed.
-- `python .github/scripts/validate_plugins.py`: passed for the 257-record registry.
-- `yamllint .github/workflows`, generated `plugin.py` freshness, Python compilation, and `git diff --check`: passed.
+- `pytest -q`: 1118 passed; the release-focused suite passed 839 tests.
+- Registry schema and release-index binding passed for all 256 managed records; the earlier rollout validation covered the full 257-record registry including the Idle sentinel.
+- Generated `plugin.py` freshness, Python compilation, workflow security tests, workflow YAML parsing, and `git diff --check`: passed.
+- Plain `yamllint` still reports pre-existing style violations in untouched workflow files.
 - Manual Linux, Windows, and Domoticz verification was waived by the user; automated Linux/Windows transaction paths remain covered.

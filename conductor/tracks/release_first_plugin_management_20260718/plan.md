@@ -1,6 +1,6 @@
 # Plan: Release-First Plugin Installation and Updates
 
-## Phase 1: Contracts and Backward-Compatible Metadata
+## Phase 1: Contracts and Backward-Compatible Metadata [checkpoint: 78eae1c]
 
 - [x] Task: Add failing tests for legacy registry entries, delivery policy, normalized entries, per-plugin revision/predecessor ordering, pair sequence/freshness/registry binding, and invalid index rejection `216f1c1`
 - [x] Task: Add release descriptor and delivery-mode models without changing Git behavior `602573a`
@@ -9,7 +9,7 @@
 - [x] Task: Add manager-owned atomic channel preferences so an explicit keep-Git choice survives updates without modifying plugin checkouts `72eebcd`
 - [x] Task: Conductor - User Manual Verification 'Contracts and Backward-Compatible Metadata' (waived by user; automated checkpoint `78eae1c`)
 
-## Phase 2: Multi-Forge Release Resolution
+## Phase 2: Multi-Forge Release Resolution [checkpoint: 81413f6]
 
 - [x] Task: Add fixture-driven failing tests for GitHub, GitLab, Forgejo/Codeberg, Gitea, and generic manifest candidates `ee0f109`
 - [x] Task: Implement the shared release-provider interface and normalized candidate model `9c9fe43`
@@ -22,7 +22,7 @@
 - [x] Task: Extend registry validation and weekly PR automation for `release_index.json` `4fa2a2d`
 - [x] Task: Conductor - User Manual Verification 'Multi-Forge Release Resolution' (waived by user; automated checkpoint `81413f6`)
 
-## Phase 3: Hardened ZIP Staging and Rollback
+## Phase 3: Hardened ZIP Staging and Rollback [checkpoint: 62ed533]
 
 - [x] Task: Add failing archive tests for traversal, absolute/UNC/drive paths, links/devices, control bytes, encryption, duplicate/case collisions, Windows reserved paths, ambiguous roots, manager metadata, bombs, size limits, and malformed ZIPs `caf99ba`
 - [x] Task: Implement the SSRF-safe bounded streaming downloader and member-by-member safe ZIP extractor `00abc9e`
@@ -31,37 +31,37 @@
 - [x] Task: Add idempotent queued replacement for Windows locked-file behavior `62ed533`
 - [x] Task: Conductor - User Manual Verification 'Hardened ZIP Staging and Rollback' (waived by user; automated checkpoint `62ed533`)
 
-## Phase 4: Release-First Install, Update, and UI
+## Phase 4: Release-First Install, Update, and UI [checkpoint: f213450]
 
 - [x] Task: Add failing activation/order/status tests for release-if-indexed, required release, Git-only, explicit Git, unavailable/de-certified metadata, predecessor gaps, mutations, recompressed source ZIPs, downgrade confirmation, and fail-closed cases `2b383dd`
 - [x] Task: Replace the single Git strategy field with a release-aware coordinator that retains `GitInstallUpdateStrategy` `ae43754`
 - [x] Task: Implement release-first new installs and release-to-release updates `c933f48`
 - [x] Task: Implement local-data inventory and reviewed mutable overlays for release updates, rollback, and channel switches `81dd483`
 - [x] Task: Stage, validate, atomically swap, and roll back complete shared-dependency snapshots before code activation `5c029e3`
-- [ ] Task: Implement retained-backup rollback and backup pruning
-- [ ] Task: Add release/Git channel, version, verification, and rollback fields to API responses
-- [ ] Task: Add UI channel badges, release status, explicit Git selection, verification errors, and rollback actions
-- [ ] Task: Regenerate `plugin.py` and update runtime/user documentation
-- [ ] Task: Conductor - User Manual Verification 'Release-First Install, Update, and UI' (Protocol in workflow.md)
+- [x] Task: Implement retained-backup rollback and backup pruning `bf56e6a`
+- [x] Task: Add release/Git channel, version, verification, and rollback fields to API responses `c933f48`
+- [x] Task: Add UI channel badges, release status, explicit Git selection, verification errors, and rollback actions `473581d`
+- [x] Task: Regenerate `plugin.py` and update runtime/user documentation `44aac97`
+- [x] Task: Conductor - User Manual Verification 'Release-First Install, Update, and UI' (waived by user; automated checkpoint `f213450`)
 
-## Phase 5: Git-to-Release Upgrade Migration
+## Phase 5: Git-to-Release Upgrade Migration [checkpoint: f213450]
 
 - [x] Task: Add migration tests for clean/equal, clean/descendant, dirty, ahead, diverged, submodule, index-lock, missing-Git, and repository-mismatch states `2d62822`
 - [x] Task: Add preservation tests for approved mutable overlays, unknown tracked/untracked blockers, collisions, escaping links, caches, Unicode normalization, Windows case-folding, and audit hashes `81dd483`
 - [x] Task: Implement migration preflight and explicit blocked states `2d62822`
-- [ ] Task: Implement reviewed preservation policy, explicit manual inventory approval, and staged Git-to-release replacement during update
-- [ ] Task: Implement safe automatic-update migration rules and explicit downgrade/Git-channel confirmation
-- [ ] Task: Add migration source and preserved-path audit data to install metadata and rollback
-- [ ] Task: Verify dependency-and-code rollback on failure for new installs, release updates, and Git migrations, including restart-pending and compatibility warnings
-- [ ] Task: Document upgrade, blocked migration, backup, rollback, and Git retention workflows
-- [ ] Task: Conductor - User Manual Verification 'Git-to-Release Upgrade Migration' (Protocol in workflow.md)
+- [x] Task: Implement reviewed preservation policy, explicit manual inventory approval, and staged Git-to-release replacement during update `f27fd54`
+- [x] Task: Implement safe automatic-update migration rules and explicit downgrade/Git-channel confirmation `f27fd54`
+- [x] Task: Add migration source and preserved-path audit data to install metadata and rollback `f27fd54`
+- [x] Task: Verify dependency-and-code rollback on failure for new installs, release updates, and Git migrations, including restart-pending and compatibility warnings `33b997f`
+- [x] Task: Document upgrade, blocked migration, backup, rollback, and Git retention workflows `44aac97`
+- [x] Task: Conductor - User Manual Verification 'Git-to-Release Upgrade Migration' (waived by user; automated checkpoint `f213450`)
 
-## Phase 6: Pilot and Progressive Rollout
+## Phase 6: Pilot and Progressive Rollout [checkpoint: f213450]
 
-- [ ] Task: Run report-only release discovery across the registry and document coverage, exclusions, sizes, and layouts
-- [ ] Task: Pilot certified GitHub and GitLab releases; validate Codeberg/Forgejo, Gitea, and generic contracts with live responses and recorded fixtures until registered releases are available
-- [ ] Task: Exercise clean Git migration and rollback on Linux and Windows/Domoticz test installations
-- [ ] Task: Enable release-index PR generation for validated candidates and retain per-entry opt-outs/overrides
-- [ ] Task: Run the full test suite, registry validation, generator freshness, static workflow checks, and security review
-- [ ] Task: Update maintainer decisions, patterns, contributor guidance, and rollout notes
-- [ ] Task: Conductor - User Manual Verification 'Pilot and Progressive Rollout' (Protocol in workflow.md)
+- [x] Task: Run report-only release discovery across the registry and document coverage, exclusions, sizes, and layouts `44aac97`
+- [x] Task: Pilot certified GitHub and GitLab releases; validate Codeberg/Forgejo, Gitea, and generic contracts with live responses and recorded fixtures until registered releases are available `34e3284`
+- [x] Task: Exercise clean Git migration and rollback on Linux and Windows/Domoticz test installations (automated platform paths passed; live-host exercise waived by user at `f213450`)
+- [x] Task: Enable release-index PR generation for validated candidates and retain per-entry opt-outs/overrides `4fa2a2d`
+- [x] Task: Run the full test suite, registry validation, generator freshness, static workflow checks, and security review `f213450`
+- [x] Task: Update maintainer decisions, patterns, contributor guidance, and rollout notes `4158ea2`
+- [x] Task: Conductor - User Manual Verification 'Pilot and Progressive Rollout' (waived by user; automated checkpoint `f213450`)
