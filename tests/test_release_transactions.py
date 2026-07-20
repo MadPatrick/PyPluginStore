@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from plugin_core_helpers import configure_home
+from test_release_migration import GIT, head_commit, initialize_repository
 
 
 OLD_COMMIT = "1" * 40
@@ -56,6 +57,27 @@ def expected_current():
         "management_mode": "release",
         "commit": OLD_COMMIT,
         "artifact_tree_sha256": OLD_TREE,
+    }
+
+
+def migration_snapshot():
+    return {
+        "repository_identity": "github.com/owner/example-plugin",
+        "release_commit": OLD_COMMIT,
+        "relationship": "equal",
+        "inventory_sha256": "6" * 64,
+        "tracked_changes": [],
+        "untracked_files": [],
+        "mutable_paths": [],
+        "shallow": False,
+    }
+
+
+def migration_expected_current():
+    return {
+        "management_mode": "git",
+        "commit": OLD_COMMIT,
+        "migration_snapshot": migration_snapshot(),
     }
 
 
@@ -198,6 +220,88 @@ def prepare_transaction(
         operation_id,
         dependency_snapshot(),
     )
+
+
+def migration_expected_from_preflight(preflight):
+    return {
+        "management_mode": "git",
+        "commit": preflight.installed_commit,
+        "migration_snapshot": {
+            "repository_identity": preflight.installed_repository_identity,
+            "release_commit": preflight.release_commit,
+            "relationship": preflight.relationship,
+            "inventory_sha256": preflight.inventory_sha256,
+            "tracked_changes": list(preflight.tracked_changes),
+            "untracked_files": list(preflight.untracked_files),
+            "mutable_paths": list(
+                preflight.preservation_inventory.mutable_paths
+            ),
+            "shallow": preflight.shallow,
+        },
+    }
+
+
+def prepare_migration_transaction(
+    plugin_core_module,
+    manager,
+    plugins_dir,
+    manager_dir,
+    operation_id="operation-001",
+):
+    live_code, installed_commit = initialize_repository(
+        plugins_dir / "ExamplePlugin"
+    )
+    live_dependencies = manager_dir / ".shared_deps"
+    write_marker(live_dependencies, "old-dependencies", "old-only.py")
+    preflight = plugin_core_module.GitMigrationPreflight(
+        manager.plugin
+    ).evaluate(
+        plugin_key="ExamplePlugin",
+        plugin_dir=str(live_code),
+        repository_identity="github.com/owner/example-plugin",
+        release_commit=installed_commit,
+        trigger="manual",
+        mutable_paths=[],
+    )
+    assert preflight.allowed is True
+    assert preflight.preservation_inventory is not None
+    target = target_release()
+    target["commit"] = installed_commit
+    transaction = manager.create_transaction(
+        plugin_key="ExamplePlugin",
+        operation_id=operation_id,
+        operation="release_migration",
+        expected_current=migration_expected_from_preflight(preflight),
+        target=target,
+    )
+    write_marker(transaction.paths.staged_code, "new-code", "new-only.py")
+    staged_code = Path(transaction.paths.staged_code)
+    (staged_code / "plugin.py").write_text(
+        "# release plugin\n",
+        encoding="utf-8",
+    )
+    (staged_code / ".pypluginstore.json").write_text(
+        json.dumps(
+            install_metadata_document(
+                installed_commit,
+                NEW_TREE,
+                2,
+                "github:owner/example-plugin:v2.0.0",
+                artifact_inventory(staged_code),
+            )
+        ),
+        encoding="utf-8",
+    )
+    shutil.copytree(
+        live_dependencies,
+        transaction.paths.staged_dependencies,
+    )
+    manager.mark_staged_verified(operation_id)
+    transaction = manager.mark_dependencies_staged(
+        operation_id,
+        dependency_snapshot(),
+    )
+    return transaction, live_code, installed_commit, preflight
 
 
 def assert_old_live(transaction):
@@ -544,8 +648,8 @@ def test_activation_never_trusts_a_preseeded_backup_leaf(
         ),
         pytest.param(
             "release_migration",
-            {"management_mode": "git", "commit": OLD_COMMIT},
-            id="git-migration-binds-installed-head",
+            migration_expected_current(),
+            id="git-migration-binds-content-snapshot",
         ),
     ],
 )
@@ -574,31 +678,98 @@ def test_release_transaction_records_operation_specific_expected_current_state(
     assert document["expected_current"] == operation_expected_current
 
 
-def test_git_migration_binds_activation_to_the_recorded_head(
-    plugin_core_module, tmp_path, monkeypatch
+@pytest.mark.skipif(GIT is None, reason="Git is required")
+@pytest.mark.parametrize(
+    "change_kind",
+    [
+        pytest.param("tracked", id="same-head-tracked-change"),
+        pytest.param("untracked", id="same-head-untracked-file"),
+    ],
+)
+def test_git_migration_activation_rejects_same_head_content_changes(
+    plugin_core_module,
+    tmp_path,
+    change_kind,
 ):
-    manager, plugins_dir, _ = make_manager(plugin_core_module, tmp_path)
-    live_code = plugins_dir / "ExamplePlugin"
-    (live_code / ".git").mkdir(parents=True)
-    transaction = manager.create_transaction(
-        plugin_key="ExamplePlugin",
-        operation_id="operation-001",
-        operation="release_migration",
-        expected_current={"management_mode": "git", "commit": OLD_COMMIT},
-        target=target_release(),
+    manager, plugins_dir, manager_dir = make_manager(
+        plugin_core_module, tmp_path
     )
-
-    class GitResult:
-        returncode = 0
-        stdout = NEW_COMMIT + "\n"
-
-    monkeypatch.setattr(
-        manager.plugin,
-        "run_git_command",
-        lambda *_args, **_kwargs: GitResult(),
+    transaction, live_code, installed_commit, _preflight = (
+        prepare_migration_transaction(
+            plugin_core_module,
+            manager,
+            plugins_dir,
+            manager_dir,
+        )
     )
+    if change_kind == "tracked":
+        (live_code / "README.md").write_text(
+            "changed after approval\n",
+            encoding="utf-8",
+        )
+    else:
+        runtime_file = live_code / "runtime" / "state.json"
+        runtime_file.parent.mkdir()
+        runtime_file.write_text('{"counter": 1}\n', encoding="utf-8")
 
-    assert manager._metadata_matches(transaction) is False
+    assert head_commit(live_code) == installed_commit
+
+    with pytest.raises(RuntimeError, match="expected_current"):
+        manager.activate(transaction.operation_id)
+
+    stale = manager.load_transaction(transaction.operation_id)
+    assert stale.phase == "stale_target"
+    assert Path(stale.paths.live_code) == live_code
+    assert (live_code / ".git").is_dir()
+    assert head_commit(live_code) == installed_commit
+    assert not Path(stale.paths.backup_code).exists()
+
+
+@pytest.mark.skipif(GIT is None, reason="Git is required")
+def test_migration_backup_revalidation_restores_checkout_changed_during_rename(
+    plugin_core_module,
+    tmp_path,
+):
+    manager, plugins_dir, manager_dir = make_manager(
+        plugin_core_module, tmp_path
+    )
+    transaction, live_code, installed_commit, _preflight = (
+        prepare_migration_transaction(
+            plugin_core_module,
+            manager,
+            plugins_dir,
+            manager_dir,
+        )
+    )
+    changed_contents = "changed inside rename window\n"
+
+    def change_moved_checkout(phase, current_transaction):
+        if phase == "code_backed_up":
+            Path(
+                current_transaction.paths.backup_code,
+                "README.md",
+            ).write_text(changed_contents, encoding="utf-8")
+
+    manager.fault_injector = change_moved_checkout
+
+    with pytest.raises(
+        RuntimeError,
+        match="changed after migration approval",
+    ):
+        manager.activate(transaction.operation_id)
+
+    stale = manager.load_transaction(transaction.operation_id)
+    assert stale.phase == "stale_target"
+    assert Path(stale.paths.live_code) == live_code
+    assert live_code.is_dir()
+    assert (live_code / ".git").is_dir()
+    assert (live_code / "README.md").read_text(encoding="utf-8") == (
+        changed_contents
+    )
+    assert head_commit(live_code) == installed_commit
+    assert not Path(stale.paths.backup_code).exists()
+    assert read_marker(stale.paths.live_dependencies) == "old-dependencies"
+    assert not Path(stale.paths.backup_dependencies).exists()
 
 
 @pytest.mark.parametrize(

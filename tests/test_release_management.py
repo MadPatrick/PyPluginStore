@@ -1,6 +1,10 @@
+import os
+from datetime import datetime, timezone
 from types import SimpleNamespace
 
 import pytest
+
+from plugin_core_helpers import configure_home
 
 
 COMMIT_1 = "1" * 40
@@ -944,6 +948,142 @@ def test_base_plugin_wraps_existing_git_strategy_in_release_coordinator(
         plugin.install_update_strategy.git_strategy,
         plugin_core_module.GitInstallUpdateStrategy,
     )
+
+
+def runtime_selection(plugin_core_module, release):
+    release_index = plugin_core_module.ReleaseIndex(
+        schema_version=1,
+        sequence=42,
+        generated_at="2026-07-18T08:00:00Z",
+        expires_at="2026-07-25T08:00:00Z",
+        registry_sha256="0" * 64,
+        plugins={"ExamplePlugin": release},
+        tombstones={},
+    )
+    return plugin_core_module.ReleaseMetadataSelection(
+        sequence=42,
+        registry_bytes=b"{}",
+        release_index_bytes=b"{}",
+        release_index=release_index,
+        release_authorized=True,
+    )
+
+
+def configure_expiring_runtime(
+    plugin_core_module,
+    tmp_path,
+    *,
+    installed_mode,
+    monkeypatch,
+):
+    plugins_dir, _manager_dir = configure_home(
+        plugin_core_module, tmp_path
+    )
+    plugin = plugin_core_module.BasePlugin()
+    entry = registry_entry(plugin_core_module)
+    release = release_descriptor(plugin_core_module)
+    plugin.registry_entries[entry.key] = entry
+    plugin_dir = plugins_dir / entry.key
+    plugin_dir.mkdir()
+    plugin.installed_plugin_folders[entry.key] = entry.key
+    if installed_mode == "git":
+        plugin_dir.joinpath(".git").mkdir()
+    else:
+        plugin_dir.joinpath(".pypluginstore.json").write_text(
+            "{}", encoding="utf-8"
+        )
+        monkeypatch.setattr(
+            plugin.install_metadata_service,
+            "read",
+            lambda path: installed_release_state(release),
+        )
+
+    current_time = [datetime(2026, 7, 24, 12, tzinfo=timezone.utc)]
+    metadata_root = os.path.abspath(plugin.get_release_metadata_root())
+    plugin.release_metadata_store = plugin_core_module.ReleaseMetadataStore(
+        metadata_root,
+        clock=lambda: current_time[0],
+    )
+    plugin.release_metadata_store_root = metadata_root
+    plugin.release_metadata_selection = runtime_selection(
+        plugin_core_module, release
+    )
+    return plugin, entry, release, current_time
+
+
+def test_runtime_decision_rechecks_expiry_and_preserves_git_fallback(
+    plugin_core_module, tmp_path, monkeypatch
+):
+    plugin, entry, release, current_time = configure_expiring_runtime(
+        plugin_core_module,
+        tmp_path,
+        installed_mode="git",
+        monkeypatch=monkeypatch,
+    )
+
+    fresh = plugin.getReleaseManagementContext(
+        entry,
+        operation="update",
+        trigger="automatic",
+    )
+    assert fresh["metadata_authorized"] is True
+    assert fresh["release"] is release
+
+    current_time[0] = datetime(2026, 7, 26, 12, tzinfo=timezone.utc)
+    decision = plugin.install_update_strategy._runtime_decision(
+        entry, "update", "automatic"
+    )
+
+    assert plugin.release_metadata_selection.release_authorized is False
+    assert plugin.release_metadata_selection.release_index is None
+    assert decision.route == "git_update"
+    assert decision.status == "git_available"
+    assert "expired" in decision.reason.lower()
+
+
+def test_runtime_decision_does_not_fall_back_for_release_install_after_expiry(
+    plugin_core_module, tmp_path, monkeypatch
+):
+    plugin, entry, _release, current_time = configure_expiring_runtime(
+        plugin_core_module,
+        tmp_path,
+        installed_mode="release",
+        monkeypatch=monkeypatch,
+    )
+    current_time[0] = datetime(2026, 7, 26, 12, tzinfo=timezone.utc)
+
+    decision = plugin.install_update_strategy._runtime_decision(
+        entry, "update", "automatic"
+    )
+
+    assert decision.route == "blocked"
+    assert decision.status == "release_metadata_unavailable"
+    assert "expired" in decision.reason.lower()
+
+
+def test_management_map_rechecks_expiry_before_status_decisions(
+    plugin_core_module, tmp_path, monkeypatch
+):
+    plugin, entry, _release, current_time = configure_expiring_runtime(
+        plugin_core_module,
+        tmp_path,
+        installed_mode="git",
+        monkeypatch=monkeypatch,
+    )
+    current_time[0] = datetime(2026, 7, 26, 12, tzinfo=timezone.utc)
+
+    management = plugin.getPluginManagementMap(
+        [entry.key],
+        {entry.key: "current"},
+        {},
+        plugin.get_host().plugins_dir(),
+    )[entry.key]
+
+    assert plugin.release_metadata_selection.release_authorized is False
+    assert management["status"] == "git_current"
+    assert management["channel"] == "git"
+    assert management["release_available"] is False
+    assert "expired" in management["verification_message"].lower()
 
 
 def test_update_and_status_wrappers_carry_explicit_trigger_without_changing_git_seam(

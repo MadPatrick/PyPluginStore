@@ -1,6 +1,9 @@
 import hashlib
 import os
+from dataclasses import replace
 from types import SimpleNamespace
+
+import pytest
 
 from plugin_core_helpers import configure_home
 from test_release_migration import initialize_repository
@@ -27,9 +30,11 @@ def descriptor(plugin_core_module, commit=COMMIT):
                 "kind": "source_zip",
                 "provenance": "forge_source_archive",
                 "migration_eligible": True,
-                "url": "https://github.com/owner/example-plugin/archive/"
-                + commit
-                + ".zip",
+                "url": (
+                    "https://api.github.com/repos/owner/"
+                    "example-plugin/zipball/"
+                    + commit
+                ),
                 "sha256": ARCHIVE,
                 "size": 3,
                 "tree_sha256": TREE,
@@ -178,6 +183,9 @@ def test_release_install_uses_pinned_pipeline_and_writes_audit_metadata(
     assert http.calls[0][2]["headers"] == {
         "User-Agent": "PyPluginStore-Release-Runtime",
     }
+    assert http.calls[0][2]["allowed_origins"] == [
+        "https://codeload.github.com",
+    ]
     assert len(dependencies.calls) == 1
     metadata = plugin.install_metadata_service.read(
         manager.transaction.paths.staged_code
@@ -185,6 +193,35 @@ def test_release_install_uses_pinned_pipeline_and_writes_audit_metadata(
     assert metadata.release_id == "github:owner/example-plugin:v2.0.0"
     assert metadata.index_sequence == 42
     assert metadata.artifact_tree_sha256 == TREE
+
+
+@pytest.mark.parametrize(
+    "artifact_url",
+    [
+        "https://api.github.com/repos/owner/example-plugin/zipball/"
+        + ("2" * 40),
+        "https://api.github.com/repos/owner/example-plugin/zipball/"
+        + COMMIT
+        + "?download=1",
+        "https://github.example.test/api/v3/repos/owner/"
+        "example-plugin/zipball/"
+        + COMMIT,
+    ],
+)
+def test_runtime_does_not_infer_codeload_for_noncanonical_github_urls(
+    plugin_core_module, tmp_path, artifact_url
+):
+    plugin, strategy, _manager, _http, _dependencies = make_strategy(
+        plugin_core_module, tmp_path
+    )
+    entry = plugin.get_registry_entry("ExamplePlugin")
+    release = descriptor(plugin_core_module)
+    release = replace(
+        release,
+        artifact=replace(release.artifact, url=artifact_url),
+    )
+
+    assert strategy._allowed_origins(entry, release) == []
 
 
 def test_release_failure_aborts_without_falling_back_to_git(
@@ -216,10 +253,16 @@ def test_clean_git_checkout_migrates_through_the_same_pinned_pipeline(
     )
     plugin.installed_plugin_folders["ExamplePlugin"] = "ExamplePlugin"
     entry = plugin.get_registry_entry("ExamplePlugin")
+    release = descriptor(plugin_core_module, installed_commit)
+    preflight = strategy.preflight_migration(
+        entry,
+        release,
+        "automatic",
+    )
 
     result = strategy.migrate(
         entry,
-        descriptor(plugin_core_module, installed_commit),
+        release,
         "automatic",
         index_sequence=42,
     )
@@ -231,9 +274,22 @@ def test_clean_git_checkout_migrates_through_the_same_pinned_pipeline(
     create = manager.calls[0]
     assert create[0] == "create"
     assert create[1]["operation"] == "release_migration"
-    assert create[1]["expected_current"] == {
+    expected_current = create[1]["expected_current"]
+    assert expected_current == {
         "management_mode": "git",
         "commit": installed_commit,
+        "migration_snapshot": {
+            "repository_identity": preflight.installed_repository_identity,
+            "release_commit": preflight.release_commit,
+            "relationship": preflight.relationship,
+            "inventory_sha256": preflight.inventory_sha256,
+            "tracked_changes": preflight.tracked_changes,
+            "untracked_files": preflight.untracked_files,
+            "mutable_paths": (
+                preflight.preservation_inventory.mutable_paths
+            ),
+            "shallow": preflight.shallow,
+        },
     }
     assert [call[0] for call in manager.calls] == [
         "create",

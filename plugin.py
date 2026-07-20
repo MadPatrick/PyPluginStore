@@ -2703,6 +2703,43 @@ class ReleaseMetadataStore:
             reason=reason,
         )
 
+    def revalidate_selection(self, selection):
+        """Revoke an in-memory selection when its validity window ends."""
+        if not isinstance(selection, ReleaseMetadataSelection):
+            raise ValueError("Release metadata selection is invalid.")
+        if not selection.release_authorized:
+            return selection
+
+        release_index = selection.release_index
+        reason = ""
+        if (
+            not isinstance(release_index, ReleaseIndex)
+            or release_index.sequence != selection.sequence
+        ):
+            reason = (
+                "Release metadata freshness could not be verified; "
+                "release changes are paused."
+            )
+        else:
+            try:
+                if self._is_fresh(release_index):
+                    return selection
+                reason = (
+                    "Release metadata is expired; release changes are paused."
+                )
+            except (TypeError, ValueError):
+                reason = (
+                    "Release metadata freshness could not be verified; "
+                    "release changes are paused."
+                )
+
+        return self._unauthorized_selection(
+            reason,
+            registry_bytes=selection.registry_bytes,
+            sequence=selection.sequence,
+            index_bytes=selection.release_index_bytes,
+        )
+
     def _trusted_generation(self, repair=True):
         """Select the highest complete generation at or above the watermark."""
         watermark_status, watermark = self._read_state_sequence(
@@ -6677,6 +6714,89 @@ def _validated_dependency_tree(value, label, allow_none=False):
     return {"present": True, "tree": normalized}
 
 
+def _validated_migration_snapshot(value):
+    """Validate the content-bound Git state required by a migration."""
+    value = _require_document(
+        value,
+        "expected_current.migration_snapshot",
+        (
+            "repository_identity",
+            "release_commit",
+            "relationship",
+            "inventory_sha256",
+            "tracked_changes",
+            "untracked_files",
+            "mutable_paths",
+            "shallow",
+        ),
+    )
+    raw_identity = _require_nonempty_string(
+        value["repository_identity"],
+        "migration_snapshot.repository_identity",
+    )
+    repository_identity = normalize_repository_identity(raw_identity)
+    if not repository_identity or repository_identity != raw_identity:
+        raise ValueError(
+            "migration_snapshot.repository_identity must be normalized."
+        )
+    relationship = _require_nonempty_string(
+        value["relationship"],
+        "migration_snapshot.relationship",
+    )
+    if relationship not in {
+        "equal",
+        "release_descendant",
+        "installed_ahead",
+        "diverged",
+    }:
+        raise ValueError(
+            "migration_snapshot.relationship is unsupported."
+        )
+
+    def canonical_paths(field_name):
+        paths = value[field_name]
+        if not isinstance(paths, list):
+            raise ValueError(
+                "migration_snapshot."
+                + field_name
+                + " must be a list."
+            )
+        normalized = [
+            _require_audit_path(
+                path,
+                "migration_snapshot." + field_name + " entry",
+            )
+            for path in paths
+        ]
+        if normalized != sorted(set(normalized)):
+            raise ValueError(
+                "migration_snapshot."
+                + field_name
+                + " must be sorted and unique."
+            )
+        return normalized
+
+    return {
+        "repository_identity": repository_identity,
+        "release_commit": _require_git_commit(
+            value["release_commit"],
+            "migration_snapshot.release_commit",
+        ),
+        "relationship": relationship,
+        "inventory_sha256": _require_sha256(
+            value["inventory_sha256"],
+            "migration_snapshot.inventory_sha256",
+        ),
+        "tracked_changes": canonical_paths("tracked_changes"),
+        "untracked_files": canonical_paths("untracked_files"),
+        "mutable_paths": canonical_paths("mutable_paths"),
+        "shallow": _require_boolean(
+            value["shallow"],
+            "migration_snapshot.shallow",
+        ),
+    }
+
+
 def _validated_dependency_state(value):
     value = _require_document(
         value,
@@ -7546,6 +7666,11 @@ class ReleaseTransactionManager:
                 expected_current.get("commit"),
                 "expected_current.commit",
             )
+            expected_current["migration_snapshot"] = (
+                _validated_migration_snapshot(
+                    expected_current.get("migration_snapshot")
+                )
+            )
         if expected_mode == "release":
             expected_source_revision = str(
                 expected_current.get("source_revision") or ""
@@ -8076,6 +8201,42 @@ class ReleaseTransactionManager:
             self._fsync_directory(os.path.dirname(destination))
         self._set_phase(transaction, completed_phase, inject=True)
 
+    def _git_migration_snapshot_matches(
+        self,
+        path,
+        plugin_key,
+        descriptor,
+    ):
+        try:
+            snapshot = _validated_migration_snapshot(
+                descriptor.get("migration_snapshot")
+            )
+            preflight = GitMigrationPreflight(self.plugin).evaluate(
+                plugin_key=plugin_key,
+                plugin_dir=path,
+                repository_identity=snapshot["repository_identity"],
+                release_commit=snapshot["release_commit"],
+                trigger="manual",
+                mutable_paths=snapshot["mutable_paths"],
+            )
+        except (OSError, RuntimeError, ValueError):
+            return False
+        return bool(
+            preflight.preservation_inventory is not None
+            and preflight.installed_commit == descriptor.get("commit")
+            and preflight.installed_repository_identity
+            == snapshot["repository_identity"]
+            and preflight.release_commit == snapshot["release_commit"]
+            and preflight.relationship == snapshot["relationship"]
+            and preflight.inventory_sha256
+            == snapshot["inventory_sha256"]
+            and preflight.tracked_changes
+            == snapshot["tracked_changes"]
+            and preflight.untracked_files
+            == snapshot["untracked_files"]
+            and preflight.shallow == snapshot["shallow"]
+        )
+
     def _code_path_matches(self, path, plugin_key, descriptor):
         mode = descriptor.get("management_mode")
         if mode == "absent":
@@ -8095,15 +8256,10 @@ class ReleaseTransactionManager:
                 or not os.path.isdir(os.path.join(path, ".git"))
             ):
                 return False
-            result = self.plugin.run_git_command(
+            return self._git_migration_snapshot_matches(
                 path,
-                ["git", "rev-parse", "HEAD"],
-                timeout=10,
-            )
-            return bool(
-                result is not None
-                and result.returncode == 0
-                and result.stdout.strip().lower() == descriptor.get("commit")
+                plugin_key,
+                descriptor,
             )
         return False
 
@@ -8370,6 +8526,37 @@ class ReleaseTransactionManager:
             error=error or transaction.error,
         )
 
+    def _revalidate_migration_backup_locked(self, transaction):
+        """Freeze migration approval to the checkout actually moved aside."""
+        if transaction.operation != "release_migration":
+            return
+        if self._code_path_matches(
+            transaction.paths.backup_code,
+            transaction.plugin_key,
+            transaction.expected_current,
+        ):
+            return
+        error = (
+            "Git checkout changed after migration approval; activation "
+            "was cancelled."
+        )
+        if (
+            os.path.lexists(transaction.paths.backup_code)
+            and not os.path.lexists(transaction.paths.live_code)
+        ):
+            os.replace(
+                transaction.paths.backup_code,
+                transaction.paths.live_code,
+            )
+            self._fsync_directory(
+                os.path.dirname(transaction.paths.backup_code)
+            )
+            self._fsync_directory(
+                os.path.dirname(transaction.paths.live_code)
+            )
+        self._set_phase(transaction, "stale_target", error=error)
+        raise RuntimeError(error)
+
     def _activate_locked(self, transaction, validate_current=True):
         if transaction.phase != "dependencies_staged":
             raise RuntimeError(
@@ -8413,6 +8600,7 @@ class ReleaseTransactionManager:
                 "code_backup_pending",
                 "code_backed_up",
             )
+            self._revalidate_migration_backup_locked(transaction)
             self._replace_directory(
                 transaction,
                 transaction.paths.live_dependencies,
@@ -8436,6 +8624,8 @@ class ReleaseTransactionManager:
             )
             return self._set_phase(transaction, "restart_pending")
         except Exception as error:
+            if transaction.phase == "stale_target":
+                raise
             host = self.plugin.get_host()
             locked_file = bool(
                 transaction.phase
@@ -10721,6 +10911,27 @@ class ReleaseInstallUpdateStrategy:
             )
         return plugin_dir, metadata
 
+    def _migration_snapshot(self, preflight):
+        inventory = preflight.preservation_inventory
+        if not isinstance(inventory, ReleasePreservationInventory):
+            raise ValueError(
+                "Git migration preservation inventory is unavailable."
+            )
+        return _validated_migration_snapshot(
+            {
+                "repository_identity": (
+                    preflight.installed_repository_identity
+                ),
+                "release_commit": preflight.release_commit,
+                "relationship": preflight.relationship,
+                "inventory_sha256": preflight.inventory_sha256,
+                "tracked_changes": list(preflight.tracked_changes),
+                "untracked_files": list(preflight.untracked_files),
+                "mutable_paths": list(inventory.mutable_paths),
+                "shallow": preflight.shallow,
+            }
+        )
+
     def _expected_current(
         self,
         entry,
@@ -10745,6 +10956,9 @@ class ReleaseInstallUpdateStrategy:
                 {
                     "management_mode": "git",
                     "commit": migration_preflight.installed_commit,
+                    "migration_snapshot": self._migration_snapshot(
+                        migration_preflight
+                    ),
                 },
                 plugin_dir,
                 None,
@@ -10761,9 +10975,35 @@ class ReleaseInstallUpdateStrategy:
             expected["source_revision"] = metadata.source_revision
         return expected, plugin_dir, metadata
 
-    def _allowed_origins(self, entry):
+    def _allowed_origins(self, entry, release):
+        """Return reviewed and exact provider-contract redirect origins."""
         release_policy = getattr(entry.delivery, "release", None)
-        return list(getattr(release_policy, "allowed_origins", []) or [])
+        origins = list(
+            getattr(release_policy, "allowed_origins", []) or []
+        )
+        parsed = urllib.parse.urlsplit(release.artifact.url)
+        path_parts = parsed.path.split("/")
+        github_source_archive = (
+            release.provider == "github"
+            and release.artifact.kind == "source_zip"
+            and release.artifact.provenance == "forge_source_archive"
+            and parsed.scheme == "https"
+            and parsed.hostname == "api.github.com"
+            and parsed.port in (None, 443)
+            and not parsed.query
+            and len(path_parts) == 6
+            and path_parts[1] == "repos"
+            and path_parts[2]
+            and path_parts[3]
+            and path_parts[4] == "zipball"
+            and path_parts[5] == release.commit
+        )
+        if (
+            github_source_archive
+            and "https://codeload.github.com" not in origins
+        ):
+            origins.append("https://codeload.github.com")
+        return origins
 
     def _move_validated_source(self, source_root, staged_code):
         source_root = os.path.abspath(source_root)
@@ -10938,7 +11178,7 @@ class ReleaseInstallUpdateStrategy:
                 headers=dict(self.RUNTIME_ARTIFACT_HEADERS),
                 expected_sha256=release.artifact.sha256,
                 expected_size=release.artifact.size,
-                allowed_origins=self._allowed_origins(entry),
+                allowed_origins=self._allowed_origins(entry, release),
             )
             self.extractor.extract(
                 archive_path,
@@ -11867,6 +12107,41 @@ class BasePlugin:
         self.release_metadata_selection = selection
         return selection
 
+    def getCurrentReleaseMetadataSelection(self):
+        """Return the selected pair after rechecking runtime freshness."""
+        selection = self.release_metadata_selection
+        if not isinstance(selection, ReleaseMetadataSelection):
+            selection = ReleaseMetadataSelection(
+                sequence=0,
+                registry_bytes=b"",
+                release_index_bytes=b"",
+                release_index=None,
+                release_authorized=False,
+                reason=(
+                    "Release metadata freshness could not be verified; "
+                    "release changes are paused."
+                ),
+            )
+        elif selection.release_authorized:
+            try:
+                selection = self.getReleaseMetadataStore().revalidate_selection(
+                    selection
+                )
+            except Exception:
+                selection = ReleaseMetadataSelection(
+                    sequence=selection.sequence,
+                    registry_bytes=selection.registry_bytes,
+                    release_index_bytes=selection.release_index_bytes,
+                    release_index=None,
+                    release_authorized=False,
+                    reason=(
+                        "Release metadata freshness could not be verified; "
+                        "release changes are paused."
+                    ),
+                )
+        self.release_metadata_selection = selection
+        return selection
+
     def getReleaseManagementContext(
         self,
         entry,
@@ -11880,7 +12155,7 @@ class BasePlugin:
             raise ValueError(
                 "Release management trigger must be manual or automatic."
             )
-        selection = self.release_metadata_selection
+        selection = self.getCurrentReleaseMetadataSelection()
         release_index = (
             selection.release_index
             if selection.release_authorized
@@ -13281,12 +13556,6 @@ class BasePlugin:
     ):
         """Return the forge-neutral management extension for API clients."""
         management = {}
-        selection = self.release_metadata_selection
-        release_index = (
-            selection.release_index
-            if selection.release_authorized
-            else None
-        )
         manager_key = self.get_current_plugin_folder()
         for plugin_key in installed_plugins:
             if plugin_key == manager_key:
@@ -13294,6 +13563,12 @@ class BasePlugin:
             entry = self.get_registry_entry(plugin_key)
             if entry is None:
                 continue
+            selection = self.getCurrentReleaseMetadataSelection()
+            release_index = (
+                selection.release_index
+                if selection.release_authorized
+                else None
+            )
             try:
                 plugin_dir = self.resolve_installed_plugin_dir(
                     plugin_key, plugins_dir
@@ -14191,10 +14466,9 @@ class BasePlugin:
                     "restart_pending": False,
                 }
 
-            selection = self.release_metadata_selection
             release = context.get("release")
             if (
-                not selection.release_authorized
+                not context.get("metadata_authorized")
                 or release is None
                 or context.get("tombstone") is not None
             ):

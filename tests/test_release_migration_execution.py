@@ -217,6 +217,18 @@ def test_manual_ahead_or_diverged_migration_requires_explicit_downgrade_consent(
     assert manager.calls[0][1]["expected_current"] == {
         "management_mode": "git",
         "commit": installed_commit,
+        "migration_snapshot": {
+            "repository_identity": preflight.installed_repository_identity,
+            "release_commit": preflight.release_commit,
+            "relationship": preflight.relationship,
+            "inventory_sha256": preflight.inventory_sha256,
+            "tracked_changes": preflight.tracked_changes,
+            "untracked_files": preflight.untracked_files,
+            "mutable_paths": (
+                preflight.preservation_inventory.mutable_paths
+            ),
+            "shallow": preflight.shallow,
+        },
     }
     assert [call[0] for call in manager.calls] == [
         "create",

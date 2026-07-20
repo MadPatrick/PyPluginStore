@@ -201,6 +201,30 @@ def test_expired_cached_pair_pauses_release_changes_without_losing_registry(
     assert selected.reason
 
 
+def test_authorized_in_memory_selection_is_revoked_after_expiry(
+    plugin_core_module, tmp_path
+):
+    current_time = [NOW]
+    store = plugin_core_module.ReleaseMetadataStore(
+        str(tmp_path / ".pypluginstore" / "metadata"),
+        clock=lambda: current_time[0],
+    )
+    index_bytes = release_index_bytes(42)
+    selected = store.accept_remote(REGISTRY_BYTES, index_bytes)
+
+    assert store.revalidate_selection(selected) is selected
+
+    current_time[0] = LATER
+    revoked = store.revalidate_selection(selected)
+
+    assert revoked.sequence == selected.sequence
+    assert revoked.registry_bytes == REGISTRY_BYTES
+    assert revoked.release_index_bytes == index_bytes
+    assert revoked.release_authorized is False
+    assert revoked.release_index is None
+    assert "expired" in revoked.reason.lower()
+
+
 def test_bundle_cannot_seed_below_durable_watermark_after_cache_loss(
     plugin_core_module, tmp_path
 ):
