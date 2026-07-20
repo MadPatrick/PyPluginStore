@@ -28,7 +28,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import zipfile
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta, timezone
 
 import Domoticz
@@ -443,6 +443,39 @@ class HostRuntime:
         if result is not None and result.returncode != 0 and self.is_git_dubious_ownership(result):
             return self.handle_git_ownership_failure(result, actual_command, cwd, timeout)
         return result
+
+    def run_git_read_only(self, command, cwd, timeout=15):
+        """Run an inspection-only Git command without taking optional locks."""
+        actual_command = self.safe_git_command(command, cwd)
+        environment = self.get_git_env()
+        environment["GIT_OPTIONAL_LOCKS"] = "0"
+        try:
+            return subprocess.run(
+                actual_command,
+                cwd=cwd,
+                env=environment,
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+            )
+        except subprocess.TimeoutExpired:
+            Domoticz.Error(
+                "Read-only Git command timed out in "
+                + str(cwd)
+                + ": "
+                + self.format_command(actual_command)
+            )
+        except OSError as error:
+            Domoticz.Error("Git ErrorNo:" + str(error.errno))
+            Domoticz.Error("Git StrError:" + str(error.strerror))
+        except Exception as error:
+            Domoticz.Error(
+                "Read-only Git command failed in "
+                + str(cwd)
+                + ": "
+                + str(error)
+            )
+        return None
 
     def make_web_readable(self, path):
         return None
@@ -9756,6 +9789,550 @@ class GitInstallUpdateStrategy:
         return None
 
 
+@dataclass(frozen=True)
+class GitMigrationPreflightResult:
+    """Auditable outcome of a strictly read-only Git migration check."""
+
+    allowed: bool = False
+    status: str = "unknown"
+    reason: str = ""
+    message: str = ""
+    relationship: str = "unknown"
+    installed_commit: str = ""
+    release_commit: str = ""
+    installed_repository_identity: str = ""
+    expected_repository_identity: str = ""
+    trigger: str = "manual"
+    requires_confirmation: bool = False
+    requires_approval: bool = False
+    tracked_changes: list = field(default_factory=list)
+    untracked_files: list = field(default_factory=list)
+    preserved_paths: list = field(default_factory=list)
+    approval_required_paths: list = field(default_factory=list)
+    inventory_sha256: str = ""
+    submodules: list = field(default_factory=list)
+    unresolved_operations: list = field(default_factory=list)
+    shallow: bool = False
+    preservation_inventory: object = None
+
+
+class GitMigrationPreflight:
+    """Inspect a local checkout without fetching or changing Git state."""
+
+    TRIGGERS = {"automatic", "manual"}
+    OPERATION_MARKERS = (
+        ("MERGE_HEAD", "merge"),
+        ("CHERRY_PICK_HEAD", "cherry_pick"),
+        ("REVERT_HEAD", "revert"),
+        ("rebase-merge", "rebase"),
+        ("rebase-apply", "rebase"),
+    )
+
+    def __init__(self, plugin, *, preservation_service=None):
+        if plugin is None:
+            raise ValueError("plugin is required.")
+        self.plugin = plugin
+        self.preservation_service = (
+            preservation_service or ReleasePreservationService(plugin)
+        )
+
+    def _result(self, **values):
+        return GitMigrationPreflightResult(**values)
+
+    def _run(self, plugin_dir, *arguments):
+        return self.plugin.get_host().run_git_read_only(
+            ["git", *arguments],
+            plugin_dir,
+            timeout=15,
+        )
+
+    def _output(self, result):
+        if result is None or result.returncode != 0:
+            return ""
+        return str(result.stdout or "").strip()
+
+    def _nul_paths(self, result):
+        if result is None or result.returncode != 0:
+            return None
+        return sorted(
+            set(path for path in str(result.stdout or "").split("\0") if path)
+        )
+
+    def _authoritative_remote(self, plugin_dir):
+        remote_names = []
+        branch_result = self._run(
+            plugin_dir,
+            "symbolic-ref",
+            "--quiet",
+            "--short",
+            "HEAD",
+        )
+        branch = self._output(branch_result)
+        if branch and re.fullmatch(r"[A-Za-z0-9._/-]+", branch):
+            configured = self._run(
+                plugin_dir,
+                "config",
+                "--get",
+                "branch." + branch + ".remote",
+            )
+            remote_name = self._output(configured)
+            if (
+                remote_name
+                and remote_name != "."
+                and not remote_name.startswith("-")
+                and re.fullmatch(r"[A-Za-z0-9._/-]+", remote_name)
+            ):
+                remote_names.append(remote_name)
+        if "origin" not in remote_names:
+            remote_names.append("origin")
+
+        for remote_name in remote_names:
+            result = self._run(
+                plugin_dir,
+                "remote",
+                "get-url",
+                "--all",
+                remote_name,
+            )
+            if result is None or result.returncode != 0:
+                continue
+            urls = [line.strip() for line in result.stdout.splitlines() if line.strip()]
+            if urls:
+                return urls[0]
+        return ""
+
+    def _index(self, plugin_dir):
+        result = self._run(plugin_dir, "ls-files", "--stage", "-z", "--")
+        if result is None or result.returncode != 0:
+            return None, None
+        tracked_paths = []
+        submodules = []
+        for record in str(result.stdout or "").split("\0"):
+            if not record:
+                continue
+            metadata, separator, path = record.partition("\t")
+            parts = metadata.split()
+            if not separator or len(parts) != 3 or not path:
+                return None, None
+            mode, _object_id, stage = parts
+            if stage == "0":
+                tracked_paths.append(path)
+                if mode == "160000":
+                    submodules.append(path)
+        return sorted(set(tracked_paths)), sorted(set(submodules))
+
+    def _baseline_files(self, plugin_dir, tracked_paths):
+        baseline = {}
+        for relative_path in tracked_paths:
+            try:
+                relative_path = _require_artifact_file_path(
+                    relative_path,
+                    "tracked path",
+                )
+            except ValueError as error:
+                raise ReleasePreservationError(
+                    "unsafe_preserved_path",
+                    "A tracked Git path is unsafe for migration.",
+                    [relative_path],
+                ) from error
+            physical_path = os.path.join(
+                plugin_dir,
+                *relative_path.split("/"),
+            )
+            try:
+                path_stat = os.lstat(physical_path)
+            except FileNotFoundError:
+                continue
+            except OSError as error:
+                raise ReleasePreservationError(
+                    "unsafe_preserved_path",
+                    "A tracked Git path could not be inspected safely.",
+                    [relative_path],
+                ) from error
+            if not stat.S_ISREG(path_stat.st_mode) or stat.S_ISLNK(
+                path_stat.st_mode
+            ):
+                continue
+            node = _ReleasePreservationNode(
+                relative_path=relative_path,
+                physical_path=physical_path,
+                path_stat=path_stat,
+            )
+            digest, _size, _contents = self.preservation_service._hash_regular_file(
+                node
+            )
+            baseline[relative_path] = digest
+        return baseline
+
+    def _inventory(
+        self,
+        plugin_dir,
+        tracked_paths,
+        tracked_changes,
+        untracked_files,
+        mutable_paths,
+    ):
+        return self.preservation_service.inventory(
+            installed_dir=plugin_dir,
+            artifact_files=self._baseline_files(plugin_dir, tracked_paths),
+            preserved_files={},
+            mutable_paths=list(mutable_paths),
+            operation="git_migration",
+            tracked_changes=tracked_changes,
+            untracked_files=untracked_files,
+        )
+
+    def evaluate(
+        self,
+        *,
+        plugin_key,
+        plugin_dir,
+        repository_identity,
+        release_commit,
+        trigger,
+        mutable_paths,
+    ):
+        """Return a migration decision using local Git objects only."""
+        if trigger not in self.TRIGGERS:
+            raise ValueError("Migration trigger must be manual or automatic.")
+        plugin_key = _require_plugin_key(plugin_key)
+        del plugin_key
+        release_commit = _require_git_commit(
+            release_commit,
+            "release_commit",
+        )
+        expected_identity = normalize_repository_identity(repository_identity)
+        plugin_dir = os.path.abspath(os.fspath(plugin_dir))
+        common = {
+            "release_commit": release_commit,
+            "expected_repository_identity": expected_identity,
+            "trigger": trigger,
+        }
+        host = self.plugin.get_host()
+        if not host.command_available("git"):
+            return self._result(
+                reason="git_unavailable",
+                message="Git is unavailable; migration state is unknown.",
+                **common,
+            )
+        if not os.path.isdir(plugin_dir) or os.path.islink(plugin_dir):
+            return self._result(
+                reason="not_git_repository",
+                message="The installed plugin is not a Git repository.",
+                **common,
+            )
+
+        work_tree = self._run(plugin_dir, "rev-parse", "--is-inside-work-tree")
+        if self._output(work_tree).lower() != "true":
+            return self._result(
+                reason="not_git_repository",
+                message="The installed plugin is not a Git repository.",
+                **common,
+            )
+        top_level = self._output(
+            self._run(plugin_dir, "rev-parse", "--show-toplevel")
+        )
+        if not top_level or os.path.realpath(top_level) != os.path.realpath(
+            plugin_dir
+        ):
+            return self._result(
+                reason="not_git_repository",
+                message="The plugin folder is not the Git repository root.",
+                **common,
+            )
+        git_dir = self._output(
+            self._run(plugin_dir, "rev-parse", "--absolute-git-dir")
+        )
+        if not git_dir:
+            return self._result(
+                reason="git_inspection_failed",
+                message="Git metadata could not be inspected safely.",
+                **common,
+            )
+
+        index_lock = os.path.join(git_dir, "index.lock")
+        if os.path.lexists(index_lock):
+            return self._result(
+                status="migration_blocked_local_changes",
+                reason="git_index_lock",
+                message="Git index lock exists at " + index_lock + ".",
+                **common,
+            )
+        unresolved_operations = sorted(
+            set(
+                operation
+                for marker, operation in self.OPERATION_MARKERS
+                if os.path.lexists(os.path.join(git_dir, marker))
+            )
+        )
+        if unresolved_operations:
+            return self._result(
+                status="migration_blocked_local_changes",
+                reason="git_operation_in_progress",
+                message="A Git operation must be resolved before migration.",
+                unresolved_operations=unresolved_operations,
+                **common,
+            )
+
+        installed_commit = self._output(
+            self._run(plugin_dir, "rev-parse", "--verify", "HEAD^{commit}")
+        ).lower()
+        if not GIT_COMMIT_PATTERN.fullmatch(installed_commit):
+            return self._result(
+                reason="git_head_unknown",
+                message="The installed Git commit could not be determined.",
+                **common,
+            )
+        shallow = (
+            self._output(
+                self._run(
+                    plugin_dir,
+                    "rev-parse",
+                    "--is-shallow-repository",
+                )
+            ).lower()
+            == "true"
+        )
+        installed_remote = self._authoritative_remote(plugin_dir)
+        installed_identity = normalize_repository_identity(installed_remote)
+        identified = {
+            "installed_commit": installed_commit,
+            "installed_repository_identity": installed_identity,
+            "shallow": shallow,
+            **common,
+        }
+        if not installed_identity:
+            return self._result(
+                reason="repository_identity_unknown",
+                message="The installed repository identity is unknown.",
+                **identified,
+            )
+        if not expected_identity or installed_identity != expected_identity:
+            return self._result(
+                status="mismatch",
+                reason="repository_mismatch",
+                message="The installed repository does not match the release.",
+                **identified,
+            )
+
+        tracked_paths, submodules = self._index(plugin_dir)
+        tracked_changes = self._nul_paths(
+            self._run(
+                plugin_dir,
+                "diff",
+                "--name-only",
+                "--no-renames",
+                "-z",
+                "HEAD",
+                "--",
+            )
+        )
+        untracked_files = self._nul_paths(
+            self._run(
+                plugin_dir,
+                "ls-files",
+                "--others",
+                "--exclude-standard",
+                "-z",
+                "--",
+            )
+        )
+        if (
+            tracked_paths is None
+            or tracked_changes is None
+            or untracked_files is None
+        ):
+            return self._result(
+                reason="git_inspection_failed",
+                message="The Git working tree could not be inspected safely.",
+                **identified,
+            )
+        if submodules:
+            return self._result(
+                status="migration_blocked_local_changes",
+                reason="submodules_not_supported",
+                message="Git submodules are not supported by release migration.",
+                tracked_changes=tracked_changes,
+                untracked_files=untracked_files,
+                submodules=submodules,
+                **identified,
+            )
+
+        if installed_commit == release_commit:
+            relationship = "equal"
+            relationship_reason = "release_equals_head"
+        else:
+            available = self._run(
+                plugin_dir,
+                "cat-file",
+                "-e",
+                release_commit + "^{commit}",
+            )
+            if available is None or available.returncode != 0:
+                return self._result(
+                    status="migration_waiting_for_release",
+                    reason="ancestry_unavailable",
+                    message="Release ancestry is unavailable locally; no fetch was attempted.",
+                    tracked_changes=tracked_changes,
+                    untracked_files=untracked_files,
+                    **identified,
+                )
+            release_descends = self._run(
+                plugin_dir,
+                "merge-base",
+                "--is-ancestor",
+                installed_commit,
+                release_commit,
+            )
+            if release_descends is not None and release_descends.returncode == 0:
+                relationship = "release_descendant"
+                relationship_reason = "release_descends_from_head"
+            elif release_descends is None or release_descends.returncode != 1:
+                return self._result(
+                    status="migration_waiting_for_release",
+                    reason="ancestry_unavailable",
+                    message="Release ancestry is unavailable locally; no fetch was attempted.",
+                    tracked_changes=tracked_changes,
+                    untracked_files=untracked_files,
+                    **identified,
+                )
+            else:
+                installed_descends = self._run(
+                    plugin_dir,
+                    "merge-base",
+                    "--is-ancestor",
+                    release_commit,
+                    installed_commit,
+                )
+                if (
+                    installed_descends is not None
+                    and installed_descends.returncode == 0
+                ):
+                    relationship = "installed_ahead"
+                    relationship_reason = "installed_head_ahead"
+                elif (
+                    installed_descends is not None
+                    and installed_descends.returncode == 1
+                ):
+                    relationship = "diverged"
+                    relationship_reason = "diverged_history"
+                else:
+                    return self._result(
+                        status="migration_waiting_for_release",
+                        reason="ancestry_unavailable",
+                        message="Release ancestry is unavailable locally; no fetch was attempted.",
+                        tracked_changes=tracked_changes,
+                        untracked_files=untracked_files,
+                        **identified,
+                    )
+
+        related = {"relationship": relationship, **identified}
+        try:
+            inventory = self._inventory(
+                plugin_dir,
+                tracked_paths,
+                tracked_changes,
+                untracked_files,
+                mutable_paths,
+            )
+        except ReleasePreservationError as error:
+            return self._result(
+                status="migration_blocked_local_changes",
+                reason=error.reason,
+                message=error.message,
+                tracked_changes=tracked_changes,
+                untracked_files=untracked_files,
+                approval_required_paths=error.paths,
+                **related,
+            )
+        inventory_values = {
+            "inventory_sha256": inventory.sha256,
+            "preservation_inventory": inventory,
+            "tracked_changes": tracked_changes,
+            "untracked_files": untracked_files,
+        }
+        if relationship in {"installed_ahead", "diverged"}:
+            requires_confirmation = trigger == "manual"
+            return self._result(
+                status="migration_waiting_for_release",
+                reason=(
+                    "downgrade_confirmation_required"
+                    if requires_confirmation
+                    else relationship_reason
+                ),
+                message="The installed commit is not contained in the release.",
+                requires_confirmation=requires_confirmation,
+                **inventory_values,
+                **related,
+            )
+        if tracked_changes:
+            if trigger == "automatic":
+                return self._result(
+                    status="migration_blocked_local_changes",
+                    reason="tracked_changes",
+                    message="Automatic migration cannot preserve tracked changes.",
+                    **inventory_values,
+                    **related,
+                )
+            outside_policy = [
+                path
+                for path in tracked_changes
+                if not self.preservation_service._matches_mutable_path(
+                    path,
+                    inventory.mutable_paths,
+                )
+            ]
+            if outside_policy:
+                return self._result(
+                    status="migration_blocked_local_changes",
+                    reason="tracked_path_not_mutable",
+                    message="A tracked change is outside reviewed mutable policy.",
+                    approval_required_paths=outside_policy,
+                    **inventory_values,
+                    **related,
+                )
+            return self._result(
+                status="migration_blocked_local_changes",
+                reason="preservation_approval_required",
+                message="Tracked mutable data requires exact inventory approval.",
+                requires_approval=True,
+                approval_required_paths=tracked_changes,
+                **inventory_values,
+                **related,
+            )
+
+        unknown_paths = sorted(
+            set(untracked_files) | set(inventory.unknown_paths)
+        )
+        if unknown_paths:
+            if trigger == "automatic":
+                return self._result(
+                    status="migration_blocked_local_files",
+                    reason="untracked_files",
+                    message="Automatic migration cannot preserve unknown local files.",
+                    **inventory_values,
+                    **related,
+                )
+            return self._result(
+                status="migration_blocked_local_files",
+                reason="preservation_approval_required",
+                message="Unknown local data requires exact inventory approval.",
+                requires_approval=True,
+                approval_required_paths=unknown_paths,
+                **inventory_values,
+                **related,
+            )
+
+        return self._result(
+            allowed=True,
+            status="migration_available",
+            reason=relationship_reason,
+            message="The Git checkout is eligible for release migration.",
+            **inventory_values,
+            **related,
+        )
+
+
 class ReleaseInstallUpdateStrategy:
     """Install one index-pinned release through the hardened transaction path."""
 
@@ -10142,6 +10719,10 @@ class ReleaseInstallUpdateStrategy:
         return False, "Git-to-release migration preflight is not configured."
 
 
+class ReleaseConfirmationError(RuntimeError):
+    """An opaque release-management confirmation is invalid or stale."""
+
+
 @dataclass(frozen=True)
 class ReleaseManagementDecision:
     """One explicit, auditable route through release or Git management."""
@@ -10162,12 +10743,167 @@ class ReleaseManagementCoordinator:
     INSTALLED_MODES = {"absent", "git", "release"}
     TRIGGERS = {"manual", "automatic"}
 
-    def __init__(self, plugin, git_strategy=None, release_strategy=None):
+    def __init__(
+        self,
+        plugin,
+        git_strategy=None,
+        release_strategy=None,
+        *,
+        confirmation_clock=None,
+        confirmation_ttl_seconds=300,
+    ):
+        if plugin is None:
+            raise ValueError("plugin is required.")
+        if (
+            type(confirmation_ttl_seconds) is not int
+            or confirmation_ttl_seconds <= 0
+        ):
+            raise ValueError(
+                "confirmation_ttl_seconds must be a positive integer."
+            )
         self.plugin = plugin
         self.git_strategy = git_strategy or GitInstallUpdateStrategy(plugin)
         self.release_strategy = release_strategy or ReleaseInstallUpdateStrategy(
             plugin
         )
+        self.confirmation_clock = confirmation_clock or (
+            lambda: datetime.now(timezone.utc)
+        )
+        self.confirmation_ttl_seconds = confirmation_ttl_seconds
+        self._confirmation_challenges = {}
+        self._confirmation_lock = threading.Lock()
+
+    def _confirmation_now(self):
+        current = self.confirmation_clock()
+        if not isinstance(current, datetime):
+            raise ReleaseConfirmationError(
+                "Confirmation clock did not return a datetime."
+            )
+        if current.tzinfo is None or current.utcoffset() is None:
+            raise ReleaseConfirmationError(
+                "Confirmation clock must return an aware datetime."
+            )
+        return current.astimezone(timezone.utc)
+
+    def _confirmation_binding(
+        self,
+        *,
+        kind,
+        plugin_key,
+        action,
+        target,
+        inventory_sha256,
+    ):
+        kind = _require_nonempty_string(kind, "confirmation kind")
+        plugin_key = _require_plugin_key(plugin_key)
+        action = _require_nonempty_string(action, "confirmation action")
+        target = _transaction_json_copy(target, "confirmation target")
+        if not isinstance(target, dict):
+            raise ValueError("confirmation target must be an object.")
+        inventory_sha256 = _require_sha256(
+            inventory_sha256,
+            "inventory_sha256",
+        )
+        document = {
+            "kind": kind,
+            "plugin_key": plugin_key,
+            "action": action,
+            "target": target,
+            "inventory_sha256": inventory_sha256,
+        }
+        encoded = json.dumps(
+            document,
+            ensure_ascii=False,
+            separators=(",", ":"),
+            sort_keys=True,
+        ).encode("utf-8")
+        return hashlib.sha256(encoded).hexdigest(), inventory_sha256
+
+    def issue_confirmation_challenge(
+        self,
+        *,
+        kind,
+        plugin_key,
+        action,
+        target,
+        inventory_sha256,
+    ):
+        """Issue a bounded one-use token without exposing confirmation inputs."""
+        binding, approved_digest = self._confirmation_binding(
+            kind=kind,
+            plugin_key=plugin_key,
+            action=action,
+            target=target,
+            inventory_sha256=inventory_sha256,
+        )
+        now = self._confirmation_now()
+        expires_at = now + timedelta(seconds=self.confirmation_ttl_seconds)
+        with self._confirmation_lock:
+            self._confirmation_challenges = {
+                token: record
+                for token, record in self._confirmation_challenges.items()
+                if record[3] >= now
+            }
+            while True:
+                token = base64.urlsafe_b64encode(os.urandom(32)).decode(
+                    "ascii"
+                ).rstrip("=")
+                if token not in self._confirmation_challenges:
+                    break
+            self._confirmation_challenges[token] = (
+                kind,
+                binding,
+                approved_digest,
+                expires_at,
+            )
+        return {
+            "kind": kind,
+            "token": token,
+            "message": "Confirm the selected release-management operation.",
+        }
+
+    def consume_confirmation_challenge(
+        self,
+        *,
+        token,
+        plugin_key,
+        action,
+        target,
+        inventory_sha256,
+    ):
+        """Consume an exact-bound challenge once and return its approval digest."""
+        if not isinstance(token, str) or not token:
+            raise ReleaseConfirmationError("Confirmation token is invalid.")
+        now = self._confirmation_now()
+        with self._confirmation_lock:
+            record = self._confirmation_challenges.pop(token, None)
+        if record is None:
+            raise ReleaseConfirmationError(
+                "Confirmation token is unknown or already used."
+            )
+        kind, expected_binding, approved_digest, expires_at = record
+        if now > expires_at:
+            raise ReleaseConfirmationError("Confirmation token has expired.")
+        try:
+            actual_binding, actual_digest = self._confirmation_binding(
+                kind=kind,
+                plugin_key=plugin_key,
+                action=action,
+                target=target,
+                inventory_sha256=inventory_sha256,
+            )
+        except (TypeError, ValueError) as error:
+            raise ReleaseConfirmationError(
+                "Confirmation binding is invalid."
+            ) from error
+        if (
+            actual_binding != expected_binding
+            or actual_digest != approved_digest
+        ):
+            raise ReleaseConfirmationError(
+                "Confirmation does not match the requested operation."
+            )
+        return approved_digest
 
     def _decision(
         self,
@@ -10614,7 +11350,9 @@ class BasePlugin:
         )
 
     def get_host(self):
-        parameters = globals().get("Parameters", {})
+        parameters = globals().get("Parameters")
+        if parameters is None:
+            parameters = self.host.parameters if self.host is not None else {}
         if self.host is None or self.host.parameters is not parameters:
             self.host = make_host_runtime(parameters)
         return self.host
