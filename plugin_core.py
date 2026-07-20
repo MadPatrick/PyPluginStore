@@ -5221,6 +5221,1007 @@ class InstallMetadataService:
                 self._fsync_directory(plugin_dir)
 
 
+class ReleasePreservationError(RuntimeError):
+    """A local-data inventory that cannot safely be overlaid."""
+
+    status = "preservation_blocked"
+
+    def __init__(self, reason, message="", paths=()):
+        self.reason = str(reason)
+        self.message = str(message or reason)
+        self.paths = sorted(set(str(path) for path in paths))
+        super().__init__(self.message)
+
+
+@dataclass(frozen=True)
+class ReleasePreservationInventoryEntry:
+    """One content-bound candidate from an installed plugin tree."""
+
+    relative_path: str
+    sha256: str
+    size: int
+    classification: str
+
+
+@dataclass(frozen=True)
+class ReleasePreservationInventory:
+    """Immutable inputs and audit digest for a preservation decision."""
+
+    installed_dir: str
+    operation: str
+    entries: dict
+    unknown_paths: list
+    approval_required_paths: list
+    ignored_paths: list
+    tracked_changes: list
+    untracked_files: list
+    mutable_paths: list
+    artifact_files: dict
+    preserved_files: dict
+    sha256: str
+
+
+@dataclass(frozen=True)
+class ReleasePreservationOverlay:
+    """Audit data for files copied over a pristine staged artifact."""
+
+    operation: str
+    inventory_sha256: str
+    preserved_paths: list
+    preserved_files: dict
+
+
+@dataclass(frozen=True)
+class _ReleasePreservationNode:
+    relative_path: str
+    physical_path: str
+    path_stat: object
+    sha256: str = ""
+
+
+class ReleasePreservationService:
+    """Inventory and overlay only reviewed, non-executable local data."""
+
+    OPERATIONS = {
+        "release_update",
+        "rollback",
+        "channel_switch",
+        "git_migration",
+    }
+    TRIGGERS = {"automatic", "manual"}
+    CACHE_DIRECTORIES = {
+        "__pycache__",
+        ".pytest_cache",
+        ".mypy_cache",
+        ".ruff_cache",
+    }
+    EXECUTABLE_SUFFIXES = {
+        ".bat",
+        ".cmd",
+        ".com",
+        ".dll",
+        ".dylib",
+        ".exe",
+        ".pyd",
+        ".py",
+        ".pyc",
+        ".pyo",
+        ".ps1",
+        ".sh",
+        ".so",
+    }
+    WINDOWS_FORBIDDEN_CHARACTERS = '<>"|?*'
+    CHUNK_SIZE = 64 * 1024
+
+    def __init__(
+        self,
+        plugin,
+        *,
+        max_file_size=50 * 1024 * 1024,
+        max_total_size=250 * 1024 * 1024,
+        max_files=5000,
+    ):
+        if plugin is None:
+            raise ValueError("plugin is required.")
+        for name, value in (
+            ("max_file_size", max_file_size),
+            ("max_total_size", max_total_size),
+            ("max_files", max_files),
+        ):
+            if type(value) is not int or value <= 0:
+                raise ValueError(name + " must be a positive integer.")
+        self.plugin = plugin
+        self.max_file_size = max_file_size
+        self.max_total_size = max_total_size
+        self.max_files = max_files
+
+    def _error(self, reason, message, paths=()):
+        return ReleasePreservationError(
+            reason,
+            message,
+            paths=paths,
+        )
+
+    def _collision_key(self, path):
+        return unicodedata.normalize("NFC", path).casefold()
+
+    def _path_parts_key(self, path):
+        return tuple(
+            unicodedata.normalize("NFC", part).casefold()
+            for part in path.split("/")
+        )
+
+    def _is_executable_path(self, path):
+        suffix = os.path.splitext(path.rsplit("/", 1)[-1])[1].casefold()
+        return suffix in self.EXECUTABLE_SUFFIXES
+
+    def _portable_path(self, value, *, policy=False):
+        raw_value = str(value)
+        try:
+            path = _require_audit_path(raw_value, "preserved path")
+            if any(
+                character in self.WINDOWS_FORBIDDEN_CHARACTERS
+                for character in path
+            ):
+                raise ValueError("preserved path is not portable.")
+            if policy and self._is_executable_path(path):
+                raise ValueError("preserved path names executable code.")
+            return path
+        except ValueError as error:
+            raise self._error(
+                "unsafe_preserved_path",
+                "The preservation policy contains an unsafe path.",
+                [raw_value],
+            ) from error
+
+    def _normalized_paths(self, values, *, policy=False):
+        if not isinstance(values, (list, tuple)):
+            raise self._error(
+                "unsafe_preserved_path",
+                "Preservation paths must be a list.",
+            )
+        paths = []
+        spellings = {}
+        for value in values:
+            path = self._portable_path(value, policy=policy)
+            key = self._collision_key(path)
+            previous = spellings.get(key)
+            if previous is not None:
+                raise self._error(
+                    "path_collision",
+                    "Preservation paths collide on a supported host.",
+                    [previous, path],
+                )
+            spellings[key] = path
+            paths.append(path)
+        return sorted(paths)
+
+    def _normalize_artifact_files(self, artifact_files):
+        if not isinstance(artifact_files, Mapping):
+            raise ValueError("artifact_files must be a mapping.")
+        normalized = {}
+        spellings = {}
+        for raw_path, raw_record in artifact_files.items():
+            path = _require_artifact_file_path(
+                raw_path,
+                "artifact_files path",
+            )
+            if isinstance(raw_record, str):
+                digest = _require_sha256(
+                    raw_record,
+                    "artifact_files digest",
+                )
+            elif isinstance(raw_record, Mapping):
+                digest = _require_sha256(
+                    raw_record.get("sha256"),
+                    "artifact_files digest",
+                )
+            else:
+                raise ValueError("artifact_files record is invalid.")
+            key = self._collision_key(path)
+            if key in spellings:
+                raise ValueError("artifact_files contains colliding paths.")
+            spellings[key] = path
+            normalized[path] = digest
+        return dict(sorted(normalized.items()))
+
+    def _normalize_preserved_files(self, preserved_files):
+        if not isinstance(preserved_files, Mapping):
+            raise ValueError("preserved_files must be a mapping.")
+        normalized = {}
+        spellings = {}
+        for raw_path, raw_digest in preserved_files.items():
+            path = self._portable_path(raw_path)
+            digest = _require_sha256(
+                raw_digest,
+                "preserved_files digest",
+            )
+            key = self._collision_key(path)
+            if key in spellings:
+                raise self._error(
+                    "path_collision",
+                    "Preserved audit paths collide on a supported host.",
+                    [spellings[key], path],
+                )
+            spellings[key] = path
+            normalized[path] = digest
+        return dict(sorted(normalized.items()))
+
+    def _ignored_path(self, relative_path):
+        parts = relative_path.split("/")
+        folded = [part.casefold() for part in parts]
+        if folded[0] in {".git", ".pypluginstore"}:
+            return True
+        if folded[0] in {
+            ".pypluginstore.json",
+            ".pypluginstore.json.tmp",
+        }:
+            return True
+        return any(part in self.CACHE_DIRECTORIES for part in folded)
+
+    def _ignored_leaves(self, path, relative_path):
+        try:
+            path_stat = os.lstat(path)
+        except OSError:
+            return [relative_path]
+        if not stat.S_ISDIR(path_stat.st_mode) or stat.S_ISLNK(
+            path_stat.st_mode
+        ):
+            return [relative_path]
+        leaves = []
+        try:
+            entries = sorted(os.scandir(path), key=lambda entry: entry.name)
+        except OSError:
+            return [relative_path]
+        for entry in entries:
+            child_path = relative_path + "/" + entry.name
+            leaves.extend(self._ignored_leaves(entry.path, child_path))
+        return leaves
+
+    def _collect_source_nodes(self, installed_dir):
+        installed_dir = os.path.abspath(os.fspath(installed_dir))
+        try:
+            root_stat = os.lstat(installed_dir)
+        except OSError as error:
+            raise self._error(
+                "unsafe_preserved_path",
+                "The installed plugin directory is unavailable.",
+            ) from error
+        if not stat.S_ISDIR(root_stat.st_mode) or stat.S_ISLNK(
+            root_stat.st_mode
+        ):
+            raise self._error(
+                "unsafe_preserved_path",
+                "The installed plugin directory is unsafe.",
+            )
+
+        nodes = []
+        ignored = []
+        stack = [(installed_dir, "")]
+        while stack:
+            directory, relative_directory = stack.pop()
+            try:
+                entries = sorted(
+                    os.scandir(directory),
+                    key=lambda entry: entry.name,
+                    reverse=True,
+                )
+            except OSError as error:
+                raise self._error(
+                    "unsafe_preserved_path",
+                    "The installed plugin tree could not be inspected.",
+                ) from error
+            for entry in entries:
+                relative_path = (
+                    entry.name
+                    if not relative_directory
+                    else relative_directory + "/" + entry.name
+                )
+                if self._ignored_path(relative_path):
+                    ignored.extend(
+                        self._ignored_leaves(entry.path, relative_path)
+                    )
+                    continue
+                try:
+                    path_stat = entry.stat(follow_symlinks=False)
+                except OSError as error:
+                    raise self._error(
+                        "unsafe_preserved_path",
+                        "A local plugin path could not be inspected.",
+                        [relative_path],
+                    ) from error
+                if stat.S_ISDIR(path_stat.st_mode):
+                    stack.append((entry.path, relative_path))
+                    continue
+                nodes.append(
+                    _ReleasePreservationNode(
+                        relative_path=relative_path,
+                        physical_path=entry.path,
+                        path_stat=path_stat,
+                    )
+                )
+        return installed_dir, sorted(
+            nodes,
+            key=lambda node: node.relative_path,
+        ), sorted(set(ignored))
+
+    def _hash_regular_file(self, node, *, include_contents=False):
+        flags = os.O_RDONLY | getattr(os, "O_BINARY", 0)
+        flags |= getattr(os, "O_NOFOLLOW", 0)
+        try:
+            descriptor = os.open(node.physical_path, flags)
+        except OSError as error:
+            raise self._error(
+                "unsafe_preserved_path",
+                "A preserved file could not be opened safely.",
+                [node.relative_path],
+            ) from error
+        digest = hashlib.sha256()
+        contents = []
+        size = 0
+        try:
+            opened_stat = os.fstat(descriptor)
+            expected_stat = node.path_stat
+            if (
+                not stat.S_ISREG(opened_stat.st_mode)
+                or opened_stat.st_dev != expected_stat.st_dev
+                or opened_stat.st_ino != expected_stat.st_ino
+                or opened_stat.st_size != expected_stat.st_size
+            ):
+                raise self._error(
+                    "unsafe_preserved_path",
+                    "A preserved file changed while being opened.",
+                    [node.relative_path],
+                )
+            while True:
+                chunk = os.read(descriptor, self.CHUNK_SIZE)
+                if not chunk:
+                    break
+                size += len(chunk)
+                digest.update(chunk)
+                if include_contents:
+                    contents.append(chunk)
+            final_stat = os.fstat(descriptor)
+            if (
+                size != opened_stat.st_size
+                or final_stat.st_size != opened_stat.st_size
+                or getattr(final_stat, "st_mtime_ns", None)
+                != getattr(opened_stat, "st_mtime_ns", None)
+                or getattr(final_stat, "st_ctime_ns", None)
+                != getattr(opened_stat, "st_ctime_ns", None)
+            ):
+                raise self._error(
+                    "unsafe_preserved_path",
+                    "A preserved file changed while being read.",
+                    [node.relative_path],
+                )
+        finally:
+            os.close(descriptor)
+        return digest.hexdigest(), size, b"".join(contents)
+
+    def _matches_mutable_path(self, relative_path, mutable_paths):
+        return any(
+            relative_path == mutable_path
+            or relative_path.startswith(mutable_path + "/")
+            for mutable_path in mutable_paths
+        )
+
+    def _candidate_nodes(
+        self,
+        nodes,
+        artifact_files,
+        preserved_files,
+        tracked_changes,
+        untracked_files,
+    ):
+        forced_paths = set(tracked_changes) | set(untracked_files)
+        candidates = []
+        for node in nodes:
+            path_stat = node.path_stat
+            if not stat.S_ISREG(path_stat.st_mode):
+                candidates.append(node)
+                continue
+            digest, _size, _contents = self._hash_regular_file(node)
+            baseline_digest = artifact_files.get(node.relative_path)
+            if (
+                baseline_digest is None
+                or digest != baseline_digest
+                or node.relative_path in preserved_files
+                or node.relative_path in forced_paths
+            ):
+                candidates.append(
+                    _ReleasePreservationNode(
+                        relative_path=node.relative_path,
+                        physical_path=node.physical_path,
+                        path_stat=node.path_stat,
+                        sha256=digest,
+                    )
+                )
+        return candidates
+
+    def _validate_candidate_nodes(self, candidates):
+        spellings = {}
+        for node in candidates:
+            key = self._collision_key(node.relative_path)
+            previous = spellings.get(key)
+            if previous is not None and previous != node.relative_path:
+                raise self._error(
+                    "path_collision",
+                    "Preservation candidates collide on a supported host.",
+                    [previous, node.relative_path],
+                )
+            spellings[key] = node.relative_path
+
+        for node in candidates:
+            self._portable_path(node.relative_path)
+            path_stat = node.path_stat
+            if stat.S_ISLNK(path_stat.st_mode):
+                raise self._error(
+                    "unsafe_preserved_path",
+                    "Filesystem links cannot be preservation overlays.",
+                    [node.relative_path],
+                )
+            if not stat.S_ISREG(path_stat.st_mode):
+                raise self._error(
+                    "unsupported_file_type",
+                    "Only regular files can be preservation overlays.",
+                    [node.relative_path],
+                )
+            if (
+                getattr(path_stat, "st_nlink", 1) > 1
+                or stat.S_IMODE(path_stat.st_mode)
+                & (stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+                or self._is_executable_path(node.relative_path)
+            ):
+                raise self._error(
+                    "unsafe_preserved_path",
+                    "Executable code cannot be a preservation overlay.",
+                    [node.relative_path],
+                )
+
+        oversized = [
+            node.relative_path
+            for node in candidates
+            if node.path_stat.st_size > self.max_file_size
+        ]
+        if oversized:
+            raise self._error(
+                "preservation_limit_exceeded",
+                "A preserved file exceeds the per-file size limit.",
+                oversized,
+            )
+        candidate_paths = [node.relative_path for node in candidates]
+        if len(candidates) > self.max_files:
+            raise self._error(
+                "preservation_limit_exceeded",
+                "The preservation inventory exceeds the file-count limit.",
+                candidate_paths,
+            )
+        if sum(node.path_stat.st_size for node in candidates) > (
+            self.max_total_size
+        ):
+            raise self._error(
+                "preservation_limit_exceeded",
+                "The preservation inventory exceeds the total-size limit.",
+                candidate_paths,
+            )
+
+    def _inventory_digest(
+        self,
+        operation,
+        entries,
+        tracked_changes,
+        untracked_files,
+        mutable_paths,
+        artifact_files,
+        preserved_files,
+    ):
+        document = {
+            "schema_version": 1,
+            "operation": operation,
+            "entries": {
+                path: {
+                    "sha256": entry.sha256,
+                    "size": entry.size,
+                    "classification": entry.classification,
+                }
+                for path, entry in sorted(entries.items())
+            },
+            "tracked_changes": list(tracked_changes),
+            "untracked_files": list(untracked_files),
+            "mutable_paths": list(mutable_paths),
+            "artifact_files": dict(artifact_files),
+            "preserved_files": dict(preserved_files),
+        }
+        contents = json.dumps(
+            document,
+            ensure_ascii=False,
+            separators=(",", ":"),
+            sort_keys=True,
+        ).encode("utf-8")
+        return hashlib.sha256(contents).hexdigest()
+
+    def inventory(
+        self,
+        *,
+        installed_dir,
+        artifact_files,
+        preserved_files,
+        mutable_paths,
+        operation,
+        tracked_changes,
+        untracked_files,
+    ):
+        """Return a content-bound inventory without mutating either tree."""
+        if operation not in self.OPERATIONS:
+            raise self._error(
+                "invalid_operation",
+                "The requested preservation operation is unsupported.",
+            )
+        mutable_paths = self._normalized_paths(
+            mutable_paths,
+            policy=True,
+        )
+        tracked_changes = self._normalized_paths(tracked_changes)
+        untracked_files = self._normalized_paths(untracked_files)
+        artifact_files = self._normalize_artifact_files(artifact_files)
+        preserved_files = self._normalize_preserved_files(preserved_files)
+        installed_dir, nodes, ignored_paths = self._collect_source_nodes(
+            installed_dir
+        )
+        candidates = self._candidate_nodes(
+            nodes,
+            artifact_files,
+            preserved_files,
+            tracked_changes,
+            untracked_files,
+        )
+        self._validate_candidate_nodes(candidates)
+
+        entries = {}
+        unknown_paths = []
+        approval_required_paths = []
+        for node in candidates:
+            mutable = self._matches_mutable_path(
+                node.relative_path,
+                mutable_paths,
+            )
+            previous_digest = preserved_files.get(node.relative_path)
+            if previous_digest is not None and node.sha256 == previous_digest:
+                classification = "preserved" if mutable else "unknown"
+            elif previous_digest is not None:
+                classification = "changed_preserved"
+                approval_required_paths.append(node.relative_path)
+            elif mutable:
+                classification = "mutable"
+            else:
+                classification = "unknown"
+            if classification in {"unknown", "changed_preserved"}:
+                unknown_paths.append(node.relative_path)
+            entries[node.relative_path] = ReleasePreservationInventoryEntry(
+                relative_path=node.relative_path,
+                sha256=node.sha256,
+                size=node.path_stat.st_size,
+                classification=classification,
+            )
+        entries = dict(sorted(entries.items()))
+        unknown_paths = sorted(unknown_paths)
+        approval_required_paths = sorted(approval_required_paths)
+        inventory_sha256 = self._inventory_digest(
+            operation,
+            entries,
+            tracked_changes,
+            untracked_files,
+            mutable_paths,
+            artifact_files,
+            preserved_files,
+        )
+        return ReleasePreservationInventory(
+            installed_dir=installed_dir,
+            operation=operation,
+            entries=entries,
+            unknown_paths=unknown_paths,
+            approval_required_paths=approval_required_paths,
+            ignored_paths=ignored_paths,
+            tracked_changes=tracked_changes,
+            untracked_files=untracked_files,
+            mutable_paths=mutable_paths,
+            artifact_files=artifact_files,
+            preserved_files=preserved_files,
+            sha256=inventory_sha256,
+        )
+
+    def _revalidate_inventory(self, inventory_result):
+        try:
+            current = self.inventory(
+                installed_dir=inventory_result.installed_dir,
+                artifact_files=inventory_result.artifact_files,
+                preserved_files=inventory_result.preserved_files,
+                mutable_paths=inventory_result.mutable_paths,
+                operation=inventory_result.operation,
+                tracked_changes=inventory_result.tracked_changes,
+                untracked_files=inventory_result.untracked_files,
+            )
+        except (ReleasePreservationError, OSError, ValueError) as error:
+            raise self._error(
+                "inventory_changed",
+                "The installed plugin changed after it was inventoried.",
+            ) from error
+        if current.sha256 != inventory_result.sha256:
+            raise self._error(
+                "inventory_changed",
+                "The installed plugin changed after it was inventoried.",
+            )
+        return current
+
+    def _approval_paths(self, inventory_result):
+        return sorted(
+            set(inventory_result.unknown_paths)
+            | set(inventory_result.tracked_changes)
+        )
+
+    def _authorize_overlay(
+        self,
+        inventory_result,
+        trigger,
+        approved_inventory_sha256,
+    ):
+        if trigger not in self.TRIGGERS:
+            raise self._error(
+                "invalid_trigger",
+                "The preservation trigger is unsupported.",
+            )
+        if (
+            inventory_result.operation == "git_migration"
+            and inventory_result.tracked_changes
+        ):
+            if trigger == "automatic":
+                raise self._error(
+                    "tracked_changes",
+                    "Automatic migration cannot preserve tracked changes.",
+                    inventory_result.tracked_changes,
+                )
+            outside_policy = [
+                path
+                for path in inventory_result.tracked_changes
+                if not self._matches_mutable_path(
+                    path,
+                    inventory_result.mutable_paths,
+                )
+            ]
+            if outside_policy:
+                raise self._error(
+                    "tracked_path_not_mutable",
+                    "A tracked change is outside reviewed mutable policy.",
+                    outside_policy,
+                )
+
+        approval_paths = self._approval_paths(inventory_result)
+        if inventory_result.approval_required_paths and (
+            approved_inventory_sha256 != inventory_result.sha256
+        ):
+            raise self._error(
+                "inventory_approval_required",
+                "Changed preserved data requires exact inventory approval.",
+                approval_paths,
+            )
+        if inventory_result.unknown_paths and trigger == "automatic":
+            raise self._error(
+                "unknown_local_paths",
+                "Automatic replacement cannot preserve unknown local paths.",
+                inventory_result.unknown_paths,
+            )
+        if (
+            trigger == "manual"
+            and approval_paths
+            and approved_inventory_sha256 != inventory_result.sha256
+        ):
+            raise self._error(
+                "inventory_approval_required",
+                "Manual replacement requires exact inventory approval.",
+                approval_paths,
+            )
+
+    def _collect_staged_nodes(self, staged_dir):
+        staged_dir = os.path.abspath(os.fspath(staged_dir))
+        try:
+            root_stat = os.lstat(staged_dir)
+        except OSError as error:
+            raise self._error(
+                "unsafe_staged_path",
+                "The staged plugin directory is unavailable.",
+            ) from error
+        if not stat.S_ISDIR(root_stat.st_mode) or stat.S_ISLNK(
+            root_stat.st_mode
+        ):
+            raise self._error(
+                "unsafe_staged_path",
+                "The staged plugin directory is unsafe.",
+            )
+        nodes = []
+        stack = [(staged_dir, "")]
+        while stack:
+            directory, relative_directory = stack.pop()
+            try:
+                entries = list(os.scandir(directory))
+            except OSError as error:
+                raise self._error(
+                    "unsafe_staged_path",
+                    "The staged plugin tree could not be inspected.",
+                ) from error
+            for entry in entries:
+                relative_path = (
+                    entry.name
+                    if not relative_directory
+                    else relative_directory + "/" + entry.name
+                )
+                try:
+                    path_stat = entry.stat(follow_symlinks=False)
+                except OSError as error:
+                    raise self._error(
+                        "unsafe_staged_path",
+                        "A staged path could not be inspected.",
+                        [relative_path],
+                    ) from error
+                nodes.append(
+                    _ReleasePreservationNode(
+                        relative_path=relative_path,
+                        physical_path=entry.path,
+                        path_stat=path_stat,
+                    )
+                )
+                if stat.S_ISDIR(path_stat.st_mode):
+                    stack.append((entry.path, relative_path))
+        return staged_dir, nodes
+
+    def _validate_staged_collisions(
+        self,
+        inventory_result,
+        staged_nodes,
+    ):
+        for path, candidate in inventory_result.entries.items():
+            candidate_key = self._path_parts_key(path)
+            for staged_node in staged_nodes:
+                staged_key = self._path_parts_key(
+                    staged_node.relative_path
+                )
+                related = (
+                    candidate_key == staged_key
+                    or candidate_key[: len(staged_key)] == staged_key
+                    or staged_key[: len(candidate_key)] == candidate_key
+                )
+                if not related:
+                    continue
+                if stat.S_ISLNK(staged_node.path_stat.st_mode):
+                    raise self._error(
+                        "unsafe_staged_path",
+                        "A staged link could redirect a preservation overlay.",
+                        [path],
+                    )
+                exact_spelling = path == staged_node.relative_path
+                exact_mutable_file = (
+                    exact_spelling
+                    and candidate.classification in {
+                        "mutable",
+                        "preserved",
+                        "changed_preserved",
+                    }
+                    and stat.S_ISREG(staged_node.path_stat.st_mode)
+                )
+                if exact_mutable_file:
+                    if getattr(staged_node.path_stat, "st_nlink", 1) > 1:
+                        raise self._error(
+                            "unsafe_staged_path",
+                            "A staged hard link cannot be replaced safely.",
+                            [path],
+                        )
+                    continue
+                if candidate_key == staged_key or (
+                    stat.S_ISREG(staged_node.path_stat.st_mode)
+                    and (
+                        candidate_key[: len(staged_key)] == staged_key
+                        or staged_key[: len(candidate_key)] == candidate_key
+                    )
+                ):
+                    raise self._error(
+                        "packaged_path_collision",
+                        "A preservation overlay collides with packaged data.",
+                        [path, staged_node.relative_path],
+                    )
+
+    def _read_overlay_contents(self, inventory_result):
+        contents = {}
+        for path, entry in inventory_result.entries.items():
+            physical_path = os.path.join(
+                inventory_result.installed_dir,
+                *path.split("/"),
+            )
+            try:
+                path_stat = os.lstat(physical_path)
+            except OSError as error:
+                raise self._error(
+                    "inventory_changed",
+                    "A preserved file disappeared before copying.",
+                ) from error
+            node = _ReleasePreservationNode(
+                relative_path=path,
+                physical_path=physical_path,
+                path_stat=path_stat,
+            )
+            try:
+                digest, size, data = self._hash_regular_file(
+                    node,
+                    include_contents=True,
+                )
+            except ReleasePreservationError as error:
+                raise self._error(
+                    "inventory_changed",
+                    "A preserved file changed before copying.",
+                ) from error
+            if digest != entry.sha256 or size != entry.size:
+                raise self._error(
+                    "inventory_changed",
+                    "A preserved file changed before copying.",
+                )
+            contents[path] = (
+                data,
+                stat.S_IMODE(path_stat.st_mode)
+                & ~(stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH),
+            )
+        return contents
+
+    def _safe_parent(self, staged_dir, relative_path, created_directories):
+        parent = staged_dir
+        for part in relative_path.split("/")[:-1]:
+            parent = os.path.join(parent, part)
+            if not os.path.lexists(parent):
+                os.mkdir(parent, 0o700)
+                created_directories.append(parent)
+                continue
+            parent_stat = os.lstat(parent)
+            if not stat.S_ISDIR(parent_stat.st_mode) or stat.S_ISLNK(
+                parent_stat.st_mode
+            ):
+                raise self._error(
+                    "unsafe_staged_path",
+                    "A staged parent cannot contain an overlay safely.",
+                    [relative_path],
+                )
+        return parent
+
+    def _temporary_file(self, parent, data, mode):
+        descriptor, path = tempfile.mkstemp(
+            prefix=".pypluginstore-preserve-",
+            dir=parent,
+        )
+        try:
+            view = memoryview(data)
+            while view:
+                written = os.write(descriptor, view)
+                view = view[written:]
+            try:
+                os.fchmod(descriptor, mode)
+            except (AttributeError, OSError):
+                pass
+            os.fsync(descriptor)
+        except BaseException:
+            os.close(descriptor)
+            if os.path.lexists(path):
+                os.unlink(path)
+            raise
+        os.close(descriptor)
+        return path
+
+    def _apply_contents(self, staged_dir, contents):
+        prepared = []
+        created_directories = []
+        backups = []
+        activated = []
+        try:
+            for relative_path, (data, mode) in sorted(contents.items()):
+                parent = self._safe_parent(
+                    staged_dir,
+                    relative_path,
+                    created_directories,
+                )
+                destination = os.path.join(
+                    staged_dir,
+                    *relative_path.split("/"),
+                )
+                temporary = self._temporary_file(parent, data, mode)
+                prepared.append((relative_path, destination, temporary))
+
+            for relative_path, destination, temporary in prepared:
+                backup = ""
+                if os.path.lexists(destination):
+                    destination_stat = os.lstat(destination)
+                    if not stat.S_ISREG(destination_stat.st_mode) or (
+                        stat.S_ISLNK(destination_stat.st_mode)
+                    ):
+                        raise self._error(
+                            "unsafe_staged_path",
+                            "A staged destination changed before overlay.",
+                            [relative_path],
+                        )
+                    backup = destination + ".pypluginstore-preserve-backup"
+                    if os.path.lexists(backup):
+                        raise self._error(
+                            "unsafe_staged_path",
+                            "A preservation backup path already exists.",
+                            [relative_path],
+                        )
+                    os.replace(destination, backup)
+                    backups.append((destination, backup))
+                os.replace(temporary, destination)
+                activated.append(destination)
+
+            for destination, backup in backups:
+                if os.path.lexists(backup):
+                    os.unlink(backup)
+        except BaseException:
+            for destination in reversed(activated):
+                try:
+                    if os.path.lexists(destination):
+                        os.unlink(destination)
+                except OSError:
+                    pass
+            for destination, backup in reversed(backups):
+                try:
+                    if os.path.lexists(backup):
+                        os.replace(backup, destination)
+                except OSError:
+                    pass
+            for _relative_path, _destination, temporary in prepared:
+                try:
+                    if os.path.lexists(temporary):
+                        os.unlink(temporary)
+                except OSError:
+                    pass
+            for directory in reversed(created_directories):
+                try:
+                    os.rmdir(directory)
+                except OSError:
+                    pass
+            raise
+
+    def apply_overlay(
+        self,
+        inventory_result,
+        *,
+        staged_dir,
+        trigger,
+        approved_inventory_sha256=None,
+    ):
+        """Revalidate and copy an authorized inventory into staging."""
+        if not isinstance(
+            inventory_result,
+            ReleasePreservationInventory,
+        ):
+            raise ValueError(
+                "inventory_result must be ReleasePreservationInventory."
+            )
+        current = self._revalidate_inventory(inventory_result)
+        self._authorize_overlay(
+            current,
+            trigger,
+            approved_inventory_sha256,
+        )
+        staged_dir, staged_nodes = self._collect_staged_nodes(staged_dir)
+        self._validate_staged_collisions(current, staged_nodes)
+        contents = self._read_overlay_contents(current)
+        self._apply_contents(staged_dir, contents)
+        preserved_files = {
+            path: current.entries[path].sha256
+            for path in sorted(current.entries)
+        }
+        return ReleasePreservationOverlay(
+            operation=current.operation,
+            inventory_sha256=current.sha256,
+            preserved_paths=sorted(preserved_files),
+            preserved_files=preserved_files,
+        )
+
+
 CHANNEL_PREFERENCE_SCHEMA_VERSION = 1
 CHANNEL_PREFERENCE_CHOICES = {"keep_git", "release"}
 
