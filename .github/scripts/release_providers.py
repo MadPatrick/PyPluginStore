@@ -13,6 +13,10 @@ GIT_OBJECT_ID_PATTERN = re.compile(r"^[0-9a-f]{40}(?:[0-9a-f]{24})?$")
 SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 PROVIDER_PATTERN = re.compile(r"^[a-z][a-z0-9_-]*$")
 CONTROL_CHARACTER_PATTERN = re.compile(r"[\x00-\x1f\x7f]")
+UTC_TIMESTAMP_PATTERN = re.compile(
+    r"^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}"
+    r"(?:\.[0-9]{1,6})?Z$"
+)
 ARTIFACT_KINDS = {"asset_zip", "generic_zip", "source_zip"}
 ARTIFACT_PROVENANCE = {
     "attached_asset",
@@ -75,6 +79,12 @@ GENERIC_MANIFEST_OPTIONAL_KEYS = {"commit", "source_path"}
 MAX_CONFIGURED_RELEASE_PAGE_SIZE = 100
 
 
+class NoReleaseError(LookupError):
+    """Signal that a reachable provider has no reviewed stable release."""
+
+    reason = "no_release"
+
+
 def _require_string(value, label, allow_empty=False):
     """Return one canonical string without coercing untrusted values."""
     if not isinstance(value, str):
@@ -131,15 +141,23 @@ def _require_repository_identity(value):
 
 
 def _parse_utc_timestamp(value, label="released_at"):
-    """Parse the canonical second-precision UTC timestamp used by the index."""
+    """Parse a provider UTC timestamp with optional fractional seconds."""
     value = _require_string(value, label)
+    if not UTC_TIMESTAMP_PATTERN.fullmatch(value):
+        raise ValueError(label + " must be an ISO 8601 UTC timestamp.")
+    timestamp_format = (
+        "%Y-%m-%dT%H:%M:%S.%fZ" if "." in value else "%Y-%m-%dT%H:%M:%SZ"
+    )
     try:
-        parsed = datetime.strptime(value, "%Y-%m-%dT%H:%M:%SZ")
+        parsed = datetime.strptime(value, timestamp_format)
     except ValueError as error:
         raise ValueError(label + " must be an ISO 8601 UTC timestamp.") from error
-    if parsed.strftime("%Y-%m-%dT%H:%M:%SZ") != value:
-        raise ValueError(label + " must be a canonical UTC timestamp.")
     return parsed.replace(tzinfo=timezone.utc)
+
+
+def _canonical_utc_timestamp(value, label="released_at"):
+    """Normalize a valid provider timestamp to index second precision."""
+    return _parse_utc_timestamp(value, label).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def _require_git_object_id(value, allow_empty=False):
@@ -240,7 +258,8 @@ class ReleaseCandidate:
         tag = _require_string(self.tag, "tag", allow_empty=True)
         if provider != "generic" and not tag:
             raise ValueError("Forge candidates require a release tag.")
-        _parse_utc_timestamp(self.released_at)
+        if _canonical_utc_timestamp(self.released_at) != self.released_at:
+            raise ValueError("released_at must use canonical UTC second precision.")
         source_revision = _require_string(
             self.source_revision, "source_revision"
         )
@@ -329,7 +348,9 @@ def select_latest_stable_release(
         candidates.append((released_at, -position, release))
 
     if not candidates:
-        raise ValueError("No stable release matches the reviewed tag policy.")
+        raise NoReleaseError(
+            "No stable release matches the reviewed tag policy."
+        )
     return max(candidates, key=lambda candidate: candidate[:2])[2]
 
 
@@ -479,6 +500,18 @@ def _transport_get_json(transport, url, headers):
     if supports_headers:
         return get_json(url, headers=dict(headers))
     return get_json(url)
+
+
+def _release_document_get_json(transport, url, headers):
+    """Fetch a release document, mapping an absent endpoint to no release."""
+    try:
+        return _transport_get_json(transport, url, headers)
+    except Exception as error:
+        if getattr(error, "status", None) == 404:
+            raise NoReleaseError(
+                "The provider has no published release collection."
+            ) from error
+        raise
 
 
 def _version_from_tag(tag):
@@ -632,7 +665,9 @@ class GitHubReleaseAdapter(ReleaseProviderAdapter):
             release_id="github:" + owner + "/" + name + ":" + tag,
             version=_version_from_tag(tag),
             tag=tag,
-            released_at=release.get("published_at"),
+            released_at=_canonical_utc_timestamp(
+                release.get("published_at"), "published_at"
+            ),
             source_revision=commit,
             commit=commit,
             source_path=policy.get("source_path", "."),
@@ -821,7 +856,9 @@ class GitLabReleaseAdapter(ReleaseProviderAdapter):
             release_id="gitlab:" + project_path + ":" + tag,
             version=_version_from_tag(tag),
             tag=tag,
-            released_at=release.get("released_at"),
+            released_at=_canonical_utc_timestamp(
+                release.get("released_at"), "released_at"
+            ),
             source_revision=commit,
             commit=commit,
             source_path=policy.get("source_path", "."),
@@ -913,6 +950,11 @@ class ForgejoReleaseAdapter(ReleaseProviderAdapter):
     def _get_json(self, transport, url):
         return _transport_get_json(transport, url, FORGEJO_API_HEADERS)
 
+    def _get_releases_json(self, transport, url):
+        return _release_document_get_json(
+            transport, url, FORGEJO_API_HEADERS
+        )
+
     def _list_releases(self, transport, api_repository_url, page_size):
         """Read bounded release-list pages instead of created-at /latest."""
         releases = []
@@ -924,7 +966,11 @@ class ForgejoReleaseAdapter(ReleaseProviderAdapter):
                 + "&limit="
                 + str(page_size)
             )
-            page_document = self._get_json(transport, releases_url)
+            page_document = (
+                self._get_releases_json(transport, releases_url)
+                if page == 1
+                else self._get_json(transport, releases_url)
+            )
             if not isinstance(page_document, list):
                 raise ValueError("Forgejo releases response must be a list.")
             releases.extend(page_document)
@@ -1085,7 +1131,9 @@ class ForgejoReleaseAdapter(ReleaseProviderAdapter):
             release_id="forgejo:" + identity + ":" + tag,
             version=_version_from_tag(tag),
             tag=tag,
-            released_at=release.get("published_at"),
+            released_at=_canonical_utc_timestamp(
+                release.get("published_at"), "published_at"
+            ),
             source_revision=commit,
             commit=commit,
             source_path=policy.get("source_path", "."),
@@ -1159,6 +1207,11 @@ class GiteaReleaseAdapter(ReleaseProviderAdapter):
     def _get_json(self, transport, url):
         return _transport_get_json(transport, url, GITEA_API_HEADERS)
 
+    def _get_releases_json(self, transport, url):
+        return _release_document_get_json(
+            transport, url, GITEA_API_HEADERS
+        )
+
     def _list_releases(self, transport, api_repository_url, page_size):
         """Read a bounded sequence of Gitea release-list pages."""
         releases = []
@@ -1170,7 +1223,11 @@ class GiteaReleaseAdapter(ReleaseProviderAdapter):
                 + "&limit="
                 + str(page_size)
             )
-            page_document = self._get_json(transport, releases_url)
+            page_document = (
+                self._get_releases_json(transport, releases_url)
+                if page == 1
+                else self._get_json(transport, releases_url)
+            )
             if not isinstance(page_document, list):
                 raise ValueError("Gitea releases response must be a list.")
             releases.extend(page_document)
@@ -1327,7 +1384,9 @@ class GiteaReleaseAdapter(ReleaseProviderAdapter):
             release_id="gitea:" + identity + ":" + tag,
             version=_version_from_tag(tag),
             tag=tag,
-            released_at=release.get("published_at"),
+            released_at=_canonical_utc_timestamp(
+                release.get("published_at"), "published_at"
+            ),
             source_revision=commit,
             commit=commit,
             source_path=policy.get("source_path", "."),
@@ -1341,7 +1400,9 @@ class GenericManifestAdapter(ReleaseProviderAdapter):
     provider = "generic"
 
     def _get_json(self, transport, url):
-        return _transport_get_json(transport, url, GENERIC_MANIFEST_HEADERS)
+        return _transport_get_json(
+            transport, url, GENERIC_MANIFEST_HEADERS
+        )
 
     def resolve(self, repository, policy, transport, *, now=None):
         """Return a provider-neutral candidate from a strict v1 manifest."""

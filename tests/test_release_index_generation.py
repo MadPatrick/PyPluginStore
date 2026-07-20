@@ -94,6 +94,7 @@ class RecordingHttpClient:
         self,
         url,
         *,
+        headers=None,
         expected_sha256=None,
         expected_size=None,
         allowed_origins=(),
@@ -101,6 +102,7 @@ class RecordingHttpClient:
         self.calls.append(
             {
                 "url": url,
+                "headers": copy.deepcopy(headers),
                 "expected_sha256": expected_sha256,
                 "expected_size": expected_size,
                 "allowed_origins": list(allowed_origins),
@@ -570,6 +572,9 @@ def test_source_archive_certification_records_transport_and_canonical_tree_ident
     assert http_client.calls == [
         {
             "url": selected.artifact_url,
+            "headers": {
+                "User-Agent": "PyPluginStore-Release-Scanner",
+            },
             "expected_sha256": None,
             "expected_size": None,
             "allowed_origins": [],
@@ -1274,6 +1279,86 @@ def test_transient_provider_failure_retains_previous_entry_and_reports_it(
     assert http_client.calls == []
 
 
+def test_rate_limited_transport_error_is_translated_to_transient_report(
+    release_index_generation_module,
+):
+    class RateLimitedError(Exception):
+        reason = "rate_limited"
+
+    provider = RecordingProvider(
+        {
+            "github.com/owner/example-plugin": [
+                RateLimitedError("provider quota exhausted")
+            ]
+        }
+    )
+    result = make_generator(
+        release_index_generation_module,
+        {"github": provider},
+        RecordingHttpClient({}),
+    ).generate(registry_bytes=registry_bytes(), report_only=True)
+
+    report = result.report["plugins"]["ExamplePlugin"]
+    assert report["status"] == "provider_failed"
+    assert report["transient"] is True
+    assert report["provider"] == "github"
+    assert "quota exhausted" in report["detail"]
+
+
+def test_provider_no_release_signal_reaches_no_release_report(
+    release_index_generation_module,
+):
+    class NoReleaseError(Exception):
+        reason = "no_release"
+
+    provider = RecordingProvider(
+        {
+            "github.com/owner/example-plugin": [
+                NoReleaseError("no reviewed stable release")
+            ]
+        }
+    )
+    result = make_generator(
+        release_index_generation_module,
+        {"github": provider},
+        RecordingHttpClient({}),
+    ).generate(registry_bytes=registry_bytes(), report_only=True)
+
+    assert status(result) == "no_release"
+    assert result.report["plugins"]["ExamplePlugin"]["provider"] == (
+        "github"
+    )
+
+
+def test_github_not_found_error_remains_a_non_transient_provider_failure(
+    release_index_generation_module,
+):
+    class NotFoundError(Exception):
+        reason = "http_error"
+        status = 404
+
+    provider = RecordingProvider(
+        {
+            "github.com/owner/example-plugin": [
+                NotFoundError("repository not found")
+            ]
+        }
+    )
+    result = make_generator(
+        release_index_generation_module,
+        {"github": provider},
+        RecordingHttpClient({}),
+    ).generate(registry_bytes=registry_bytes(), report_only=True)
+
+    report = result.report["plugins"]["ExamplePlugin"]
+    assert report == {
+        "status": "provider_failed",
+        "transient": False,
+        "detail": "repository not found",
+        "provider": "github",
+    }
+
+
 def test_missing_candidate_retains_previous_entry_without_silent_tombstone(
     release_index_generation_module,
 ):
@@ -1588,6 +1673,18 @@ def test_report_is_sorted_and_summarizes_each_scanner_outcome(
     assert result.report["plugins"]["ZuluNoRelease"]["status"] == (
         "no_release"
     )
+    assert result.report["plugins"]["AlphaCertified"]["provider"] == (
+        "github"
+    )
+    assert result.report["plugins"]["ZuluNoRelease"]["provider"] == (
+        "github"
+    )
+    assert result.report["providers"] == {
+        "github": {
+            "certified_new": 1,
+            "no_release": 1,
+        }
+    }
     assert result.report["summary"] == {
         "certified_new": 1,
         "no_release": 1,

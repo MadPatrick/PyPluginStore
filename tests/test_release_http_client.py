@@ -998,6 +998,61 @@ def test_non_success_non_redirect_status_is_rejected_and_closed(
     assert response.closed is True
 
 
+@pytest.mark.parametrize(
+    ("status", "headers"),
+    [
+        pytest.param(429, {}, id="too-many-requests"),
+        pytest.param(
+            403,
+            {"X-RateLimit-Remaining": "0"},
+            id="github-exhausted",
+        ),
+        pytest.param(
+            403,
+            {"RateLimit-Remaining": "0"},
+            id="gitlab-exhausted",
+        ),
+    ],
+)
+def test_explicit_rate_limit_responses_are_categorized_and_closed(
+    release_http_module, status, headers
+):
+    response = FakeResponse(status=status, headers=headers)
+    resolver = resolver_for()
+    transport = RecordingTransport({DOWNLOAD_URL: [response]})
+    client = make_client(release_http_module, resolver, transport)
+
+    error = assert_reason(
+        release_http_module,
+        "rate_limited",
+        lambda: client.download(DOWNLOAD_URL),
+    )
+
+    assert error.status == status
+    assert response.iterated is False
+    assert response.closed is True
+
+
+def test_forbidden_without_exhausted_rate_limit_header_remains_http_error(
+    release_http_module,
+):
+    response = FakeResponse(
+        status=403,
+        headers={"X-RateLimit-Remaining": "12"},
+    )
+    client = make_client(
+        release_http_module,
+        resolver_for(),
+        RecordingTransport({DOWNLOAD_URL: [response]}),
+    )
+
+    assert_reason(
+        release_http_module,
+        "http_error",
+        lambda: client.download(DOWNLOAD_URL),
+    )
+
+
 def test_redirect_without_location_is_rejected_and_closed(
     release_http_module,
 ):

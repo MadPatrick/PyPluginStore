@@ -38,6 +38,8 @@ DEFAULT_MAX_EXPANDED_SIZE = 250 * 1024 * 1024
 DEFAULT_MAX_FILE_SIZE = 50 * 1024 * 1024
 DEFAULT_MAX_ENTRIES = 5000
 DEFAULT_MAX_COMPRESSION_RATIO = 100.0
+SCANNER_USER_AGENT = "PyPluginStore-Release-Scanner"
+PUBLIC_ARTIFACT_HEADERS = {"User-Agent": SCANNER_USER_AGENT}
 LOWER_SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 GIT_OBJECT_ID_PATTERN = re.compile(r"^[0-9a-f]{40}(?:[0-9a-f]{24})?$")
 CONTROL_CHARACTER_PATTERN = re.compile(r"[\x00-\x1f\x7f]")
@@ -1361,12 +1363,20 @@ class ReleaseIndexGenerator:
                 )
                 return candidate, True
 
-        outcome = provider.resolve(
-            copy.deepcopy(repository),
-            copy.deepcopy(policy),
-            self.provider_transport,
-            now=now,
-        )
+        try:
+            outcome = provider.resolve(
+                copy.deepcopy(repository),
+                copy.deepcopy(policy),
+                self.provider_transport,
+                now=now,
+            )
+        except Exception as error:
+            reason = getattr(error, "reason", None)
+            if reason == "no_release":
+                return None, False
+            if reason == "rate_limited":
+                raise TransientProviderError(str(error)) from error
+            raise
         if outcome is None:
             return None, False
         snapshot = _candidate_snapshot(outcome)
@@ -1406,6 +1416,7 @@ class ReleaseIndexGenerator:
         expected_size = candidate.artifact_size
         downloaded = self.http_client.download(
             candidate.artifact_url,
+            headers=dict(PUBLIC_ARTIFACT_HEADERS),
             expected_sha256=expected_sha256,
             expected_size=expected_size,
             allowed_origins=list(allowed_origins),
@@ -1459,11 +1470,13 @@ class ReleaseIndexGenerator:
         plugins = {}
         tombstones = copy.deepcopy(previous_tombstones)
         reports = {}
+        report_providers = {}
 
         for plugin_key in sorted(registry):
             plugin_key = _require_string(plugin_key, "registry plugin key")
             prior = previous_plugins.get(plugin_key)
             if plugin_key in tombstone_requests:
+                report_providers[plugin_key] = prior["provider"]
                 tombstone = {
                     "repository_identity": prior["repository_identity"],
                     "last_revision": prior["revision"],
@@ -1486,6 +1499,7 @@ class ReleaseIndexGenerator:
                 policy = delivery.get("release")
                 if preferred == "git" or policy is None:
                     if prior is not None:
+                        report_providers[plugin_key] = prior["provider"]
                         plugins[plugin_key] = copy.deepcopy(prior)
                         reports[plugin_key] = {"status": "retained_policy_disabled"}
                     else:
@@ -1494,6 +1508,7 @@ class ReleaseIndexGenerator:
                 provider_name, repository = _repository_for_provider(
                     identity, host, parts, policy
                 )
+                report_providers[plugin_key] = provider_name
                 provider = self.providers.get(provider_name)
                 if provider is None:
                     raise ValueError(
@@ -1523,7 +1538,11 @@ class ReleaseIndexGenerator:
                 if prior is not None:
                     plugins[plugin_key] = copy.deepcopy(prior)
                 reports[plugin_key] = {
-                    "status": "retained_provider_failure",
+                    "status": (
+                        "retained_provider_failure"
+                        if prior is not None
+                        else "provider_failed"
+                    ),
                     "transient": True,
                     "detail": str(error),
                 }
@@ -1598,10 +1617,18 @@ class ReleaseIndexGenerator:
             "plugins": dict(sorted(plugins.items())),
             "tombstones": dict(sorted(tombstones.items())),
         }
+        for plugin_key, provider_name in report_providers.items():
+            if plugin_key in reports:
+                reports[plugin_key]["provider"] = provider_name
         summary = {}
-        for report in reports.values():
-            state = report["status"]
+        provider_summary = {}
+        for plugin_report in reports.values():
+            state = plugin_report["status"]
             summary[state] = summary.get(state, 0) + 1
+            provider_name = plugin_report.get("provider")
+            if provider_name is not None:
+                states = provider_summary.setdefault(provider_name, {})
+                states[state] = states.get(state, 0) + 1
         report = {
             "schema_version": 1,
             "sequence": sequence,
@@ -1609,6 +1636,10 @@ class ReleaseIndexGenerator:
             "registry_sha256": registry_digest,
             "report_only": report_only,
             "plugins": dict(sorted(reports.items())),
+            "providers": {
+                provider_name: dict(sorted(states.items()))
+                for provider_name, states in sorted(provider_summary.items())
+            },
             "summary": dict(sorted(summary.items())),
         }
         return ReleaseIndexGenerationResult(

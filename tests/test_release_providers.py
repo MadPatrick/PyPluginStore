@@ -372,6 +372,69 @@ def test_forge_adapter_accepts_sha256_git_object_ids(
     assert sha256_commit in candidate.artifact_url
 
 
+@pytest.mark.parametrize("provider", ("forgejo", "gitea"))
+def test_release_listing_404_is_reported_as_no_release(
+    release_providers_module, provider
+):
+    adapter, repository, policy, _transport, _expected = (
+        PROVIDER_CASE_BUILDERS[provider](release_providers_module)
+    )
+
+    class MissingReleaseCollection(Exception):
+        status = 404
+
+    class MissingReleaseTransport:
+        def get_json(self, _url, **_kwargs):
+            raise MissingReleaseCollection("missing release collection")
+
+    with pytest.raises(release_providers_module.NoReleaseError) as error:
+        adapter.resolve(
+            repository,
+            policy,
+            MissingReleaseTransport(),
+            now=NOW,
+        )
+
+    assert error.value.reason == "no_release"
+
+
+def test_github_release_listing_404_remains_a_provider_failure(
+    release_providers_module,
+):
+    adapter, repository, policy, _transport, _expected = github_case(
+        release_providers_module
+    )
+
+    class MissingRepository(Exception):
+        status = 404
+
+    class MissingRepositoryTransport:
+        def get_json(self, _url, **_kwargs):
+            raise MissingRepository("repository not found")
+
+    with pytest.raises(MissingRepository):
+        adapter.resolve(
+            repository,
+            policy,
+            MissingRepositoryTransport(),
+            now=NOW,
+        )
+
+
+def test_no_matching_stable_release_uses_no_release_signal(
+    release_providers_module,
+):
+    adapter, repository, policy, transport, expected = github_case(
+        release_providers_module
+    )
+    transport.responses[expected["requests"][0]] = []
+
+    with pytest.raises(release_providers_module.NoReleaseError) as error:
+        adapter.resolve(repository, policy, transport, now=NOW)
+
+    assert error.value.reason == "no_release"
+
+
 def test_gitlab_nested_project_path_is_encoded_in_every_api_request(
     release_providers_module,
 ):
@@ -405,6 +468,25 @@ def test_gitlab_future_release_is_rejected_even_without_upcoming_flag(
     )
 
     assert candidate.tag == "v1.4.0"
+
+
+def test_gitlab_fractional_release_timestamp_is_canonicalized(
+    release_providers_module,
+):
+    adapter, repository, policy, transport, expected = gitlab_case(
+        release_providers_module
+    )
+    releases = transport.responses[expected["requests"][0]]
+    stable = next(
+        release for release in releases if release["tag_name"] == "v1.4.0"
+    )
+    stable["released_at"] = "2026-07-17T09:00:00.987Z"
+
+    candidate = adapter.resolve(
+        repository, policy, transport, now=NOW
+    )
+
+    assert candidate.released_at == "2026-07-17T09:00:00Z"
 
 
 @pytest.mark.parametrize(
@@ -1087,6 +1169,29 @@ def test_generic_https_manifest_normalizes_without_forge_api_calls(
     assert candidate.source_path == "plugin"
     assert candidate.migration_eligible is False
     assert transport.requests == [policy["manifest_url"]]
+
+
+def test_generic_manifest_404_remains_a_configuration_or_provider_failure(
+    release_providers_module,
+):
+    adapter, repository, policy, _transport = generic_case(
+        release_providers_module
+    )
+
+    class MissingManifest(Exception):
+        status = 404
+
+    class MissingManifestTransport:
+        def get_json(self, _url, **_kwargs):
+            raise MissingManifest("missing release manifest")
+
+    with pytest.raises(MissingManifest):
+        adapter.resolve(
+            repository,
+            policy,
+            MissingManifestTransport(),
+            now=NOW,
+        )
 
 
 @pytest.mark.parametrize(

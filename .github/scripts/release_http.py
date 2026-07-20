@@ -499,6 +499,18 @@ def _response_headers(response, url):
     return normalized
 
 
+def _is_rate_limited_response(status, headers):
+    """Recognize explicit provider throttling without inspecting error bodies."""
+    if status == 429:
+        return True
+    if status != 403:
+        return False
+    return any(
+        headers.get(name) == "0"
+        for name in ("x-ratelimit-remaining", "ratelimit-remaining")
+    )
+
+
 def _safe_close(response):
     """Best-effort close without masking the categorized fetch failure."""
     try:
@@ -869,6 +881,13 @@ class SafeReleaseHttpClient:
                     redirects += 1
                     target = next_target
                     continue
+                if _is_rate_limited_response(status, response_headers):
+                    raise _http_error(
+                        "rate_limited",
+                        "HTTP provider rate limit was exceeded.",
+                        status=status,
+                        url=target.url,
+                    )
                 if status != 200:
                     raise _http_error(
                         "http_error",
