@@ -846,6 +846,34 @@ def test_release_transaction_fsyncs_journal_before_each_directory_rename(
         previous_rename = index
 
 
+def test_release_tree_fsync_uses_write_descriptor_on_windows(
+    plugin_core_module, tmp_path, monkeypatch
+):
+    manager = new_manager(plugin_core_module)
+    tree = tmp_path / "release-tree"
+    write_marker(tree, "staged")
+    marker = os.fspath(tree / "marker.txt")
+    opened_flags = []
+    real_open = plugin_core_module.os.open
+
+    def record_open(path, flags, *args):
+        if os.fspath(path) == marker:
+            opened_flags.append(flags)
+        return real_open(path, flags, *args)
+
+    monkeypatch.setattr(plugin_core_module.os, "open", record_open)
+    monkeypatch.setattr(plugin_core_module.os, "name", "nt")
+
+    manager._sync_staged_tree(os.fspath(tree), "Release tree")
+
+    assert opened_flags
+    access_mask = plugin_core_module.os.O_WRONLY | plugin_core_module.os.O_RDWR
+    assert all(
+        flags & access_mask == plugin_core_module.os.O_RDWR
+        for flags in opened_flags
+    )
+
+
 def test_release_transaction_activates_code_and_dependency_snapshots(
     plugin_core_module, tmp_path
 ):

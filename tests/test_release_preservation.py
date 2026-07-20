@@ -953,10 +953,16 @@ def test_candidate_paths_colliding_under_windows_casefold_are_rejected(
 def test_overlay_path_colliding_with_packaged_path_under_windows_casefold_is_rejected(
     plugin_core_module, tmp_path
 ):
-    source, staged, artifact_files = basic_install(
-        tmp_path,
-        source_extra={"Config/Settings.json": LOCAL_SETTINGS},
-    )
+    source, staged, artifact_files = basic_install(tmp_path)
+    temporary_config = source / "config-renamed"
+    (source / "config").rename(temporary_config)
+    config = source / "Config"
+    temporary_config.rename(config)
+    temporary_settings = config / "settings-renamed.json"
+    (config / "settings.json").rename(temporary_settings)
+    settings = config / "Settings.json"
+    temporary_settings.rename(settings)
+    settings.write_bytes(LOCAL_SETTINGS)
     service = make_service(plugin_core_module)
     scanned = inventory(
         service,

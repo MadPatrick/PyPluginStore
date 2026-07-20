@@ -7858,7 +7858,10 @@ class ReleaseTransactionManager:
                         raise ValueError(
                             label + " file size differs from its audit inventory."
                         )
-                flags = os.O_RDONLY | getattr(os, "O_BINARY", 0)
+                # Windows requires GENERIC_WRITE access for FlushFileBuffers,
+                # which backs os.fsync(). No write is performed here.
+                access = os.O_RDWR if os.name == "nt" else os.O_RDONLY
+                flags = access | getattr(os, "O_BINARY", 0)
                 flags |= getattr(os, "O_NOFOLLOW", 0)
                 try:
                     descriptor = os.open(entry.path, flags)
