@@ -20,6 +20,10 @@ def write_zip(path, entries, compression=zipfile.ZIP_DEFLATED):
                 contents = contents.encode("utf-8")
 
             info = zipfile.ZipInfo(name)
+            # ZipInfo normalizes the local separator on Windows. Restore the
+            # requested spelling so backslash-path fixtures exercise raw ZIP
+            # member names consistently on every host.
+            info.filename = name
             info.compress_type = compression
             if mode is not None:
                 info.create_system = 3

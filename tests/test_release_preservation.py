@@ -817,6 +817,8 @@ def test_manual_inventory_rejects_executable_permission_even_without_code_extens
     )
     helper = source / "runtime/helper"
     helper.chmod(helper.stat().st_mode | stat.S_IXUSR)
+    if not helper.stat().st_mode & stat.S_IXUSR:
+        pytest.skip("the test filesystem does not support executable bits")
     service = make_service(plugin_core_module)
 
     assert_blocked(
@@ -930,6 +932,9 @@ def test_candidate_paths_colliding_under_windows_casefold_are_rejected(
             "runtime/state.json": b"lower\n",
         },
     )
+    spellings = {path.name for path in (source / "runtime").iterdir()}
+    if not {"State.json", "state.json"}.issubset(spellings):
+        pytest.skip("the test filesystem is case-insensitive")
     service = make_service(plugin_core_module)
 
     assert_blocked(

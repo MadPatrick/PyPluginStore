@@ -4511,7 +4511,10 @@ class ReleaseArtifactValidationService:
                 node_paths[canonical_parts] = relative_path
 
                 try:
-                    path_stat = entry.stat(follow_symlinks=False)
+                    path_stat = os.stat(
+                        entry.path,
+                        follow_symlinks=False,
+                    )
                 except OSError as error:
                     raise self._error(
                         "unsafe_tree",
@@ -5628,7 +5631,10 @@ class ReleasePreservationService:
                     )
                     continue
                 try:
-                    path_stat = entry.stat(follow_symlinks=False)
+                    path_stat = os.stat(
+                        entry.path,
+                        follow_symlinks=False,
+                    )
                 except OSError as error:
                     raise self._error(
                         "unsafe_preserved_path",
@@ -6061,7 +6067,10 @@ class ReleasePreservationService:
                     else relative_directory + "/" + entry.name
                 )
                 try:
-                    path_stat = entry.stat(follow_symlinks=False)
+                    path_stat = os.stat(
+                        entry.path,
+                        follow_symlinks=False,
+                    )
                 except OSError as error:
                     raise self._error(
                         "unsafe_staged_path",
@@ -7770,7 +7779,10 @@ class ReleaseTransactionManager:
                     )
                 seen_nodes.add(collision_key)
                 try:
-                    path_stat = entry.stat(follow_symlinks=False)
+                    path_stat = os.stat(
+                        entry.path,
+                        follow_symlinks=False,
+                    )
                 except OSError as error:
                     raise ValueError(
                         label + " contains an unreadable path."
@@ -9078,7 +9090,7 @@ class _ReleaseDependencyFilesystem:
         with os.scandir(source) as entries:
             entries = sorted(entries, key=lambda entry: entry.name)
         for entry in entries:
-            entry_stat = entry.stat(follow_symlinks=False)
+            entry_stat = os.stat(entry.path, follow_symlinks=False)
             if entry_stat.st_dev != root_device:
                 raise ValueError(
                     "Dependency snapshot may not cross filesystem boundaries."
@@ -9167,7 +9179,10 @@ class _ReleaseDependencyValidator:
                 with os.scandir(directory) as entries:
                     entries = list(entries)
                 for entry in entries:
-                    entry_stat = entry.stat(follow_symlinks=False)
+                    entry_stat = os.stat(
+                        entry.path,
+                        follow_symlinks=False,
+                    )
                     if entry_stat.st_dev != root_stat.st_dev:
                         raise ValueError(
                             "Staged dependencies cross a filesystem boundary."
@@ -10477,6 +10492,7 @@ class GitMigrationPreflight:
                 message="Git metadata could not be inspected safely.",
                 **common,
             )
+        git_dir = os.path.normpath(git_dir)
 
         index_lock = os.path.join(git_dir, "index.lock")
         if os.path.lexists(index_lock):

@@ -1,3 +1,4 @@
+import os
 import shutil
 import subprocess
 from datetime import datetime, timedelta, timezone
@@ -737,7 +738,12 @@ def test_git_index_lock_blocks_preflight_without_removing_lock(
     assert result.allowed is False
     assert result.status == "migration_blocked_local_changes"
     assert result.reason == "git_index_lock"
-    assert str(lock_file) in result.message
+    message_prefix = "Git index lock exists at "
+    assert result.message.startswith(message_prefix)
+    reported_lock = result.message[len(message_prefix) : -1]
+    assert os.path.normcase(os.path.normpath(reported_lock)) == os.path.normcase(
+        os.path.normpath(lock_file)
+    )
     assert lock_file.exists()
     assert head_commit(repository) == original_head
 
