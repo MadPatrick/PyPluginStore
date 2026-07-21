@@ -711,6 +711,22 @@ def test_plugin_card_actions_wrap_when_buttons_do_not_fit():
     assert "gap: 8px" in actions_rule
 
 
+def test_plugin_card_title_and_details_are_selectable():
+    html = (REPO_ROOT / "pypluginstore.html").read_text()
+    selector_group = """#pypluginstore-container .pps-plugin-title,
+    #pypluginstore-container .pps-card-desc,
+    #pypluginstore-container .pps-card-meta"""
+
+    selectable_rule = extract_css_rule(
+        html,
+        "#pypluginstore-container .pps-plugin-title,",
+    )
+    assert selector_group in html
+    assert "-webkit-user-select: text" in selectable_rule
+    assert "user-select: text" in selectable_rule
+    assert "cursor: text" in selectable_rule
+
+
 def test_local_registry_uses_one_accessible_native_dialog():
     html = (REPO_ROOT / "pypluginstore.html").read_text()
 
