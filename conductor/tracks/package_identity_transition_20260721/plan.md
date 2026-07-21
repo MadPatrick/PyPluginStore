@@ -2,8 +2,8 @@
 
 ## Phase 1: Versioned Package Contracts and Legacy Readers
 
-- [~] Task: Add failing tests for strict registry-v2 package arrays, release-index-v2 record arrays, duplicate rejection, explicit Domoticz identity, and deterministic serialization
-- [ ] Task: Implement shared v2 package records and parsers while confining v1 support to migration adapters
+- [x] Task: Add failing tests for strict registry-v2 package arrays, release-index-v2 record arrays, duplicate rejection, explicit Domoticz identity, and deterministic serialization `2718cf1`
+- [~] Task: Implement shared v2 package records and parsers while confining v1 support to migration adapters
 - [ ] Task: Add failing upgrade tests for cached metadata pairs, local registry backup/rewrite, install metadata, and transaction journals
 - [ ] Task: Implement atomic v1-to-v2 host-state upgrades and old-manager remote-v2 fallback behavior
 - [ ] Task: Conductor - User Manual Verification 'Versioned Package Contracts and Legacy Readers' (Protocol in workflow.md)
