@@ -1326,8 +1326,9 @@ def _legacy_migration(artifact):
     return {"mode": "manual", "evidence": evidence}
 
 
-def _validate_legacy_previous(previous, registry):
+def _validate_legacy_previous(previous, registry, retiring_package_ids=None):
     """Normalize one read-only schema-v1 previous index for v2 generation."""
+    retiring_package_ids = set(retiring_package_ids or ())
     required = {
         "schema_version",
         "sequence",
@@ -1350,8 +1351,8 @@ def _validate_legacy_previous(previous, registry):
         raise ValueError("previous_index plugin collections must be objects.")
     if set(plugins) & set(tombstones):
         raise ValueError("previous_index overlaps active and tombstoned plugins.")
-    unknown = (set(plugins) | set(tombstones)) - set(registry)
-    if unknown:
+    unknown_active = set(plugins) - set(registry) - retiring_package_ids
+    if unknown_active:
         raise ValueError("Previously accepted plugin disappeared from registry.")
     for key, entry in plugins.items():
         if not isinstance(entry, dict):
@@ -1361,7 +1362,9 @@ def _validate_legacy_previous(previous, registry):
             LEGACY_RELEASE_ENTRY_FIELDS | {"source_revision"},
         ):
             raise ValueError("Legacy release entry has an unsupported shape.")
-        if entry.get("repository_identity") != _entry_repository_identity(registry[key]):
+        if key in registry and entry.get(
+            "repository_identity"
+        ) != _entry_repository_identity(registry[key]):
             raise ValueError("Previous release repository no longer matches registry.")
         _require_positive_integer(entry.get("revision"), "previous revision")
         _require_string(entry.get("release_id"), "previous release_id")
@@ -1394,7 +1397,8 @@ def _validate_legacy_previous(previous, registry):
     }
 
 
-def _validate_v2_previous(previous, registry):
+def _validate_v2_previous(previous, registry, retiring_package_ids=None):
+    retiring_package_ids = set(retiring_package_ids or ())
     required = {
         "schema_version",
         "sequence",
@@ -1430,10 +1434,15 @@ def _validate_v2_previous(previous, registry):
             RELEASE_ENTRY_FIELDS | {"source_revision"},
         ):
             raise ValueError("Previous release record has an unsupported shape.")
-        if package_id not in registry:
+        if (
+            package_id not in registry
+            and package_id not in retiring_package_ids
+        ):
             raise ValueError("Previously accepted package disappeared from registry.")
-        if entry["repository_identity"] != _entry_repository_identity(
-            registry[package_id]
+        if (
+            package_id in registry
+            and entry["repository_identity"]
+            != _entry_repository_identity(registry[package_id])
         ):
             raise ValueError("Previous release repository no longer matches registry.")
         _require_positive_integer(entry["revision"], "previous revision")
@@ -1523,15 +1532,23 @@ def _validate_v2_previous(previous, registry):
     }
 
 
-def _validate_previous(previous, registry):
+def _validate_previous(previous, registry, retiring_package_ids=None):
     if previous is None:
         return None
     if not isinstance(previous, dict):
         raise ValueError("previous_index must be an object.")
     if previous.get("schema_version") == LEGACY_INDEX_SCHEMA_VERSION:
-        return _validate_legacy_previous(previous, registry)
+        return _validate_legacy_previous(
+            previous,
+            registry,
+            retiring_package_ids,
+        )
     if previous.get("schema_version") == INDEX_SCHEMA_VERSION:
-        return _validate_v2_previous(previous, registry)
+        return _validate_v2_previous(
+            previous,
+            registry,
+            retiring_package_ids,
+        )
     raise ValueError("previous_index schema is unsupported.")
 
 
@@ -1543,7 +1560,7 @@ def _validate_tombstone_requests(requests, previous, registry):
     previous_plugins = previous["plugins"] if previous else {}
     result = {}
     for plugin_key, request in requests.items():
-        if plugin_key not in registry or plugin_key not in previous_plugins:
+        if plugin_key not in previous_plugins:
             raise ValueError("Tombstone requires a known prior accepted release.")
         if not isinstance(request, dict) or set(request) != {"reason"}:
             raise ValueError("Tombstone request must contain only a reason.")
@@ -2010,7 +2027,16 @@ class ReleaseIndexGenerator:
             registry_contents, "registry"
         )
         registry = _registry_records(registry_document)
-        previous = _validate_previous(previous_index, registry)
+        retiring_package_ids = (
+            set(tombstone_requests)
+            if isinstance(tombstone_requests, dict)
+            else set()
+        )
+        previous = _validate_previous(
+            previous_index,
+            registry,
+            retiring_package_ids,
+        )
         tombstone_requests = _validate_tombstone_requests(
             tombstone_requests, previous, registry
         )
@@ -2028,7 +2054,7 @@ class ReleaseIndexGenerator:
         reports = {}
         report_providers = {}
 
-        for plugin_key in sorted(registry):
+        for plugin_key in sorted(set(registry) | set(tombstone_requests)):
             plugin_key = _require_string(plugin_key, "registry plugin key")
             prior = previous_plugins.get(plugin_key)
             if plugin_key in tombstone_requests:

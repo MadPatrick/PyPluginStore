@@ -1822,6 +1822,48 @@ def test_explicit_tombstone_request_decertifies_prior_release_with_reason(
     assert provider.calls == []
 
 
+def test_legacy_release_can_be_tombstoned_after_registry_package_removal(
+    release_index_generation_module,
+):
+    old_registry = registry_bytes()
+    previous_entry = release_entry(zip_archive(), revision=7)
+    previous = legacy_previous_index(
+        old_registry,
+        {"ExamplePlugin": previous_entry},
+    )
+    current_registry = (
+        json.dumps({"schema_version": 2, "packages": []}, indent=2)
+        + "\n"
+    ).encode("utf-8")
+    generator = make_generator(
+        release_index_generation_module,
+        {"github": ExplodingProvider()},
+        ExplodingHttpClient(),
+    )
+
+    result = generator.generate(
+        registry_bytes=current_registry,
+        previous_index=previous,
+        tombstone_requests={
+            "ExamplePlugin": {
+                "reason": "The registry record was not a Domoticz plugin."
+            }
+        },
+        report_only=True,
+    )
+
+    assert result.document["releases"] == []
+    assert tombstone_map(result.document)["ExamplePlugin"] == {
+        "package_id": "ExamplePlugin",
+        "repository_identity": previous_entry["repository_identity"],
+        "last_revision": 7,
+        "release_id": previous_entry["release_id"],
+        "reason": "The registry record was not a Domoticz plugin.",
+        "removed_at": "2026-07-18T12:00:00Z",
+    }
+    assert status(result) == "tombstoned"
+
+
 def test_v2_tombstone_survives_package_removal_from_registry(
     release_index_generation_module,
 ):
