@@ -12,8 +12,8 @@ PLUGIN_SHA256 = "4" * 64
 
 def install_metadata_document(**overrides):
     document = {
-        "schema": 1,
-        "plugin_key": "ExamplePlugin",
+        "schema": 2,
+        "package_id": "ExamplePlugin",
         "management_mode": "release",
         "repository_identity": "github.com/owner/example-plugin",
         "version": "1.4.0",
@@ -38,6 +38,14 @@ def install_metadata_document(**overrides):
     return document
 
 
+def legacy_install_metadata_document(**overrides):
+    document = install_metadata_document()
+    document["schema"] = 1
+    document["plugin_key"] = document.pop("package_id")
+    document.update(overrides)
+    return document
+
+
 def metadata_service(plugin_core_module):
     plugin = plugin_core_module.BasePlugin()
     return plugin_core_module.InstallMetadataService(plugin)
@@ -50,7 +58,8 @@ def test_install_metadata_parses_release_identity_and_audit_hashes(
 
     metadata = plugin_core_module.InstallMetadata.from_document(document)
 
-    assert metadata.schema == 1
+    assert metadata.schema == 2
+    assert metadata.package_id == "ExamplePlugin"
     assert metadata.plugin_key == "ExamplePlugin"
     assert metadata.management_mode == "release"
     assert metadata.repository_identity == "github.com/owner/example-plugin"
@@ -72,6 +81,39 @@ def test_install_metadata_parses_release_identity_and_audit_hashes(
     assert metadata.index_sequence == 42
     assert metadata.installed_at == "2026-07-18T08:00:00Z"
     assert metadata.to_document() == document
+
+
+def test_install_metadata_v1_requires_explicit_normalization(
+    plugin_core_module,
+):
+    legacy_document = legacy_install_metadata_document()
+
+    with pytest.raises(ValueError):
+        plugin_core_module.InstallMetadata.from_document(legacy_document)
+
+    metadata = plugin_core_module.InstallMetadata.from_legacy_document(
+        legacy_document
+    )
+    normalized = metadata.to_document()
+    assert metadata.schema == 2
+    assert metadata.package_id == "ExamplePlugin"
+    assert normalized["schema"] == 2
+    assert normalized["package_id"] == "ExamplePlugin"
+    assert "plugin_key" not in normalized
+
+
+@pytest.mark.parametrize("legacy_key_mode", ["legacy-only", "both"])
+def test_install_metadata_v2_rejects_legacy_identity_key(
+    plugin_core_module,
+    legacy_key_mode,
+):
+    document = install_metadata_document()
+    document["plugin_key"] = document["package_id"]
+    if legacy_key_mode == "legacy-only":
+        del document["package_id"]
+
+    with pytest.raises(ValueError):
+        plugin_core_module.InstallMetadata.from_document(document)
 
 
 def test_install_metadata_supports_generic_immutable_source_revision(
@@ -117,8 +159,8 @@ def invalid_install_metadata_documents():
             )
         )
 
-    add("unsupported-schema", schema=2)
-    add("unsafe-plugin-key", plugin_key="../ExamplePlugin")
+    add("unsupported-schema", schema=1)
+    add("unsafe-package-id", package_id="../ExamplePlugin")
     add("unsupported-management-mode", management_mode="git")
     add(
         "noncanonical-repository-identity",
@@ -222,6 +264,46 @@ def test_install_metadata_service_rejects_malformed_existing_metadata(
         service.read(str(plugin_dir))
 
     assert metadata_file.read_text(encoding="utf-8") == "{not-json"
+
+
+def test_install_metadata_service_atomically_upgrades_v1_on_read(
+    plugin_core_module, tmp_path
+):
+    plugin_dir = tmp_path / "ExamplePlugin"
+    plugin_dir.mkdir()
+    metadata_file = plugin_dir / ".pypluginstore.json"
+    metadata_file.write_text(
+        json.dumps(legacy_install_metadata_document()), encoding="utf-8"
+    )
+    service = metadata_service(plugin_core_module)
+
+    loaded = service.read(str(plugin_dir))
+
+    upgraded = json.loads(metadata_file.read_text(encoding="utf-8"))
+    assert loaded.schema == 2
+    assert loaded.package_id == "ExamplePlugin"
+    assert upgraded == install_metadata_document()
+    assert "plugin_key" not in upgraded
+    assert metadata_file.read_bytes().endswith(b"\n")
+    assert not (plugin_dir / ".pypluginstore.json.tmp").exists()
+
+
+def test_install_metadata_service_keeps_malformed_v1_unchanged(
+    plugin_core_module, tmp_path
+):
+    plugin_dir = tmp_path / "ExamplePlugin"
+    plugin_dir.mkdir()
+    metadata_file = plugin_dir / ".pypluginstore.json"
+    malformed = legacy_install_metadata_document(plugin_key="../unsafe")
+    original = (json.dumps(malformed, sort_keys=True) + "\n").encode("utf-8")
+    metadata_file.write_bytes(original)
+    service = metadata_service(plugin_core_module)
+
+    with pytest.raises(ValueError):
+        service.read(str(plugin_dir))
+
+    assert metadata_file.read_bytes() == original
+    assert not (plugin_dir / ".pypluginstore.json.tmp").exists()
 
 
 def test_install_metadata_service_writes_and_reads_atomically(

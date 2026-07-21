@@ -25,7 +25,11 @@ def test_missing_and_empty_local_registries_have_distinct_revisions(
     assert missing.writable is True
     assert empty.entries == {}
     assert empty.exists is True
+    assert empty.migrated is True
     assert missing.revision != empty.revision
+    assert registry_file.read_text(encoding="utf-8") == (
+        '{\n  "schema_version": 2,\n  "packages": []\n}\n'
+    )
 
 
 @pytest.mark.parametrize("contents", ["{broken", "[]"])
@@ -47,9 +51,8 @@ def test_create_writes_canonical_entry_and_preserves_legacy_entries(
 ):
     _, service, registry_file = make_service(plugin_core_module, tmp_path)
     legacy_entry = ["owner", "legacy-repo", "Legacy", "main", "old timestamp"]
-    registry_file.write_text(
-        json.dumps({"Legacy": legacy_entry}), encoding="utf-8"
-    )
+    legacy_contents = json.dumps({"Legacy": legacy_entry}).encode("utf-8")
+    registry_file.write_bytes(legacy_contents)
     document = service.read_document()
 
     updated = service.upsert(
@@ -64,14 +67,34 @@ def test_create_writes_canonical_entry_and_preserves_legacy_entries(
     )
 
     saved = json.loads(registry_file.read_text(encoding="utf-8"))
-    assert saved["Legacy"] == legacy_entry
-    assert saved["PrivatePlugin"] == {
-        "owner": "git@example.org:team/private-plugin.git",
-        "description": "Private plugin",
-        "branch": "main",
+    assert saved == {
+        "schema_version": 2,
+        "packages": [
+            {
+                "package_id": "Legacy",
+                "domoticz_key": "",
+                "description": "Legacy",
+                "repository": {
+                    "url": "https://github.com/owner/legacy-repo.git",
+                    "branch": "main",
+                },
+                "platforms": [],
+            },
+            {
+                "package_id": "PrivatePlugin",
+                "domoticz_key": "",
+                "description": "Private plugin",
+                "repository": {
+                    "url": "git@example.org:team/private-plugin.git",
+                    "branch": "main",
+                },
+                "platforms": [],
+            },
+        ],
     }
-    assert "platform" not in saved["PrivatePlugin"]
-    assert "platforms" not in saved["PrivatePlugin"]
+    assert (registry_file.parent / service.BACKUP_FILE_NAME).read_bytes() == (
+        legacy_contents
+    )
     assert updated.revision == service.read_document().revision
 
 
@@ -102,6 +125,8 @@ def test_update_cannot_rename_local_registry_key(plugin_core_module, tmp_path):
 def test_stale_revision_does_not_write(plugin_core_module, tmp_path):
     _, service, registry_file = make_service(plugin_core_module, tmp_path)
     registry_file.write_text("{}\n", encoding="utf-8")
+    service.read_document()
+    migrated_contents = registry_file.read_bytes()
 
     with pytest.raises(plugin_core_module.LocalRegistryError) as error:
         service.upsert(
@@ -117,7 +142,7 @@ def test_stale_revision_does_not_write(plugin_core_module, tmp_path):
 
     assert error.value.code == "registry_conflict"
     assert error.value.reload_required is True
-    assert registry_file.read_text(encoding="utf-8") == "{}\n"
+    assert registry_file.read_bytes() == migrated_contents
 
 
 @pytest.mark.parametrize(
@@ -142,13 +167,15 @@ def test_invalid_local_registry_fields_do_not_write(
         "branch": "main",
     }
     entry[field] = value
+    document = service.read_document()
+    migrated_contents = registry_file.read_bytes()
 
     with pytest.raises(plugin_core_module.LocalRegistryError) as error:
-        service.upsert(service.read_document().revision, "", entry)
+        service.upsert(document.revision, "", entry)
 
     assert error.value.code == "invalid_local_registry_entry"
     assert field in error.value.field_errors
-    assert registry_file.read_text(encoding="utf-8") == "{}\n"
+    assert registry_file.read_bytes() == migrated_contents
 
 
 def test_delete_last_entry_writes_empty_object(plugin_core_module, tmp_path):
@@ -160,15 +187,22 @@ def test_delete_last_entry_writes_empty_object(plugin_core_module, tmp_path):
 
     service.delete(service.read_document().revision, "Plugin")
 
-    assert json.loads(registry_file.read_text(encoding="utf-8")) == {}
+    assert json.loads(registry_file.read_text(encoding="utf-8")) == {
+        "schema_version": 2,
+        "packages": [],
+    }
 
 
 def test_atomic_replace_failure_preserves_registry(
     plugin_core_module, tmp_path, monkeypatch
 ):
     _, service, registry_file = make_service(plugin_core_module, tmp_path)
-    original = '{"Plugin": ["owner", "repo", "", "main"]}\n'
-    registry_file.write_text(original, encoding="utf-8")
+    registry_file.write_text(
+        '{"Plugin": ["owner", "repo", "", "main"]}\n',
+        encoding="utf-8",
+    )
+    document = service.read_document()
+    original = registry_file.read_bytes()
 
     def fail_replace(*args, **kwargs):
         raise PermissionError("read only")
@@ -176,11 +210,11 @@ def test_atomic_replace_failure_preserves_registry(
     monkeypatch.setattr(plugin_core_module.os, "replace", fail_replace)
 
     with pytest.raises(plugin_core_module.LocalRegistryError) as error:
-        service.delete(service.read_document().revision, "Plugin")
+        service.delete(document.revision, "Plugin")
 
     assert error.value.code == "registry_write_failed"
-    assert registry_file.read_text(encoding="utf-8") == original
-    assert not (registry_file.parent / "registry_local.json.tmp").exists()
+    assert registry_file.read_bytes() == original
+    assert list(registry_file.parent.glob(".registry_local.json.*.tmp")) == []
 
 
 def test_get_local_registry_api_returns_derived_entry_metadata(
@@ -308,9 +342,11 @@ def test_upsert_api_reapplies_cached_public_registry_without_network(
         "main",
     ]
     assert "RemoteOnly" in plugin.plugin_data
-    assert json.loads(registry_file.read_text(encoding="utf-8"))[
-        "PublicPlugin"
-    ]["owner"] == "https://example.org/team/private-plugin"
+    saved = json.loads(registry_file.read_text(encoding="utf-8"))
+    assert saved["packages"][0]["package_id"] == "PublicPlugin"
+    assert saved["packages"][0]["repository"]["url"] == (
+        "https://example.org/team/private-plugin"
+    )
 
 
 def test_delete_api_restores_cached_public_override(

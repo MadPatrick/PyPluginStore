@@ -212,8 +212,8 @@ def test_fetch_registry_merges_remote_registry_with_local_overlay(plugin_core_mo
     plugin.fetch_registry()
 
     assert plugin.plugin_data["PublicPlugin"] == [
-        "local-owner",
-        "public-plugin",
+        "https://github.com/local-owner/public-plugin.git",
+        "",
         "local override",
         "main",
     ]

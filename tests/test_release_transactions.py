@@ -1,3 +1,4 @@
+import copy
 import hashlib
 import json
 import os
@@ -32,8 +33,8 @@ def install_metadata_document(
             "plugin.py": {"sha256": "4" * 64, "size": 4096},
         }
     return {
-        "schema": 1,
-        "plugin_key": "ExamplePlugin",
+        "schema": 2,
+        "package_id": "ExamplePlugin",
         "management_mode": "release",
         "repository_identity": "github.com/owner/example-plugin",
         "version": "1.0.0" if revision == 1 else "2.0.0",
@@ -50,6 +51,20 @@ def install_metadata_document(
         "index_sequence": revision,
         "installed_at": "2026-07-18T08:00:00Z",
     }
+
+
+def legacy_transaction_document(document):
+    legacy = copy.deepcopy(document)
+    legacy["schema_version"] = 1
+    legacy["plugin_key"] = legacy.pop("package_id")
+    return legacy
+
+
+def legacy_install_metadata_document(document):
+    legacy = copy.deepcopy(document)
+    legacy["schema"] = 1
+    legacy["plugin_key"] = legacy.pop("package_id")
+    return legacy
 
 
 def expected_current():
@@ -439,9 +454,10 @@ def test_release_transaction_journal_contains_complete_recovery_descriptor(
         Path(transaction.paths.journal).read_text(encoding="utf-8")
     )
 
-    assert document["schema_version"] == 1
+    assert document["schema_version"] == 2
     assert document["operation_id"] == "operation-001"
-    assert document["plugin_key"] == "ExamplePlugin"
+    assert document["package_id"] == "ExamplePlugin"
+    assert "plugin_key" not in document
     assert document["operation"] == "release_update"
     assert document["phase"] == "dependencies_staged"
     assert document["expected_current"] == expected_current()
@@ -462,6 +478,109 @@ def test_release_transaction_journal_contains_complete_recovery_descriptor(
     assert document["paths"] == transaction.paths.to_document()
     assert document["created_at"].endswith("Z")
     assert document["updated_at"].endswith("Z")
+
+
+def test_release_transaction_v1_requires_explicit_normalization_and_upgrades_on_load(
+    plugin_core_module, tmp_path
+):
+    manager, plugins_dir, manager_dir = make_manager(
+        plugin_core_module, tmp_path
+    )
+    transaction = prepare_transaction(manager, plugins_dir, manager_dir)
+    journal_path = Path(transaction.paths.journal)
+    current = json.loads(journal_path.read_text(encoding="utf-8"))
+    legacy = legacy_transaction_document(current)
+
+    for legacy_key_document in (
+        {
+            **current,
+            "plugin_key": current["package_id"],
+        },
+        {
+            **{
+                key: value
+                for key, value in current.items()
+                if key != "package_id"
+            },
+            "plugin_key": current["package_id"],
+        },
+    ):
+        with pytest.raises(ValueError):
+            plugin_core_module.ReleaseTransaction.from_document(
+                legacy_key_document, transaction.paths
+            )
+
+    with pytest.raises(ValueError):
+        plugin_core_module.ReleaseTransaction.from_document(
+            legacy, transaction.paths
+        )
+    normalized = plugin_core_module.ReleaseTransaction.from_legacy_document(
+        legacy, transaction.paths
+    )
+    assert normalized.package_id == "ExamplePlugin"
+    assert "plugin_key" not in normalized.to_document()
+
+    journal_path.write_text(json.dumps(legacy), encoding="utf-8")
+    loaded = new_manager(plugin_core_module).load_transaction(
+        transaction.operation_id
+    )
+    upgraded = json.loads(journal_path.read_text(encoding="utf-8"))
+
+    assert loaded.package_id == "ExamplePlugin"
+    assert upgraded["schema_version"] == 2
+    assert upgraded["package_id"] == "ExamplePlugin"
+    assert "plugin_key" not in upgraded
+    assert upgraded["created_at"] == legacy["created_at"]
+    assert upgraded["updated_at"] == legacy["updated_at"]
+    assert not journal_path.with_suffix(".json.tmp").exists()
+
+
+def test_release_transaction_malformed_v1_journal_is_not_rewritten(
+    plugin_core_module, tmp_path
+):
+    manager, plugins_dir, manager_dir = make_manager(
+        plugin_core_module, tmp_path
+    )
+    transaction = prepare_transaction(manager, plugins_dir, manager_dir)
+    journal_path = Path(transaction.paths.journal)
+    legacy = legacy_transaction_document(
+        json.loads(journal_path.read_text(encoding="utf-8"))
+    )
+    legacy["phase"] = "invented_phase"
+    original = (json.dumps(legacy, sort_keys=True) + "\n").encode("utf-8")
+    journal_path.write_bytes(original)
+
+    with pytest.raises(ValueError, match="phase is unsupported"):
+        new_manager(plugin_core_module).load_transaction(
+            transaction.operation_id
+        )
+
+    assert journal_path.read_bytes() == original
+    assert not Path(str(journal_path) + ".tmp").exists()
+
+
+def test_restart_recovery_upgrades_v1_journal_before_rollback(
+    plugin_core_module, tmp_path
+):
+    manager, plugins_dir, manager_dir = make_manager(
+        plugin_core_module, tmp_path
+    )
+    transaction = prepare_transaction(manager, plugins_dir, manager_dir)
+    journal_path = Path(transaction.paths.journal)
+    legacy = legacy_transaction_document(
+        json.loads(journal_path.read_text(encoding="utf-8"))
+    )
+    journal_path.write_text(json.dumps(legacy), encoding="utf-8")
+
+    new_manager(plugin_core_module).recover_pending()
+
+    recovered = manager.load_transaction(transaction.operation_id)
+    document = json.loads(journal_path.read_text(encoding="utf-8"))
+    assert recovered.phase == "rolled_back"
+    assert_old_live(recovered)
+    assert document["schema_version"] == 2
+    assert document["package_id"] == "ExamplePlugin"
+    assert "plugin_key" not in document
 
 
 def test_release_transaction_refuses_activation_before_dependencies_are_staged(
@@ -974,6 +1093,58 @@ def test_release_transaction_startup_recovery_is_idempotent_at_each_boundary(
     assert Path(recovered.paths.journal).read_bytes() == first_journal
     assert read_marker(recovered.paths.live_code) == first_code
     assert read_marker(recovered.paths.live_dependencies) == first_dependencies
+
+
+def test_forward_recovery_accepts_and_upgrades_v1_metadata_digest(
+    plugin_core_module, tmp_path
+):
+    manager, plugins_dir, manager_dir = make_manager(
+        plugin_core_module, tmp_path
+    )
+    transaction = prepare_transaction(manager, plugins_dir, manager_dir)
+
+    def crash_after_release_activation(phase, _transaction):
+        if phase == "release_activated":
+            raise SimulatedCrash(phase)
+
+    manager.fault_injector = crash_after_release_activation
+    with pytest.raises(SimulatedCrash):
+        manager.activate(transaction.operation_id)
+
+    metadata_path = Path(transaction.paths.live_code) / ".pypluginstore.json"
+    legacy_metadata = legacy_install_metadata_document(
+        json.loads(metadata_path.read_text(encoding="utf-8"))
+    )
+    metadata_path.write_text(json.dumps(legacy_metadata), encoding="utf-8")
+    legacy_digest = hashlib.sha256(
+        json.dumps(
+            legacy_metadata,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    ).hexdigest()
+    journal_path = Path(transaction.paths.journal)
+    journal = json.loads(journal_path.read_text(encoding="utf-8"))
+    journal["staged_snapshot"]["install_metadata_sha256"] = legacy_digest
+    journal_path.write_text(
+        json.dumps(legacy_transaction_document(journal)), encoding="utf-8"
+    )
+
+    recovered_manager = new_manager(plugin_core_module)
+    recovered_manager.recover_pending()
+    recovered = recovered_manager.load_transaction(transaction.operation_id)
+    upgraded_metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    upgraded_journal = json.loads(journal_path.read_text(encoding="utf-8"))
+
+    assert recovered.phase == "restart_pending"
+    assert_new_live(recovered)
+    assert upgraded_metadata["schema"] == 2
+    assert upgraded_metadata["package_id"] == "ExamplePlugin"
+    assert "plugin_key" not in upgraded_metadata
+    assert upgraded_journal["schema_version"] == 2
+    assert upgraded_journal["package_id"] == "ExamplePlugin"
+    assert "plugin_key" not in upgraded_journal
 
 
 def test_recovery_never_claims_rollback_when_required_backup_is_missing(
