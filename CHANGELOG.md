@@ -1,5 +1,18 @@
 # Changelog
 
+## [2.21.0](https://github.com/adrighem/PyPluginStore/compare/v2.20.0...v2.21.0) (2026-07-21)
+
+
+### Features
+
+* update Domoticz Python plugin registry ([38fe0bc](https://github.com/adrighem/PyPluginStore/commit/38fe0bcc027861127aff23a3de81e4d6ef75face))
+
+
+### Bug Fixes
+
+* **releases:** recover and gate release switches ([c27ee9d](https://github.com/adrighem/PyPluginStore/commit/c27ee9d909f097b11b51c3dadce4bf9749db9a7c))
+* **releases:** recover and gate release switches ([e4eee28](https://github.com/adrighem/PyPluginStore/commit/e4eee28e5bfa9f56f66068eee59df31dcd28dfa3)), closes [#111](https://github.com/adrighem/PyPluginStore/issues/111)
+
 ## [2.20.0](https://github.com/adrighem/PyPluginStore/compare/v2.19.1...v2.20.0) (2026-07-21)
 
 
