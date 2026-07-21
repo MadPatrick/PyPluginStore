@@ -3242,12 +3242,7 @@
         const channel = state.channel === 'release' ? 'Release' :
             (state.channel === 'git' ? 'Git' : '');
         const version = state.available_version || state.installed_version || '';
-        const revision = state.available_revision !== null && state.available_revision !== undefined ?
-            state.available_revision : state.installed_revision;
-        const target = [
-            version ? 'v' + String(version).replace(/^v/i, '') : '',
-            revision !== null && revision !== undefined ? 'revision ' + revision : ''
-        ].filter(Boolean).join(', ');
+        const target = version ? 'v' + String(version).replace(/^v/i, '') : '';
         const details = [];
 
         if (state.status === 'verification_failed') {
@@ -3264,8 +3259,7 @@
             details.push('Git current');
         } else if (state.status === 'rollback_available') {
             const rollbackVersion = state.rollback_version ? 'v' + String(state.rollback_version).replace(/^v/i, '') : '';
-            const rollbackRevision = state.rollback_revision !== null && state.rollback_revision !== undefined ? 'revision ' + state.rollback_revision : '';
-            details.push('Rollback available' + ([rollbackVersion, rollbackRevision].filter(Boolean).length ? ': ' + [rollbackVersion, rollbackRevision].filter(Boolean).join(', ') : ''));
+            details.push('Rollback available' + (rollbackVersion ? ': ' + rollbackVersion : ''));
         } else if (state.status === 'migration_available') {
             details.push('Release migration available' + (target ? ': ' + target : ''));
         } else if (state.status === 'available') {
