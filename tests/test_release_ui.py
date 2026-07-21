@@ -698,6 +698,37 @@ for (const item of cases) {
     )
 
 
+def test_release_action_model_keeps_git_self_update_available_and_git_only():
+    script = load_inline_script()
+    function_source = extract_js_function(script, "releaseManagementActions")
+    run_node(
+        function_source
+        + """
+const gitActions = releaseManagementActions(null, {
+    installed: true,
+    isGit: true,
+    isManager: true,
+});
+if (JSON.stringify(gitActions) !== JSON.stringify(['update'])) {
+    throw new Error(`expected Git self-update action, got ${JSON.stringify(gitActions)}`);
+}
+const releaseActions = releaseManagementActions({
+    channel: 'release',
+    updateable: true,
+    rollback_available: true,
+    git_supported: true,
+}, {
+    installed: true,
+    isGit: false,
+    isManager: true,
+});
+if (JSON.stringify(releaseActions) !== JSON.stringify([])) {
+    throw new Error(`expected no manager Release actions, got ${JSON.stringify(releaseActions)}`);
+}
+"""
+    )
+
+
 def test_ui_renders_explicit_channel_and_rollback_actions():
     html = (REPO_ROOT / "pypluginstore.html").read_text(encoding="utf-8")
     script = load_inline_script()
