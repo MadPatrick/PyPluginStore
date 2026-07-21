@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.19.1](https://github.com/adrighem/PyPluginStore/compare/v2.19.0...v2.19.1) (2026-07-21)
+
+
+### Bug Fixes
+
+* **ci:** allow release finalization ([eaa3087](https://github.com/adrighem/PyPluginStore/commit/eaa3087e3750c5d6e30508aa82b119b5ed585d1c))
+
 ## [2.19.0](https://github.com/adrighem/PyPluginStore/compare/v2.18.0...v2.19.0) (2026-07-21)
 
 
