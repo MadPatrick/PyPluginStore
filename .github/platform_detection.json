@@ -18,6 +18,35 @@
       "branch": "master",
       "confidence": "unknown",
       "evidence_class": "legacy",
+      "identity": "github.com/wolfg1969/airburgemoplus@master",
+      "owner": "wolfg1969",
+      "package_id": "AirburgEmoPlus",
+      "registry_platforms": [
+        "linux"
+      ],
+      "repository": "AirburgEmoPlus",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
+      "branch": "main",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/antoinevdh/alphaess-battery-plugin@main",
+      "owner": "AntoineVDH",
+      "package_id": "alphaESS-battery-plugin",
+      "registry_platforms": [
+        "linux",
+        "windows"
+      ],
+      "repository": "alphaESS-battery-plugin",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
+      "branch": "master",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
       "identity": "github.com/galadril/domoticz-awtrix3-plugin@master",
       "owner": "galadril",
       "package_id": "AWTRIX3",
@@ -33,13 +62,14 @@
       "branch": "master",
       "confidence": "unknown",
       "evidence_class": "legacy",
-      "identity": "github.com/wolfg1969/airburgemoplus@master",
-      "owner": "wolfg1969",
-      "package_id": "AirburgEmoPlus",
+      "identity": "github.com/obaby/baby_weather_plugin@master",
+      "owner": "obaby",
+      "package_id": "baby_weather_plugin",
       "registry_platforms": [
-        "linux"
+        "linux",
+        "windows"
       ],
-      "repository": "AirburgEmoPlus",
+      "repository": "baby_weather_plugin",
       "reviewed": false,
       "source": "legacy_detected"
     },
@@ -136,6 +166,20 @@
       "branch": "master",
       "confidence": "unknown",
       "evidence_class": "legacy",
+      "identity": "github.com/damsma/cometblue-domoticz@master",
+      "owner": "damsma",
+      "package_id": "cometblue-domoticz",
+      "registry_platforms": [
+        "linux"
+      ],
+      "repository": "cometblue-domoticz",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
+      "branch": "master",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
       "identity": "github.com/creasoltech/creasoldombus@master",
       "owner": "CreasolTech",
       "package_id": "CreasolDomBus",
@@ -163,16 +207,17 @@
       "source": "legacy_detected"
     },
     {
-      "branch": "main",
+      "branch": "master",
       "confidence": "unknown",
       "evidence_class": "legacy",
-      "identity": "github.com/mibeus/dht22-rpi@main",
-      "owner": "Mibeus",
-      "package_id": "DHT22-rpi",
+      "identity": "github.com/smanar/domoticz-deconz@master",
+      "owner": "Smanar",
+      "package_id": "deCONZ",
       "registry_platforms": [
-        "linux"
+        "linux",
+        "windows"
       ],
-      "repository": "DHT22-rpi",
+      "repository": "Domoticz-deCONZ",
       "reviewed": false,
       "source": "legacy_detected"
     },
@@ -209,6 +254,20 @@
       "branch": "main",
       "confidence": "unknown",
       "evidence_class": "legacy",
+      "identity": "github.com/mibeus/dht22-rpi@main",
+      "owner": "Mibeus",
+      "package_id": "DHT22-rpi",
+      "registry_platforms": [
+        "linux"
+      ],
+      "repository": "DHT22-rpi",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
+      "branch": "main",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
       "identity": "github.com/sydspost/domoticz---cept-plugin@main",
       "owner": "sydspost",
       "package_id": "Domoticz---CEPT-plugin",
@@ -216,6 +275,68 @@
         "linux"
       ],
       "repository": "Domoticz---CEPT-plugin",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
+      "branch": "master",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/mgrom/domoticz-airhumidifier@master",
+      "owner": "mgrom",
+      "package_id": "domoticz-AirHumidifier",
+      "registry_platforms": [
+        "linux",
+        "windows"
+      ],
+      "repository": "domoticz-AirHumidifier",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
+      "branch": "master",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/lrybak/domoticz-airly@master",
+      "owner": "lrybak",
+      "package_id": "domoticz-airly",
+      "registry_platforms": [
+        "linux",
+        "windows"
+      ],
+      "repository": "domoticz-airly",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
+      "branch": "main",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/flyingdomotic/domoticz-airsend-plugin@main",
+      "last_detection": {
+        "confidence": "low",
+        "evidence_class": "generic_python",
+        "platforms": [
+          "linux",
+          "windows"
+        ],
+        "reasons": [
+          "examples/updateWebService.sh: Linux-oriented file name",
+          "examples/updateWebService.sh: uses shell commands"
+        ],
+        "scores": {
+          "both": 0,
+          "linux": 5,
+          "windows": 0
+        }
+      },
+      "owner": "FlyingDomotic",
+      "package_id": "domoticz-airsend-plugin",
+      "policy_action": "kept_existing_requires_high_confidence",
+      "registry_platforms": [
+        "linux"
+      ],
+      "repository": "domoticz-airsend-plugin",
       "reviewed": false,
       "source": "legacy_detected"
     },
@@ -246,2389 +367,6 @@
         "windows"
       ],
       "repository": "Domoticz-AnkerSolixX1-Plugin",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "main",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/filipdem/domoticz-bmw-plugin@main",
-      "owner": "FilipDem",
-      "package_id": "Domoticz-BMW-plugin",
-      "registry_platforms": [
-        "linux",
-        "windows"
-      ],
-      "repository": "Domoticz-BMW-plugin",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "main",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/lemassykoi/domoticz-bluetti-plugin@main",
-      "owner": "lemassykoi",
-      "package_id": "Domoticz-Bluetti-Plugin",
-      "registry_platforms": [
-        "linux"
-      ],
-      "repository": "Domoticz-Bluetti-Plugin",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "main",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/salmr/domoticz-brel-home-hub-03-integration@main",
-      "owner": "salmr",
-      "package_id": "Domoticz-Brel-Home-Hub-03-integration",
-      "registry_platforms": [
-        "linux",
-        "windows"
-      ],
-      "repository": "Domoticz-Brel-Home-Hub-03-integration",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "main",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/superjunky/domoticz-brel-plugin@main",
-      "owner": "superjunky",
-      "package_id": "Domoticz-Brel-Plugin",
-      "registry_platforms": [
-        "linux",
-        "windows"
-      ],
-      "repository": "Domoticz-Brel-Plugin",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "master",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/jorcat/domoticz-dlinksmartplug-plugin@master",
-      "owner": "jorcat",
-      "package_id": "Domoticz-DLinkSmartPlug-plugin",
-      "registry_platforms": [
-        "linux",
-        "windows"
-      ],
-      "repository": "Domoticz-DLinkSmartPlug-plugin",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "master",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/dtlzp/domoticz-dingtian-relay-plugin@master",
-      "owner": "dtlzp",
-      "package_id": "Domoticz-Dingtian-Relay-Plugin",
-      "registry_platforms": [
-        "linux",
-        "windows"
-      ],
-      "repository": "Domoticz-Dingtian-Relay-Plugin",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "main",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/galadril/domoticz-evcc-io-plugin@main",
-      "owner": "galadril",
-      "package_id": "Domoticz-EVCC-IO-Plugin",
-      "registry_platforms": [
-        "linux",
-        "windows"
-      ],
-      "repository": "Domoticz-EVCC-IO-Plugin",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "master",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/kofec/domoticz-enigma2@master",
-      "owner": "kofec",
-      "package_id": "Domoticz-Enigma2",
-      "registry_platforms": [
-        "linux"
-      ],
-      "repository": "Domoticz-Enigma2",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "main",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/cth35/domoticz-francefuelprice-plugin@main",
-      "owner": "cth35",
-      "package_id": "Domoticz-FranceFuelPrice-Plugin",
-      "registry_platforms": [
-        "linux"
-      ],
-      "repository": "Domoticz-FranceFuelPrice-Plugin",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "main",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/mibeus/domoticz-gpio-debian-13@main",
-      "owner": "Mibeus",
-      "package_id": "Domoticz-GPIO-Debian-13",
-      "registry_platforms": [
-        "linux"
-      ],
-      "repository": "Domoticz-GPIO-Debian-13",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "main",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/marceldbo/domoticz-gpsd-plugin@main",
-      "owner": "marceldbo",
-      "package_id": "Domoticz-GPSD-plugin",
-      "registry_platforms": [
-        "linux"
-      ],
-      "repository": "Domoticz-GPSD-plugin",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "main",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/turnofafriendlycard/domoticz-gpslogger-plugin@main",
-      "owner": "TurnOfAFriendlyCard",
-      "package_id": "Domoticz-GPSLogger-Plugin",
-      "registry_platforms": [
-        "linux",
-        "windows"
-      ],
-      "repository": "Domoticz-GPSLogger-Plugin",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "master",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/dnpwwo/domoticz-globalcache-plugin@master",
-      "owner": "dnpwwo",
-      "package_id": "Domoticz-GlobalCache-Plugin",
-      "registry_platforms": [
-        "linux",
-        "windows"
-      ],
-      "repository": "Domoticz-GlobalCache-Plugin",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "main",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/blooesky/domoticz-gree-ac@main",
-      "owner": "blooesky",
-      "package_id": "Domoticz-Gree-Ac",
-      "registry_platforms": [
-        "linux"
-      ],
-      "repository": "Domoticz-Gree-Ac",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "master",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/mvdklip/domoticz-hewalex@master",
-      "owner": "mvdklip",
-      "package_id": "Domoticz-Hewalex",
-      "registry_platforms": [
-        "linux"
-      ],
-      "repository": "Domoticz-Hewalex",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "master",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/mario-peters/domoticz-home-connect-plugin@master",
-      "last_detection": {
-        "confidence": "medium",
-        "evidence_class": "linux_evidence",
-        "platforms": [
-          "linux"
-        ],
-        "reasons": [
-          "plugin.py: uses shell commands",
-          "homeconnectSSE.sh: Linux-oriented file name",
-          "homeconnectSSE.sh: mentions Raspberry Pi/Raspbian",
-          "homeconnectSSE.sh: uses Unix system paths",
-          "homeconnectSSE.sh: uses shell commands"
-        ],
-        "scores": {
-          "both": 0,
-          "linux": 14,
-          "windows": 0
-        }
-      },
-      "owner": "mario-peters",
-      "package_id": "Domoticz-Home-Connect-Plugin",
-      "policy_action": "kept_existing_requires_high_confidence",
-      "registry_platforms": [
-        "linux",
-        "windows"
-      ],
-      "repository": "Domoticz-Home-Connect-Plugin",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "main",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/jwgracht/domoticz-huawei-inverter@main",
-      "owner": "JWGracht",
-      "package_id": "Domoticz-Huawei-Inverter",
-      "registry_platforms": [
-        "linux"
-      ],
-      "repository": "Domoticz-Huawei-Inverter",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "main",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/filipdem/domoticz-husqvarna-automower-plugin@main",
-      "owner": "FilipDem",
-      "package_id": "Domoticz-Husqvarna-Automower-plugin",
-      "registry_platforms": [
-        "linux",
-        "windows"
-      ],
-      "repository": "Domoticz-Husqvarna-Automower-plugin",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "main",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/marceldbo/domoticz-indevolt-plugin@main",
-      "last_detection": {
-        "confidence": "low",
-        "evidence_class": "generic_python",
-        "platforms": [
-          "linux",
-          "windows"
-        ],
-        "reasons": [
-          "generic: no Linux-only or Windows-only evidence found"
-        ],
-        "scores": {
-          "both": 0,
-          "linux": 0,
-          "windows": 0
-        }
-      },
-      "owner": "marceldbo",
-      "package_id": "Domoticz-Indevolt-plugin",
-      "policy_action": "kept_low_confidence_new",
-      "registry_platforms": [],
-      "repository": "Domoticz-Indevolt-plugin",
-      "reviewed": false,
-      "source": "unknown"
-    },
-    {
-      "branch": "master",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/dnpwwo/domoticz-kodi-plugin@master",
-      "owner": "dnpwwo",
-      "package_id": "Domoticz-Kodi-Plugin",
-      "registry_platforms": [
-        "linux",
-        "windows"
-      ],
-      "repository": "Domoticz-Kodi-Plugin",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "master",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/gamedevhobby/domoticz-lgtv-webos-plugin@master",
-      "owner": "GameDevHobby",
-      "package_id": "Domoticz-LGTV-WebOS-Plugin",
-      "registry_platforms": [
-        "linux",
-        "windows"
-      ],
-      "repository": "Domoticz-LGTV-WebOS-Plugin",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "main",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/galadril/domoticz-mcp-plugin@main",
-      "owner": "galadril",
-      "package_id": "Domoticz-MCP-Plugin",
-      "registry_platforms": [
-        "linux",
-        "windows"
-      ],
-      "repository": "Domoticz-MCP-Plugin",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "main",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/lemassykoi/domoticz-mg-plugin@main",
-      "owner": "lemassykoi",
-      "package_id": "Domoticz-MG-Plugin",
-      "registry_platforms": [
-        "linux"
-      ],
-      "repository": "Domoticz-MG-Plugin",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "main",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/galadril/domoticz-n8n-plugin@main",
-      "owner": "galadril",
-      "package_id": "Domoticz-N8N-Plugin",
-      "registry_platforms": [
-        "linux",
-        "windows"
-      ],
-      "repository": "Domoticz-N8N-Plugin",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "master",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/filipdem/domoticz-nest-plugin@master",
-      "owner": "FilipDem",
-      "package_id": "Domoticz-NEST-plugin",
-      "registry_platforms": [
-        "linux"
-      ],
-      "repository": "Domoticz-NEST-plugin",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "master",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/sincze/domoticz-omnik-local-web-plugin@master",
-      "owner": "sincze",
-      "package_id": "Domoticz-Omnik-Local-Web-Plugin",
-      "registry_platforms": [
-        "linux"
-      ],
-      "repository": "Domoticz-Omnik-Local-Web-Plugin",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "main",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/lemassykoi/domoticz-opendtu-plugin@main",
-      "owner": "lemassykoi",
-      "package_id": "Domoticz-OpenDTU-Plugin",
-      "registry_platforms": [
-        "linux",
-        "windows"
-      ],
-      "repository": "Domoticz-OpenDTU-Plugin",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "main",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/lemassykoi/domoticz-openmeteo-plugin@main",
-      "owner": "lemassykoi",
-      "package_id": "Domoticz-OpenMeteo-Plugin",
-      "registry_platforms": [
-        "linux"
-      ],
-      "repository": "Domoticz-OpenMeteo-Plugin",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "main",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/cth35/domoticz-openweathermap@main",
-      "owner": "cth35",
-      "package_id": "Domoticz-OpenWeatherMap",
-      "registry_platforms": [
-        "linux",
-        "windows"
-      ],
-      "repository": "Domoticz-OpenWeatherMap",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "master",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/kinou74/domoticz-palazzetti@master",
-      "owner": "kinou74",
-      "package_id": "Domoticz-Palazzetti",
-      "registry_platforms": [
-        "linux",
-        "windows"
-      ],
-      "repository": "Domoticz-Palazzetti",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "main",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/janreimen/domoticz-pihole-control@main",
-      "owner": "janreimen",
-      "package_id": "Domoticz-PiHole-Control",
-      "registry_platforms": [
-        "linux",
-        "windows"
-      ],
-      "repository": "Domoticz-PiHole-Control",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "master",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/dnpwwo/domoticz-pinger-plugin@master",
-      "owner": "dnpwwo",
-      "package_id": "Domoticz-Pinger-Plugin",
-      "registry_platforms": [
-        "linux",
-        "windows"
-      ],
-      "repository": "Domoticz-Pinger-Plugin",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "main",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/galadril/domoticz-python-plugin-template@main",
-      "owner": "galadril",
-      "package_id": "Domoticz-Python-Plugin-Template",
-      "registry_platforms": [
-        "linux",
-        "windows"
-      ],
-      "repository": "Domoticz-Python-Plugin-Template",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "master",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/dnpwwo/domoticz-raven-plugin@master",
-      "owner": "dnpwwo",
-      "package_id": "Domoticz-RAVEn-Plugin",
-      "registry_platforms": [
-        "linux"
-      ],
-      "repository": "Domoticz-RAVEn-Plugin",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "main",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/derenback/domoticz-sma-inverter@main",
-      "owner": "derenback",
-      "package_id": "Domoticz-SMA-Inverter",
-      "registry_platforms": [
-        "linux"
-      ],
-      "repository": "Domoticz-SMA-Inverter",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "master",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/rklomp/domoticz-sma-sunnyboy@master",
-      "owner": "rklomp",
-      "package_id": "Domoticz-SMA-SunnyBoy",
-      "registry_platforms": [
-        "linux"
-      ],
-      "repository": "Domoticz-SMA-SunnyBoy",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "main",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/lemassykoi/domoticz-shelly-plugin@main",
-      "owner": "lemassykoi",
-      "package_id": "Domoticz-Shelly-Plugin",
-      "registry_platforms": [
-        "linux"
-      ],
-      "repository": "Domoticz-Shelly-Plugin",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "main",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/saidlm/domoticz-solax-plugin@main",
-      "owner": "saidlm",
-      "package_id": "Domoticz-Solax-plugin",
-      "registry_platforms": [
-        "linux",
-        "windows"
-      ],
-      "repository": "Domoticz-Solax-plugin",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "main",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "codeberg.org/hoog/domoticz-stromer-plugin@main",
-      "owner": "codeberg.org/Hoog",
-      "package_id": "Domoticz-Stromer-plugin",
-      "registry_platforms": [
-        "linux",
-        "windows"
-      ],
-      "repository": "Domoticz-Stromer-plugin",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "main",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/bramvreugd/domoticz-synology-plugin@main",
-      "owner": "bramvreugd",
-      "package_id": "Domoticz-Synology-Plugin",
-      "registry_platforms": [
-        "linux",
-        "windows"
-      ],
-      "repository": "Domoticz-Synology-Plugin",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "main",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/blooesky/domoticz-tplinkrouter@main",
-      "owner": "blooesky",
-      "package_id": "Domoticz-TPLinkRouter",
-      "registry_platforms": [
-        "linux"
-      ],
-      "repository": "Domoticz-TPLinkRouter",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "main",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/mvdklip/domoticz-tasmota-smartplug@main",
-      "owner": "mvdklip",
-      "package_id": "Domoticz-Tasmota-Smartplug",
-      "registry_platforms": [
-        "linux"
-      ],
-      "repository": "Domoticz-Tasmota-Smartplug",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "main",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/derenback/domoticz-temperatur-nu@main",
-      "owner": "derenback",
-      "package_id": "Domoticz-Temperatur-nu",
-      "registry_platforms": [
-        "linux"
-      ],
-      "repository": "Domoticz-Temperatur-nu",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "main",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/lemassykoi/domoticz-teslafi-plugin@main",
-      "owner": "lemassykoi",
-      "package_id": "Domoticz-TeslaFi-Plugin",
-      "registry_platforms": [
-        "linux"
-      ],
-      "repository": "Domoticz-TeslaFi-Plugin",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "Master",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/xenomes/domoticz-tinytuya-local-plugin@master",
-      "owner": "Xenomes",
-      "package_id": "Domoticz-TinyTUYA-Local-Plugin",
-      "registry_platforms": [
-        "linux",
-        "windows"
-      ],
-      "repository": "Domoticz-TinyTUYA-Local-Plugin",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "Master",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/xenomes/domoticz-tinytuya-plugin@master",
-      "owner": "Xenomes",
-      "package_id": "Domoticz-TinyTUYA-Plugin",
-      "registry_platforms": [
-        "linux"
-      ],
-      "repository": "Domoticz-TinyTUYA-Plugin",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "master",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/tixi/domoticz-tuya-smartplug-plugin@master",
-      "owner": "tixi",
-      "package_id": "Domoticz-Tuya-SmartPlug-Plugin",
-      "registry_platforms": [
-        "linux"
-      ],
-      "repository": "Domoticz-Tuya-SmartPlug-Plugin",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "master",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/lacha07/domoticz-unifi-presence@master",
-      "owner": "lacha07",
-      "package_id": "Domoticz-Unifi-Presence",
-      "registry_platforms": [
-        "linux"
-      ],
-      "repository": "Domoticz-Unifi-Presence",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "main",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/smanar/domoticz-veolia@main",
-      "owner": "Smanar",
-      "package_id": "Domoticz-Veolia",
-      "registry_platforms": [
-        "linux",
-        "windows"
-      ],
-      "repository": "Domoticz-Veolia",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "main",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/worops/domoticz-virtualthermostat-pid@main",
-      "owner": "worops",
-      "package_id": "Domoticz-VirtualThermostat-PID",
-      "registry_platforms": [
-        "linux",
-        "windows"
-      ],
-      "repository": "Domoticz-VirtualThermostat-PID",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "main",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/frepkovsky/domoticz-volumio-plugin@main",
-      "owner": "frepkovsky",
-      "package_id": "Domoticz-Volumio-Plugin",
-      "registry_platforms": [
-        "linux",
-        "windows"
-      ],
-      "repository": "Domoticz-Volumio-Plugin",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "master",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/mvdklip/domoticz-wthermostatbeca@master",
-      "owner": "mvdklip",
-      "package_id": "Domoticz-WThermostatBeca",
-      "registry_platforms": [
-        "linux"
-      ],
-      "repository": "Domoticz-WThermostatBeca",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "main",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/cth35/domoticz-wazetimetravel-plugin@main",
-      "owner": "cth35",
-      "package_id": "Domoticz-WazeTimeTravel-Plugin",
-      "registry_platforms": [
-        "linux",
-        "windows"
-      ],
-      "repository": "Domoticz-WazeTimeTravel-Plugin",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "main",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/akamming/domoticz-wordclock@main",
-      "owner": "akamming",
-      "package_id": "Domoticz-WordClock",
-      "registry_platforms": [
-        "linux",
-        "windows"
-      ],
-      "repository": "Domoticz-WordClock",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "main",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/jacekholeczek/domoticz-xiaomi-mi-air-purifier-miot-plugin@main",
-      "owner": "JacekHoleczek",
-      "package_id": "Domoticz-Xiaomi-Mi-Air-Purifier-MIoT-Plugin",
-      "registry_platforms": [
-        "linux"
-      ],
-      "repository": "Domoticz-Xiaomi-Mi-Air-Purifier-MIoT-Plugin",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "main",
-      "confidence": "medium",
-      "evidence_class": "linux_evidence",
-      "identity": "github.com/blooesky/domoticz-xiaomi-purifier-4-pro@main",
-      "last_detection": {
-        "confidence": "medium",
-        "evidence_class": "linux_evidence",
-        "platforms": [
-          "linux"
-        ],
-        "reasons": [
-          "README.md: uses sudo",
-          "README.md: uses systemd",
-          "README.md: uses chmod",
-          "README.md: uses shell commands",
-          "plugin.py: uses shell commands",
-          "uninstall.sh: Linux-oriented file name",
-          "uninstall.sh: uses shell commands",
-          "update.sh: Linux-oriented file name",
-          "update.sh: uses shell commands",
-          "install.sh: Linux-oriented file name",
-          "install.sh: uses apt package installation",
-          "install.sh: uses sudo",
-          "install.sh: uses chmod",
-          "install.sh: uses Unix system paths",
-          "install.sh: uses shell commands"
-        ],
-        "scores": {
-          "both": 0,
-          "linux": 41,
-          "windows": 0
-        }
-      },
-      "owner": "blooesky",
-      "package_id": "Domoticz-Xiaomi-Purifier-4-Pro",
-      "policy_action": "accepted_new_medium_or_high",
-      "registry_platforms": [
-        "linux"
-      ],
-      "repository": "Domoticz-Xiaomi-Purifier-4-Pro",
-      "reviewed": false,
-      "source": "detected"
-    },
-    {
-      "branch": "master",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/hedda/domoticz-zigpy@master",
-      "owner": "Hedda",
-      "package_id": "Domoticz-Zigpy",
-      "registry_platforms": [
-        "linux"
-      ],
-      "repository": "Domoticz-Zigpy",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "main",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/galadril/domoticz-zonnedimmer-plugin@main",
-      "owner": "galadril",
-      "package_id": "Domoticz-ZonneDimmer-Plugin",
-      "registry_platforms": [
-        "linux"
-      ],
-      "repository": "Domoticz-ZonneDimmer-Plugin",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "main",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/csutihu/domoticz-plugin-for-tasmota-p1-smart-meter@main",
-      "owner": "csutihu",
-      "package_id": "Domoticz-plugin-for-Tasmota-P1-Smart-Meter",
-      "registry_platforms": [
-        "linux",
-        "windows"
-      ],
-      "repository": "Domoticz-plugin-for-Tasmota-P1-Smart-Meter",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "main",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/csutihu/domoticz-plugin-for-samsung-washing-machine@main",
-      "owner": "csutihu",
-      "package_id": "Domoticz-plugin-for-samsung-washing-machine",
-      "registry_platforms": [
-        "linux",
-        "windows"
-      ],
-      "repository": "Domoticz-plugin-for-samsung-washing-machine",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "main",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/ultrasuperpingu/domoticzd2lplugin@main",
-      "owner": "ultrasuperpingu",
-      "package_id": "DomoticzD2LPlugin",
-      "registry_platforms": [
-        "linux",
-        "windows"
-      ],
-      "repository": "DomoticzD2LPlugin",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "master",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/sylvainper/domoticzmyhomeopenwebnet@master",
-      "owner": "SylvainPer",
-      "package_id": "DomoticzMyHomeOpenWebNet",
-      "registry_platforms": [
-        "linux"
-      ],
-      "repository": "DomoticzMyHomeOpenWebNet",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "main",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/lbartuzi/domoticznestplugin@main",
-      "owner": "lbartuzi",
-      "package_id": "DomoticzNestPlugin",
-      "registry_platforms": [
-        "linux"
-      ],
-      "repository": "DomoticzNestPlugin",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "master",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/trandbert37/domoticzproscenicvacuum@master",
-      "owner": "trandbert37",
-      "package_id": "DomoticzProscenicVacuum",
-      "registry_platforms": [
-        "linux",
-        "windows"
-      ],
-      "repository": "DomoticzProscenicVacuum",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "master",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "gitlab.com/r.boeters/domoticzsabnzbdplugin@master",
-      "owner": "gitlab.com/r.boeters",
-      "package_id": "DomoticzSabNZBDPlugin",
-      "registry_platforms": [
-        "linux",
-        "windows"
-      ],
-      "repository": "DomoticzSabNZBDPlugin",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "main",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/sydspost/domoticz-tile-plugin@main",
-      "owner": "sydspost",
-      "package_id": "DomoticzTile",
-      "registry_platforms": [
-        "linux",
-        "windows"
-      ],
-      "repository": "Domoticz-Tile-plugin",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "main",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/hopsilentsimon/domoticz_marstek_modbus@main",
-      "owner": "hopSilentSimon",
-      "package_id": "Domoticz_Marstek_Modbus",
-      "registry_platforms": [
-        "linux",
-        "windows"
-      ],
-      "repository": "Domoticz_Marstek_Modbus",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "main",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/akamming/domoticz_volvorecharge_plugin@main",
-      "owner": "akamming",
-      "package_id": "Domoticz_VolvoRecharge_Plugin",
-      "registry_platforms": [
-        "linux",
-        "windows"
-      ],
-      "repository": "Domoticz_VolvoRecharge_Plugin",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "main",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/voyo/domoticz_wt53r_rain_tank_sensor@main",
-      "owner": "voyo",
-      "package_id": "Domoticz_WT53R_Rain_Tank_Sensor",
-      "registry_platforms": [
-        "linux"
-      ],
-      "repository": "Domoticz_WT53R_Rain_Tank_Sensor",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "main",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/csutihu/domoticz_plugin_for_smasung_washer_dryer@main",
-      "owner": "csutihu",
-      "package_id": "Domoticz_plugin_for_Smasung_Washer_Dryer",
-      "registry_platforms": [
-        "linux",
-        "windows"
-      ],
-      "repository": "Domoticz_plugin_for_Smasung_Washer_Dryer",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "main",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/madpatrick/domoticz_dreame@main",
-      "owner": "MadPatrick",
-      "package_id": "Dreame",
-      "registry_platforms": [
-        "linux"
-      ],
-      "repository": "Domoticz_dreame",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "master",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/janjaapko/dysonpurelink@master",
-      "owner": "JanJaapKo",
-      "package_id": "DysonPureLink",
-      "registry_platforms": [
-        "linux",
-        "windows"
-      ],
-      "repository": "DysonPureLink",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "master",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/phildesjda/dz_linkyd2l@master",
-      "owner": "PhilDeSJDA",
-      "package_id": "Dz_LinkyD2L",
-      "registry_platforms": [
-        "linux",
-        "windows"
-      ],
-      "repository": "Dz_LinkyD2L",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "main",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/galadril/domoticz-e-flux-plugin@main",
-      "owner": "galadril",
-      "package_id": "E-Flux",
-      "registry_platforms": [
-        "linux",
-        "windows"
-      ],
-      "repository": "Domoticz-E-Flux-Plugin",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "master",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/bblaszkiewicz/easun-isolarsps-domoticz@master",
-      "owner": "bblaszkiewicz",
-      "package_id": "Easun-ISolarSPS-Domoticz",
-      "registry_platforms": [
-        "linux"
-      ],
-      "repository": "Easun-ISolarSPS-Domoticz",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "main",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/madpatrick/domoticz_f1@main",
-      "owner": "MadPatrick",
-      "package_id": "F1_race",
-      "registry_platforms": [
-        "linux",
-        "windows"
-      ],
-      "repository": "Domoticz_F1",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "master",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/bblaszkiewicz/foxess-domoticz@master",
-      "owner": "bblaszkiewicz",
-      "package_id": "FoxESS-domoticz",
-      "registry_platforms": [
-        "linux",
-        "windows"
-      ],
-      "repository": "FoxESS-domoticz",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "main",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/madpatrick/domoticz_fullykiosk@main",
-      "owner": "MadPatrick",
-      "package_id": "FullyKiosk",
-      "registry_platforms": [
-        "linux",
-        "windows"
-      ],
-      "repository": "Domoticz_fullykiosk",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "main",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/madpatrick/domoticz_garbage@main",
-      "owner": "MadPatrick",
-      "package_id": "Garbage",
-      "registry_platforms": [
-        "linux"
-      ],
-      "repository": "Domoticz_garbage",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "master",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/janjaapko/domoticz-goodwesems@master",
-      "owner": "JanJaapKo",
-      "package_id": "GoodWeAPI",
-      "registry_platforms": [
-        "linux"
-      ],
-      "repository": "domoticz-GoodWeSEMS",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "main",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/galadril/domoticz-govee-plugin@main",
-      "owner": "galadril",
-      "package_id": "GoveeDiscovery",
-      "registry_platforms": [
-        "linux",
-        "windows"
-      ],
-      "repository": "Domoticz-Govee-Plugin",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "main",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/madpatrick/domoticz_hp_ilo@main",
-      "owner": "MadPatrick",
-      "package_id": "HP_iLo",
-      "registry_platforms": [
-        "linux"
-      ],
-      "repository": "Domoticz_HP_ilo",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "master",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/bblaszkiewicz/hisense-aircon-domoticz@master",
-      "owner": "bblaszkiewicz",
-      "package_id": "Hisense-AirCon-Domoticz",
-      "registry_platforms": [
-        "linux",
-        "windows"
-      ],
-      "repository": "Hisense-AirCon-Domoticz",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "main",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/freekdk/homewizard-wifi-3f-plugin@main",
-      "owner": "freekdk",
-      "package_id": "HomeWizard-Wifi-3F-plugin",
-      "registry_platforms": [
-        "linux",
-        "windows"
-      ],
-      "repository": "HomeWizard-Wifi-3F-plugin",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "main",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/eraser3/homewizard-wifi-energy-socket@main",
-      "owner": "Eraser3",
-      "package_id": "HomeWizard-Wifi-Energy-Socket",
-      "registry_platforms": [
-        "linux",
-        "windows"
-      ],
-      "repository": "HomeWizard-Wifi-Energy-Socket",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "main",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/eraser3/homewizard-wifi-watermeter@main",
-      "owner": "Eraser3",
-      "package_id": "HomeWizard-Wifi-Watermeter",
-      "registry_platforms": [
-        "linux",
-        "windows"
-      ],
-      "repository": "HomeWizard-Wifi-Watermeter",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "main",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/siewert308sw/homewizard-wifi-kwh-meter@main",
-      "owner": "Siewert308SW",
-      "package_id": "HomeWizard-Wifi-kWh-Meter",
-      "registry_platforms": [
-        "linux",
-        "windows"
-      ],
-      "repository": "HomeWizard-Wifi-kWh-Meter",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "main",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/henknl/homewizard-wifi-kwh-plugin@main",
-      "owner": "henkNL",
-      "package_id": "HomeWizard-Wifi-kWh-plugin",
-      "registry_platforms": [
-        "linux",
-        "windows"
-      ],
-      "repository": "HomeWizard-Wifi-kWh-plugin",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "main",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/eraser3/homewizard-wifi-p1-plugin@main",
-      "owner": "Eraser3",
-      "package_id": "HomeWizard-Wifi-p1-plugin",
-      "registry_platforms": [
-        "linux",
-        "windows"
-      ],
-      "repository": "HomeWizard-Wifi-p1-plugin",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "main",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/szelessavalapitvany/homewizard-wifi-p1-plugin-extended@main",
-      "owner": "szelessavalapitvany",
-      "package_id": "HomeWizard-Wifi-p1-plugin-Extended",
-      "registry_platforms": [
-        "linux",
-        "windows"
-      ],
-      "repository": "HomeWizard-Wifi-p1-plugin-Extended",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "master",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/rvdvoorde/domoticz-homewizard@master",
-      "owner": "rvdvoorde",
-      "package_id": "Homewizard",
-      "registry_platforms": [
-        "linux"
-      ],
-      "repository": "domoticz-homewizard",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "main",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/etmmvdp/homewizard-battery-plugin@main",
-      "owner": "etmmvdp",
-      "package_id": "Homewizard-Battery",
-      "registry_platforms": [
-        "linux",
-        "windows"
-      ],
-      "repository": "HomeWizard-Battery-plugin",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "master",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/creasoltech/domoticz-hyundai-kia@master",
-      "owner": "CreasolTech",
-      "package_id": "HyundaiKiaConnect",
-      "registry_platforms": [
-        "linux"
-      ],
-      "repository": "domoticz-hyundai-kia",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "master",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/moroen/ikea-tradfri-plugin@master",
-      "owner": "moroen",
-      "package_id": "IKEA-Tradfri",
-      "registry_platforms": [
-        "linux",
-        "windows"
-      ],
-      "repository": "IKEA-Tradfri-plugin",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "main",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/mstojek/imgw-meteo@main",
-      "owner": "mstojek",
-      "package_id": "IMGW-Meteo",
-      "registry_platforms": [
-        "linux"
-      ],
-      "repository": "IMGW-Meteo",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "main",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/voyo/intesisbox-panasonic-tcap-modbus@main",
-      "owner": "voyo",
-      "package_id": "IntesisBox-Panasonic-Tcap-modbus",
-      "registry_platforms": [
-        "linux",
-        "windows"
-      ],
-      "repository": "IntesisBox-Panasonic-Tcap-modbus",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "main",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/luismalddonado/intesishomewithdomoticz@main",
-      "owner": "luismalddonado",
-      "package_id": "IntesishomewithDomoticz",
-      "registry_platforms": [
-        "linux",
-        "windows"
-      ],
-      "repository": "IntesishomewithDomoticz",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "main",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/galadril/domoticz-itho-wifi-plugin@main",
-      "owner": "galadril",
-      "package_id": "IthoWifi",
-      "registry_platforms": [
-        "linux",
-        "windows"
-      ],
-      "repository": "Domoticz-Itho-Wifi-Plugin",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "main",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/krakinou/frisquetconnectdomoticz@main",
-      "owner": "Krakinou",
-      "package_id": "Krakinou-FrisquetConnectDomoticz",
-      "registry_platforms": [
-        "linux"
-      ],
-      "repository": "FrisquetConnectDomoticz",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "main",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/debugbill/link-tap@main",
-      "owner": "DebugBill",
-      "package_id": "Link-Tap",
-      "registry_platforms": [
-        "linux",
-        "windows"
-      ],
-      "repository": "Link-Tap",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "master",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/guillaumezin/domoticzlinky@master",
-      "owner": "guillaumezin",
-      "package_id": "Linky",
-      "registry_platforms": [
-        "linux",
-        "windows"
-      ],
-      "repository": "DomoticzLinky",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "main",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/lion251/liontasmoticz@main",
-      "owner": "Lion251",
-      "package_id": "LionTasmoticz",
-      "registry_platforms": [
-        "linux",
-        "windows"
-      ],
-      "repository": "LionTasmoticz",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "main",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/madpatrick/domoticz_lyrion@main",
-      "owner": "MadPatrick",
-      "package_id": "Lyrion",
-      "registry_platforms": [
-        "linux"
-      ],
-      "repository": "domoticz_lyrion",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "development",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/emontnemery/domoticz_mqtt_discovery@development",
-      "owner": "emontnemery",
-      "package_id": "MQTTDiscovery",
-      "registry_platforms": [
-        "linux",
-        "windows"
-      ],
-      "repository": "domoticz_mqtt_discovery",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "main",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/willemd61/marstek-venus-plugin@main",
-      "owner": "WillemD61",
-      "package_id": "Marstek-Venus-plugin",
-      "registry_platforms": [
-        "linux",
-        "windows"
-      ],
-      "repository": "Marstek-Venus-plugin",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "main",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/haaibaai/domoticz-marstek@main",
-      "owner": "Haaibaai",
-      "package_id": "MarstekCT",
-      "registry_platforms": [
-        "linux",
-        "windows"
-      ],
-      "repository": "Domoticz-Marstek",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "main",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/fleinze/mattericz@main",
-      "owner": "fleinze",
-      "package_id": "Mattericz",
-      "registry_platforms": [
-        "linux",
-        "windows"
-      ],
-      "repository": "Mattericz",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "main",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/galadril/domoticz-meshcore-plugin@main",
-      "owner": "galadril",
-      "package_id": "MeshCore",
-      "registry_platforms": [
-        "linux",
-        "windows"
-      ],
-      "repository": "Domoticz-MeshCore-Plugin",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "master",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/flatsiedatsie/mi_flower_mate_plugin@master",
-      "owner": "flatsiedatsie",
-      "package_id": "Mi_Flower_mate_plugin",
-      "registry_platforms": [
-        "linux"
-      ],
-      "repository": "Mi_Flower_mate_plugin",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "main",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/janjaapko/nedsolarforecast@main",
-      "owner": "JanJaapKo",
-      "package_id": "NEDsolarForecast",
-      "registry_platforms": [
-        "linux",
-        "windows"
-      ],
-      "repository": "NEDsolarForecast",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "master",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/999lv/nut_ups@master",
-      "owner": "999LV",
-      "package_id": "NUT_UPS",
-      "registry_platforms": [
-        "linux"
-      ],
-      "repository": "NUT_UPS",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "main",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/tmrealive/om310-domoticz-plugin@main",
-      "owner": "tmrealive",
-      "package_id": "OM310-Domoticz-plugin",
-      "registry_platforms": [
-        "linux",
-        "windows"
-      ],
-      "repository": "OM310-Domoticz-plugin",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "master",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/ayasystems/openevseplugin@master",
-      "owner": "ayasystems",
-      "package_id": "OpenEVSEPlugin",
-      "registry_platforms": [
-        "linux",
-        "windows"
-      ],
-      "repository": "OpenEVSEPlugin",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "main",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/nlovrens/pc321_ty_tuya_local@main",
-      "owner": "nlovrens",
-      "package_id": "PC321_TY_tuya_local",
-      "registry_platforms": [
-        "linux",
-        "windows"
-      ],
-      "repository": "PC321_TY_tuya_local",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "main",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/galadril/domoticz-quatt-plugin@main",
-      "owner": "galadril",
-      "package_id": "Quatt",
-      "registry_platforms": [
-        "linux",
-        "windows"
-      ],
-      "repository": "Domoticz-Quatt-Plugin",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "main",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/neutrino85/roomba@main",
-      "owner": "neutrino85",
-      "package_id": "Roomba",
-      "registry_platforms": [
-        "linux"
-      ],
-      "repository": "Roomba",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "main",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/janjaapko/sessybattery@main",
-      "owner": "JanJaapKo",
-      "package_id": "SessyBattery",
-      "registry_platforms": [
-        "linux",
-        "windows"
-      ],
-      "repository": "SessyBattery",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "main",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/mario-peters/shellycloudplugin2@main",
-      "owner": "mario-peters",
-      "package_id": "ShellyCloudPlugin2",
-      "registry_platforms": [
-        "linux",
-        "windows"
-      ],
-      "repository": "ShellyCloudPlugin2",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "master",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/999lv/smartvirtualthermostat@master",
-      "owner": "999LV",
-      "package_id": "SmartVirtualThermostat",
-      "registry_platforms": [
-        "linux",
-        "windows"
-      ],
-      "repository": "SmartVirtualThermostat",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "main",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/voyo/sofar-modbus@main",
-      "owner": "voyo",
-      "package_id": "Sofar-modbus",
-      "registry_platforms": [
-        "linux",
-        "windows"
-      ],
-      "repository": "Sofar-modbus",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "main",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/janjaapko/solarforecast@main",
-      "owner": "JanJaapKo",
-      "package_id": "SolarForecast",
-      "registry_platforms": [
-        "linux",
-        "windows"
-      ],
-      "repository": "SolarForecast",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "main",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/madpatrick/solaredge_modbustcp@main",
-      "owner": "MadPatrick",
-      "package_id": "Solaredge_modbustcp",
-      "registry_platforms": [
-        "linux",
-        "windows"
-      ],
-      "repository": "Solaredge_modbustcp",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "main",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/galadril/domoticz-solaxcloud-plugin@main",
-      "owner": "galadril",
-      "package_id": "SolaxCloud",
-      "registry_platforms": [
-        "linux",
-        "windows"
-      ],
-      "repository": "Domoticz-SolaxCloud-Plugin",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "master",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/ayasystems/solaxhttp@master",
-      "owner": "ayasystems",
-      "package_id": "SolaxHTTP",
-      "registry_platforms": [
-        "linux",
-        "windows"
-      ],
-      "repository": "SolaxHTTP",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "master",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/madpatrick/domoticz_somfy@master",
-      "owner": "MadPatrick",
-      "package_id": "Somfy",
-      "registry_platforms": [
-        "linux"
-      ],
-      "repository": "domoticz_somfy",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "master",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/lolautruche/surveillancestationdomoticz@master",
-      "owner": "lolautruche",
-      "package_id": "Synology SurveillanceStation",
-      "registry_platforms": [
-        "linux",
-        "windows"
-      ],
-      "repository": "SurveillanceStationDomoticz",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "main",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/christophe-dms/tvuhdorange@main",
-      "owner": "Christophe-dms",
-      "package_id": "TVUHDOrange",
-      "registry_platforms": [
-        "linux",
-        "windows"
-      ],
-      "repository": "TVUHDOrange",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "master",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/rsp267/twc@master",
-      "owner": "RSP267",
-      "package_id": "TWC",
-      "registry_platforms": [
-        "linux"
-      ],
-      "repository": "TWC",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "main",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/janjaapko/teslaapidomoticz@main",
-      "owner": "JanJaapKo",
-      "package_id": "TeslaApiDomoticz",
-      "registry_platforms": [
-        "linux"
-      ],
-      "repository": "TeslaApiDomoticz",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "main",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/janjaapko/tesladomoticz@main",
-      "owner": "JanJaapKo",
-      "package_id": "TeslaDomoticz",
-      "registry_platforms": [
-        "linux"
-      ],
-      "repository": "TeslaDomoticz",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "main",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/voyo/thesslagreen-modbus@main",
-      "owner": "voyo",
-      "package_id": "ThesslaGreen-modbus",
-      "registry_platforms": [
-        "linux",
-        "windows"
-      ],
-      "repository": "ThesslaGreen-modbus",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "main",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/madpatrick/domoticz_toon@main",
-      "owner": "MadPatrick",
-      "package_id": "Toon_Thermostat",
-      "registry_platforms": [
-        "linux"
-      ],
-      "repository": "Domoticz_toon",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "master",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/ycahome/wan-ip-checker@master",
-      "owner": "ycahome",
-      "package_id": "WAN-IP-CHECKER",
-      "registry_platforms": [
-        "linux"
-      ],
-      "repository": "WAN-IP-CHECKER",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "master",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/galadril/domoticz-wlanthermo-plugin@master",
-      "owner": "galadril",
-      "package_id": "WLANThermo",
-      "registry_platforms": [
-        "linux",
-        "windows"
-      ],
-      "repository": "Domoticz-WLANThermo-Plugin",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "master",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/frustreermeneer/domoticz-wled-plugin@master",
-      "owner": "frustreermeneer",
-      "package_id": "WLED",
-      "registry_platforms": [
-        "linux",
-        "windows"
-      ],
-      "repository": "domoticz-wled-plugin",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "main",
-      "confidence": "medium",
-      "evidence_class": "linux_evidence",
-      "identity": "github.com/madpatrick/domoticz_weatherinfo@main",
-      "last_detection": {
-        "confidence": "medium",
-        "evidence_class": "linux_evidence",
-        "platforms": [
-          "linux"
-        ],
-        "reasons": [
-          "README.md: uses sudo",
-          "README.md: uses systemd",
-          "README.md: uses shell commands"
-        ],
-        "scores": {
-          "both": 0,
-          "linux": 8,
-          "windows": 0
-        }
-      },
-      "owner": "MadPatrick",
-      "package_id": "WeatherInfo",
-      "policy_action": "accepted_new_medium_or_high",
-      "registry_platforms": [
-        "linux"
-      ],
-      "repository": "domoticz_weatherinfo",
-      "reviewed": false,
-      "source": "detected"
-    },
-    {
-      "branch": "main",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/debugbill/wifitic@main",
-      "owner": "DebugBill",
-      "package_id": "WifiTIC",
-      "registry_platforms": [
-        "linux",
-        "windows"
-      ],
-      "repository": "WifiTIC",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "main",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/willemd61/xtend-plugin@main",
-      "owner": "WillemD61",
-      "package_id": "XTEND-plugin",
-      "registry_platforms": [
-        "linux",
-        "windows"
-      ],
-      "repository": "XTEND-plugin",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "master",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/whilser/xiaomi-mijia-philips-led-lamp@master",
-      "owner": "Whilser",
-      "package_id": "Xiaomi-MiJia-Philips-LED-Lamp",
-      "registry_platforms": [
-        "linux"
-      ],
-      "repository": "Xiaomi-MiJia-Philips-LED-Lamp",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "stable8",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/zigbeefordomoticz/domoticz-zigbee@stable8",
-      "owner": "zigbeefordomoticz",
-      "package_id": "Zigate",
-      "registry_platforms": [
-        "linux",
-        "windows"
-      ],
-      "repository": "Domoticz-Zigbee",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "master",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/stas-demydiuk/domoticz-zigbee2mqtt-plugin@master",
-      "owner": "stas-demydiuk",
-      "package_id": "Zigbee2Mqtt",
-      "registry_platforms": [
-        "linux",
-        "windows"
-      ],
-      "repository": "domoticz-zigbee2mqtt-plugin",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "main-domoticzex",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/fleinze/zigbee2tasmoticz@main-domoticzex",
-      "owner": "fleinze",
-      "package_id": "Zigbee2Tasmoticz",
-      "registry_platforms": [
-        "linux",
-        "windows"
-      ],
-      "repository": "Zigbee2Tasmoticz",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "master",
-      "confidence": "medium",
-      "evidence_class": "linux_evidence",
-      "identity": "github.com/frepke/zonneplan-domoticz-plugin@master",
-      "last_detection": {
-        "confidence": "medium",
-        "evidence_class": "linux_evidence",
-        "platforms": [
-          "linux"
-        ],
-        "reasons": [
-          "README.md: uses sudo",
-          "README.md: uses systemd",
-          "README.md: uses shell commands"
-        ],
-        "scores": {
-          "both": 0,
-          "linux": 8,
-          "windows": 0
-        }
-      },
-      "owner": "frepke",
-      "package_id": "Zonneplan-Domoticz-Plugin",
-      "policy_action": "accepted_new_medium_or_high",
-      "registry_platforms": [
-        "linux"
-      ],
-      "repository": "Zonneplan-Domoticz-Plugin",
-      "reviewed": false,
-      "source": "detected"
-    },
-    {
-      "branch": "main",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/antoinevdh/alphaess-battery-plugin@main",
-      "owner": "AntoineVDH",
-      "package_id": "alphaESS-battery-plugin",
-      "registry_platforms": [
-        "linux",
-        "windows"
-      ],
-      "repository": "alphaESS-battery-plugin",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "master",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/obaby/baby_weather_plugin@master",
-      "owner": "obaby",
-      "package_id": "baby_weather_plugin",
-      "registry_platforms": [
-        "linux",
-        "windows"
-      ],
-      "repository": "baby_weather_plugin",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "master",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/damsma/cometblue-domoticz@master",
-      "owner": "damsma",
-      "package_id": "cometblue-domoticz",
-      "registry_platforms": [
-        "linux"
-      ],
-      "repository": "cometblue-domoticz",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "master",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/smanar/domoticz-deconz@master",
-      "owner": "Smanar",
-      "package_id": "deCONZ",
-      "registry_platforms": [
-        "linux",
-        "windows"
-      ],
-      "repository": "Domoticz-deCONZ",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "master",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/mgrom/domoticz-airhumidifier@master",
-      "owner": "mgrom",
-      "package_id": "domoticz-AirHumidifier",
-      "registry_platforms": [
-        "linux",
-        "windows"
-      ],
-      "repository": "domoticz-AirHumidifier",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "master",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/belzetrigger/domoticz-bsr@master",
-      "owner": "belzetrigger",
-      "package_id": "domoticz-BSR",
-      "registry_platforms": [
-        "linux",
-        "windows"
-      ],
-      "repository": "domoticz-BSR",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "main",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/bblaszkiewicz/domoticz-homeconnectdishwasher@main",
-      "owner": "bblaszkiewicz",
-      "package_id": "domoticz-HomeConnectDishwasher",
-      "registry_platforms": [
-        "linux",
-        "windows"
-      ],
-      "repository": "domoticz-HomeConnectDishwasher",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "main",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/mike19700/domoticz-niu-escooter@main",
-      "owner": "Mike19700",
-      "package_id": "domoticz-Niu-escooter",
-      "registry_platforms": [
-        "linux",
-        "windows"
-      ],
-      "repository": "domoticz-Niu-escooter",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "master",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/pawelmuszynski/domoticz-ouman-c203-modbus-plugin@master",
-      "owner": "pawelmuszynski",
-      "package_id": "domoticz-Ouman-C203-Modbus-plugin",
-      "registry_platforms": [
-        "linux"
-      ],
-      "repository": "domoticz-Ouman-C203-Modbus-plugin",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "main",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/guintolli/domoticz-p110tapo-plugin@main",
-      "owner": "Guintolli",
-      "package_id": "domoticz-P110Tapo-plugin",
-      "registry_platforms": [
-        "linux"
-      ],
-      "repository": "domoticz-P110Tapo-plugin",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "main",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/mike19700/domoticz-powerworld-heat-pump@main",
-      "owner": "Mike19700",
-      "package_id": "domoticz-PowerWorld-heat-pump",
-      "registry_platforms": [
-        "linux",
-        "windows"
-      ],
-      "repository": "domoticz-PowerWorld-heat-pump",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "master",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/lrybak/domoticz-airly@master",
-      "owner": "lrybak",
-      "package_id": "domoticz-airly",
-      "registry_platforms": [
-        "linux",
-        "windows"
-      ],
-      "repository": "domoticz-airly",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "main",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
-      "identity": "github.com/flyingdomotic/domoticz-airsend-plugin@main",
-      "owner": "FlyingDomotic",
-      "package_id": "domoticz-airsend-plugin",
-      "registry_platforms": [
-        "linux"
-      ],
-      "repository": "domoticz-airsend-plugin",
       "reviewed": false,
       "source": "legacy_detected"
     },
@@ -2674,6 +412,80 @@
       "repository": "domoticz-aqi-poland",
       "reviewed": false,
       "source": "unknown"
+    },
+    {
+      "branch": "main",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/lemassykoi/domoticz-bluetti-plugin@main",
+      "owner": "lemassykoi",
+      "package_id": "Domoticz-Bluetti-Plugin",
+      "registry_platforms": [
+        "linux"
+      ],
+      "repository": "Domoticz-Bluetti-Plugin",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
+      "branch": "main",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/filipdem/domoticz-bmw-plugin@main",
+      "owner": "FilipDem",
+      "package_id": "Domoticz-BMW-plugin",
+      "registry_platforms": [
+        "linux",
+        "windows"
+      ],
+      "repository": "Domoticz-BMW-plugin",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
+      "branch": "main",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/salmr/domoticz-brel-home-hub-03-integration@main",
+      "owner": "salmr",
+      "package_id": "Domoticz-Brel-Home-Hub-03-integration",
+      "registry_platforms": [
+        "linux",
+        "windows"
+      ],
+      "repository": "Domoticz-Brel-Home-Hub-03-integration",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
+      "branch": "main",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/superjunky/domoticz-brel-plugin@main",
+      "owner": "superjunky",
+      "package_id": "Domoticz-Brel-Plugin",
+      "registry_platforms": [
+        "linux",
+        "windows"
+      ],
+      "repository": "Domoticz-Brel-Plugin",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
+      "branch": "master",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/belzetrigger/domoticz-bsr@master",
+      "owner": "belzetrigger",
+      "package_id": "domoticz-BSR",
+      "registry_platforms": [
+        "linux",
+        "windows"
+      ],
+      "repository": "domoticz-BSR",
+      "reviewed": false,
+      "source": "legacy_detected"
     },
     {
       "branch": "master",
@@ -2722,6 +534,36 @@
       "branch": "master",
       "confidence": "unknown",
       "evidence_class": "legacy",
+      "identity": "github.com/dtlzp/domoticz-dingtian-relay-plugin@master",
+      "owner": "dtlzp",
+      "package_id": "Domoticz-Dingtian-Relay-Plugin",
+      "registry_platforms": [
+        "linux",
+        "windows"
+      ],
+      "repository": "Domoticz-Dingtian-Relay-Plugin",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
+      "branch": "master",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/jorcat/domoticz-dlinksmartplug-plugin@master",
+      "owner": "jorcat",
+      "package_id": "Domoticz-DLinkSmartPlug-plugin",
+      "registry_platforms": [
+        "linux",
+        "windows"
+      ],
+      "repository": "Domoticz-DLinkSmartPlug-plugin",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
+      "branch": "master",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
       "identity": "github.com/creasoltech/domoticz-dts238@master",
       "owner": "CreasolTech",
       "package_id": "domoticz-dts238",
@@ -2737,24 +579,27 @@
       "branch": "master",
       "confidence": "unknown",
       "evidence_class": "legacy",
-      "identity": "github.com/z1mek/domoticz-esterownik_v3.5@master",
-      "owner": "z1mEk",
-      "package_id": "domoticz-eSterownik_v3.5",
-      "registry_platforms": [
-        "linux",
-        "windows"
-      ],
-      "repository": "domoticz-eSterownik_v3.5",
-      "reviewed": false,
-      "source": "legacy_detected"
-    },
-    {
-      "branch": "master",
-      "confidence": "unknown",
-      "evidence_class": "legacy",
       "identity": "github.com/creasoltech/domoticz-emmeti-eq2021@master",
+      "last_detection": {
+        "confidence": "medium",
+        "evidence_class": "linux_evidence",
+        "platforms": [
+          "linux"
+        ],
+        "reasons": [
+          "plugin.py: uses sudo",
+          "plugin.py: uses Unix system paths",
+          "plugin.py: uses Linux device paths"
+        ],
+        "scores": {
+          "both": 0,
+          "linux": 12,
+          "windows": 0
+        }
+      },
       "owner": "CreasolTech",
       "package_id": "domoticz-emmeti-eq2021",
+      "policy_action": "kept_existing_requires_high_confidence",
       "registry_platforms": [
         "linux",
         "windows"
@@ -2779,6 +624,20 @@
       "source": "legacy_detected"
     },
     {
+      "branch": "master",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/kofec/domoticz-enigma2@master",
+      "owner": "kofec",
+      "package_id": "Domoticz-Enigma2",
+      "registry_platforms": [
+        "linux"
+      ],
+      "repository": "Domoticz-Enigma2",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
       "branch": "main",
       "confidence": "unknown",
       "evidence_class": "legacy",
@@ -2789,6 +648,36 @@
         "linux"
       ],
       "repository": "domoticz-espnowserial-plugin",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
+      "branch": "master",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/z1mek/domoticz-esterownik_v3.5@master",
+      "owner": "z1mEk",
+      "package_id": "domoticz-eSterownik_v3.5",
+      "registry_platforms": [
+        "linux",
+        "windows"
+      ],
+      "repository": "domoticz-eSterownik_v3.5",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
+      "branch": "main",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/galadril/domoticz-evcc-io-plugin@main",
+      "owner": "galadril",
+      "package_id": "Domoticz-EVCC-IO-Plugin",
+      "registry_platforms": [
+        "linux",
+        "windows"
+      ],
+      "repository": "Domoticz-EVCC-IO-Plugin",
       "reviewed": false,
       "source": "legacy_detected"
     },
@@ -2852,6 +741,20 @@
       "source": "legacy_detected"
     },
     {
+      "branch": "main",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/cth35/domoticz-francefuelprice-plugin@main",
+      "owner": "cth35",
+      "package_id": "Domoticz-FranceFuelPrice-Plugin",
+      "registry_platforms": [
+        "linux"
+      ],
+      "repository": "Domoticz-FranceFuelPrice-Plugin",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
       "branch": "master",
       "confidence": "unknown",
       "evidence_class": "legacy",
@@ -2885,6 +788,78 @@
       "branch": "master",
       "confidence": "unknown",
       "evidence_class": "legacy",
+      "identity": "github.com/dnpwwo/domoticz-globalcache-plugin@master",
+      "owner": "dnpwwo",
+      "package_id": "Domoticz-GlobalCache-Plugin",
+      "registry_platforms": [
+        "linux",
+        "windows"
+      ],
+      "repository": "Domoticz-GlobalCache-Plugin",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
+      "branch": "main",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/mibeus/domoticz-gpio-debian-13@main",
+      "owner": "Mibeus",
+      "package_id": "Domoticz-GPIO-Debian-13",
+      "registry_platforms": [
+        "linux"
+      ],
+      "repository": "Domoticz-GPIO-Debian-13",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
+      "branch": "main",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/marceldbo/domoticz-gpsd-plugin@main",
+      "owner": "marceldbo",
+      "package_id": "Domoticz-GPSD-plugin",
+      "registry_platforms": [
+        "linux"
+      ],
+      "repository": "Domoticz-GPSD-plugin",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
+      "branch": "main",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/turnofafriendlycard/domoticz-gpslogger-plugin@main",
+      "owner": "TurnOfAFriendlyCard",
+      "package_id": "Domoticz-GPSLogger-Plugin",
+      "registry_platforms": [
+        "linux",
+        "windows"
+      ],
+      "repository": "Domoticz-GPSLogger-Plugin",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
+      "branch": "main",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/blooesky/domoticz-gree-ac@main",
+      "owner": "blooesky",
+      "package_id": "Domoticz-Gree-Ac",
+      "registry_platforms": [
+        "linux"
+      ],
+      "repository": "Domoticz-Gree-Ac",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
+      "branch": "master",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
       "identity": "github.com/stas-demydiuk/domoticz-h801-tasmota-plugin@master",
       "owner": "stas-demydiuk",
       "package_id": "domoticz-h801-tasmota-plugin",
@@ -2895,6 +870,128 @@
       "repository": "domoticz-h801-tasmota-plugin",
       "reviewed": false,
       "source": "legacy_detected"
+    },
+    {
+      "branch": "master",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/mvdklip/domoticz-hewalex@master",
+      "owner": "mvdklip",
+      "package_id": "Domoticz-Hewalex",
+      "registry_platforms": [
+        "linux"
+      ],
+      "repository": "Domoticz-Hewalex",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
+      "branch": "master",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/mario-peters/domoticz-home-connect-plugin@master",
+      "last_detection": {
+        "confidence": "medium",
+        "evidence_class": "linux_evidence",
+        "platforms": [
+          "linux"
+        ],
+        "reasons": [
+          "plugin.py: uses shell commands",
+          "homeconnectSSE.sh: Linux-oriented file name",
+          "homeconnectSSE.sh: mentions Raspberry Pi/Raspbian",
+          "homeconnectSSE.sh: uses Unix system paths",
+          "homeconnectSSE.sh: uses shell commands"
+        ],
+        "scores": {
+          "both": 0,
+          "linux": 14,
+          "windows": 0
+        }
+      },
+      "owner": "mario-peters",
+      "package_id": "Domoticz-Home-Connect-Plugin",
+      "policy_action": "kept_existing_requires_high_confidence",
+      "registry_platforms": [
+        "linux",
+        "windows"
+      ],
+      "repository": "Domoticz-Home-Connect-Plugin",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
+      "branch": "main",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/bblaszkiewicz/domoticz-homeconnectdishwasher@main",
+      "owner": "bblaszkiewicz",
+      "package_id": "domoticz-HomeConnectDishwasher",
+      "registry_platforms": [
+        "linux",
+        "windows"
+      ],
+      "repository": "domoticz-HomeConnectDishwasher",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
+      "branch": "main",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/jwgracht/domoticz-huawei-inverter@main",
+      "owner": "JWGracht",
+      "package_id": "Domoticz-Huawei-Inverter",
+      "registry_platforms": [
+        "linux"
+      ],
+      "repository": "Domoticz-Huawei-Inverter",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
+      "branch": "main",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/filipdem/domoticz-husqvarna-automower-plugin@main",
+      "owner": "FilipDem",
+      "package_id": "Domoticz-Husqvarna-Automower-plugin",
+      "registry_platforms": [
+        "linux",
+        "windows"
+      ],
+      "repository": "Domoticz-Husqvarna-Automower-plugin",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
+      "branch": "main",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/marceldbo/domoticz-indevolt-plugin@main",
+      "last_detection": {
+        "confidence": "low",
+        "evidence_class": "generic_python",
+        "platforms": [
+          "linux",
+          "windows"
+        ],
+        "reasons": [
+          "generic: no Linux-only or Windows-only evidence found"
+        ],
+        "scores": {
+          "both": 0,
+          "linux": 0,
+          "windows": 0
+        }
+      },
+      "owner": "marceldbo",
+      "package_id": "Domoticz-Indevolt-plugin",
+      "policy_action": "kept_low_confidence_new",
+      "registry_platforms": [],
+      "repository": "Domoticz-Indevolt-plugin",
+      "reviewed": false,
+      "source": "unknown"
     },
     {
       "branch": "main",
@@ -2908,6 +1005,21 @@
         "windows"
       ],
       "repository": "domoticz-ir-climate-controller",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
+      "branch": "master",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/dnpwwo/domoticz-kodi-plugin@master",
+      "owner": "dnpwwo",
+      "package_id": "Domoticz-Kodi-Plugin",
+      "registry_platforms": [
+        "linux",
+        "windows"
+      ],
+      "repository": "Domoticz-Kodi-Plugin",
       "reviewed": false,
       "source": "legacy_detected"
     },
@@ -2945,6 +1057,21 @@
       "source": "legacy_detected"
     },
     {
+      "branch": "master",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/gamedevhobby/domoticz-lgtv-webos-plugin@master",
+      "owner": "GameDevHobby",
+      "package_id": "Domoticz-LGTV-WebOS-Plugin",
+      "registry_platforms": [
+        "linux",
+        "windows"
+      ],
+      "repository": "Domoticz-LGTV-WebOS-Plugin",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
       "branch": "main",
       "confidence": "unknown",
       "evidence_class": "legacy",
@@ -2956,6 +1083,35 @@
         "windows"
       ],
       "repository": "domoticz-logmonitor-plugin",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
+      "branch": "main",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/galadril/domoticz-mcp-plugin@main",
+      "owner": "galadril",
+      "package_id": "Domoticz-MCP-Plugin",
+      "registry_platforms": [
+        "linux",
+        "windows"
+      ],
+      "repository": "Domoticz-MCP-Plugin",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
+      "branch": "main",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/lemassykoi/domoticz-mg-plugin@main",
+      "owner": "lemassykoi",
+      "package_id": "Domoticz-MG-Plugin",
+      "registry_platforms": [
+        "linux"
+      ],
+      "repository": "Domoticz-MG-Plugin",
       "reviewed": false,
       "source": "legacy_detected"
     },
@@ -2989,6 +1145,50 @@
       "source": "legacy_detected"
     },
     {
+      "branch": "main",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/galadril/domoticz-n8n-plugin@main",
+      "owner": "galadril",
+      "package_id": "Domoticz-N8N-Plugin",
+      "registry_platforms": [
+        "linux",
+        "windows"
+      ],
+      "repository": "Domoticz-N8N-Plugin",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
+      "branch": "master",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/filipdem/domoticz-nest-plugin@master",
+      "owner": "FilipDem",
+      "package_id": "Domoticz-NEST-plugin",
+      "registry_platforms": [
+        "linux"
+      ],
+      "repository": "Domoticz-NEST-plugin",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
+      "branch": "main",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/mike19700/domoticz-niu-escooter@main",
+      "owner": "Mike19700",
+      "package_id": "domoticz-Niu-escooter",
+      "registry_platforms": [
+        "linux",
+        "windows"
+      ],
+      "repository": "domoticz-Niu-escooter",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
       "branch": "master",
       "confidence": "unknown",
       "evidence_class": "legacy",
@@ -3000,6 +1200,20 @@
         "windows"
       ],
       "repository": "domoticz-nuki",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
+      "branch": "master",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/sincze/domoticz-omnik-local-web-plugin@master",
+      "owner": "sincze",
+      "package_id": "Domoticz-Omnik-Local-Web-Plugin",
+      "registry_platforms": [
+        "linux"
+      ],
+      "repository": "Domoticz-Omnik-Local-Web-Plugin",
       "reviewed": false,
       "source": "legacy_detected"
     },
@@ -3022,6 +1236,110 @@
       "branch": "main",
       "confidence": "unknown",
       "evidence_class": "legacy",
+      "identity": "github.com/lemassykoi/domoticz-opendtu-plugin@main",
+      "owner": "lemassykoi",
+      "package_id": "Domoticz-OpenDTU-Plugin",
+      "registry_platforms": [
+        "linux",
+        "windows"
+      ],
+      "repository": "Domoticz-OpenDTU-Plugin",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
+      "branch": "main",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/lemassykoi/domoticz-openmeteo-plugin@main",
+      "last_detection": {
+        "confidence": "low",
+        "evidence_class": "generic_python",
+        "platforms": [
+          "linux",
+          "windows"
+        ],
+        "reasons": [
+          "plugin.py: uses Unix system paths"
+        ],
+        "scores": {
+          "both": 0,
+          "linux": 4,
+          "windows": 0
+        }
+      },
+      "owner": "lemassykoi",
+      "package_id": "Domoticz-OpenMeteo-Plugin",
+      "policy_action": "kept_existing_requires_high_confidence",
+      "registry_platforms": [
+        "linux"
+      ],
+      "repository": "Domoticz-OpenMeteo-Plugin",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
+      "branch": "main",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/cth35/domoticz-openweathermap@main",
+      "owner": "cth35",
+      "package_id": "Domoticz-OpenWeatherMap",
+      "registry_platforms": [
+        "linux",
+        "windows"
+      ],
+      "repository": "Domoticz-OpenWeatherMap",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
+      "branch": "master",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/pawelmuszynski/domoticz-ouman-c203-modbus-plugin@master",
+      "owner": "pawelmuszynski",
+      "package_id": "domoticz-Ouman-C203-Modbus-plugin",
+      "registry_platforms": [
+        "linux"
+      ],
+      "repository": "domoticz-Ouman-C203-Modbus-plugin",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
+      "branch": "main",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/guintolli/domoticz-p110tapo-plugin@main",
+      "owner": "Guintolli",
+      "package_id": "domoticz-P110Tapo-plugin",
+      "registry_platforms": [
+        "linux"
+      ],
+      "repository": "domoticz-P110Tapo-plugin",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
+      "branch": "master",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/kinou74/domoticz-palazzetti@master",
+      "owner": "kinou74",
+      "package_id": "Domoticz-Palazzetti",
+      "registry_platforms": [
+        "linux",
+        "windows"
+      ],
+      "repository": "Domoticz-Palazzetti",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
+      "branch": "main",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
       "identity": "github.com/achterhoeker/domoticz-peblar@main",
       "owner": "Achterhoeker",
       "package_id": "domoticz-peblar",
@@ -3029,6 +1347,66 @@
         "linux"
       ],
       "repository": "domoticz-peblar",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
+      "branch": "main",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/janreimen/domoticz-pihole-control@main",
+      "owner": "janreimen",
+      "package_id": "Domoticz-PiHole-Control",
+      "registry_platforms": [
+        "linux",
+        "windows"
+      ],
+      "repository": "Domoticz-PiHole-Control",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
+      "branch": "master",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/dnpwwo/domoticz-pinger-plugin@master",
+      "owner": "dnpwwo",
+      "package_id": "Domoticz-Pinger-Plugin",
+      "registry_platforms": [
+        "linux",
+        "windows"
+      ],
+      "repository": "Domoticz-Pinger-Plugin",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
+      "branch": "main",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/csutihu/domoticz-plugin-for-samsung-washing-machine@main",
+      "owner": "csutihu",
+      "package_id": "Domoticz-plugin-for-samsung-washing-machine",
+      "registry_platforms": [
+        "linux",
+        "windows"
+      ],
+      "repository": "Domoticz-plugin-for-samsung-washing-machine",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
+      "branch": "main",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/csutihu/domoticz-plugin-for-tasmota-p1-smart-meter@main",
+      "owner": "csutihu",
+      "package_id": "Domoticz-plugin-for-Tasmota-P1-Smart-Meter",
+      "registry_platforms": [
+        "linux",
+        "windows"
+      ],
+      "repository": "Domoticz-plugin-for-Tasmota-P1-Smart-Meter",
       "reviewed": false,
       "source": "legacy_detected"
     },
@@ -3204,6 +1582,21 @@
       "source": "legacy_detected"
     },
     {
+      "branch": "main",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/mike19700/domoticz-powerworld-heat-pump@main",
+      "owner": "Mike19700",
+      "package_id": "domoticz-PowerWorld-heat-pump",
+      "registry_platforms": [
+        "linux",
+        "windows"
+      ],
+      "repository": "domoticz-PowerWorld-heat-pump",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
       "branch": "master",
       "confidence": "unknown",
       "evidence_class": "legacy",
@@ -3219,6 +1612,35 @@
       "source": "legacy_detected"
     },
     {
+      "branch": "main",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/galadril/domoticz-python-plugin-template@main",
+      "owner": "galadril",
+      "package_id": "Domoticz-Python-Plugin-Template",
+      "registry_platforms": [
+        "linux",
+        "windows"
+      ],
+      "repository": "Domoticz-Python-Plugin-Template",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
+      "branch": "master",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/dnpwwo/domoticz-raven-plugin@master",
+      "owner": "dnpwwo",
+      "package_id": "Domoticz-RAVEn-Plugin",
+      "registry_platforms": [
+        "linux"
+      ],
+      "repository": "Domoticz-RAVEn-Plugin",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
       "branch": "master",
       "confidence": "unknown",
       "evidence_class": "legacy",
@@ -3229,6 +1651,48 @@
         "linux"
       ],
       "repository": "domoticz-routeros-plugin",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
+      "branch": "main",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/lemassykoi/domoticz-shelly-plugin@main",
+      "owner": "lemassykoi",
+      "package_id": "Domoticz-Shelly-Plugin",
+      "registry_platforms": [
+        "linux"
+      ],
+      "repository": "Domoticz-Shelly-Plugin",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
+      "branch": "main",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/derenback/domoticz-sma-inverter@main",
+      "owner": "derenback",
+      "package_id": "Domoticz-SMA-Inverter",
+      "registry_platforms": [
+        "linux"
+      ],
+      "repository": "Domoticz-SMA-Inverter",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
+      "branch": "master",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/rklomp/domoticz-sma-sunnyboy@master",
+      "owner": "rklomp",
+      "package_id": "Domoticz-SMA-SunnyBoy",
+      "registry_platforms": [
+        "linux"
+      ],
+      "repository": "Domoticz-SMA-SunnyBoy",
       "reviewed": false,
       "source": "legacy_detected"
     },
@@ -3266,6 +1730,51 @@
       "branch": "main",
       "confidence": "unknown",
       "evidence_class": "legacy",
+      "identity": "github.com/saidlm/domoticz-solax-plugin@main",
+      "owner": "saidlm",
+      "package_id": "Domoticz-Solax-plugin",
+      "registry_platforms": [
+        "linux",
+        "windows"
+      ],
+      "repository": "Domoticz-Solax-plugin",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
+      "branch": "main",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "codeberg.org/hoog/domoticz-stromer-plugin@main",
+      "owner": "codeberg.org/Hoog",
+      "package_id": "Domoticz-Stromer-plugin",
+      "registry_platforms": [
+        "linux",
+        "windows"
+      ],
+      "repository": "Domoticz-Stromer-plugin",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
+      "branch": "main",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/bramvreugd/domoticz-synology-plugin@main",
+      "owner": "bramvreugd",
+      "package_id": "Domoticz-Synology-Plugin",
+      "registry_platforms": [
+        "linux",
+        "windows"
+      ],
+      "repository": "Domoticz-Synology-Plugin",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
+      "branch": "main",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
       "identity": "github.com/mirkg/domoticz-tailscale-plugin@main",
       "owner": "mirkg",
       "package_id": "domoticz-tailscale-plugin",
@@ -3273,6 +1782,48 @@
         "linux"
       ],
       "repository": "domoticz-tailscale-plugin",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
+      "branch": "main",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/mvdklip/domoticz-tasmota-smartplug@main",
+      "owner": "mvdklip",
+      "package_id": "Domoticz-Tasmota-Smartplug",
+      "registry_platforms": [
+        "linux"
+      ],
+      "repository": "Domoticz-Tasmota-Smartplug",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
+      "branch": "main",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/derenback/domoticz-temperatur-nu@main",
+      "owner": "derenback",
+      "package_id": "Domoticz-Temperatur-nu",
+      "registry_platforms": [
+        "linux"
+      ],
+      "repository": "Domoticz-Temperatur-nu",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
+      "branch": "main",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/lemassykoi/domoticz-teslafi-plugin@main",
+      "owner": "lemassykoi",
+      "package_id": "Domoticz-TeslaFi-Plugin",
+      "registry_platforms": [
+        "linux"
+      ],
+      "repository": "Domoticz-TeslaFi-Plugin",
       "reviewed": false,
       "source": "legacy_detected"
     },
@@ -3305,6 +1856,49 @@
       "source": "legacy_detected"
     },
     {
+      "branch": "Master",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/xenomes/domoticz-tinytuya-local-plugin@master",
+      "owner": "Xenomes",
+      "package_id": "Domoticz-TinyTUYA-Local-Plugin",
+      "registry_platforms": [
+        "linux",
+        "windows"
+      ],
+      "repository": "Domoticz-TinyTUYA-Local-Plugin",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
+      "branch": "Master",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/xenomes/domoticz-tinytuya-plugin@master",
+      "owner": "Xenomes",
+      "package_id": "Domoticz-TinyTUYA-Plugin",
+      "registry_platforms": [
+        "linux"
+      ],
+      "repository": "Domoticz-TinyTUYA-Plugin",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
+      "branch": "main",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/blooesky/domoticz-tplinkrouter@main",
+      "owner": "blooesky",
+      "package_id": "Domoticz-TPLinkRouter",
+      "registry_platforms": [
+        "linux"
+      ],
+      "repository": "Domoticz-TPLinkRouter",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
       "branch": "main",
       "confidence": "unknown",
       "evidence_class": "legacy",
@@ -3316,6 +1910,49 @@
         "windows"
       ],
       "repository": "domoticz-tuya-heatpump",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
+      "branch": "master",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/tixi/domoticz-tuya-smartplug-plugin@master",
+      "owner": "tixi",
+      "package_id": "Domoticz-Tuya-SmartPlug-Plugin",
+      "registry_platforms": [
+        "linux"
+      ],
+      "repository": "Domoticz-Tuya-SmartPlug-Plugin",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
+      "branch": "master",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/lacha07/domoticz-unifi-presence@master",
+      "owner": "lacha07",
+      "package_id": "Domoticz-Unifi-Presence",
+      "registry_platforms": [
+        "linux"
+      ],
+      "repository": "Domoticz-Unifi-Presence",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
+      "branch": "main",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/smanar/domoticz-veolia@main",
+      "owner": "Smanar",
+      "package_id": "Domoticz-Veolia",
+      "registry_platforms": [
+        "linux",
+        "windows"
+      ],
+      "repository": "Domoticz-Veolia",
       "reviewed": false,
       "source": "legacy_detected"
     },
@@ -3335,6 +1972,36 @@
       "source": "legacy_detected"
     },
     {
+      "branch": "main",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/worops/domoticz-virtualthermostat-pid@main",
+      "owner": "worops",
+      "package_id": "Domoticz-VirtualThermostat-PID",
+      "registry_platforms": [
+        "linux",
+        "windows"
+      ],
+      "repository": "Domoticz-VirtualThermostat-PID",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
+      "branch": "main",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/frepkovsky/domoticz-volumio-plugin@main",
+      "owner": "frepkovsky",
+      "package_id": "Domoticz-Volumio-Plugin",
+      "registry_platforms": [
+        "linux",
+        "windows"
+      ],
+      "repository": "Domoticz-Volumio-Plugin",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
       "branch": "master",
       "confidence": "unknown",
       "evidence_class": "legacy",
@@ -3345,6 +2012,21 @@
         "linux"
       ],
       "repository": "domoticz-watermeter",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
+      "branch": "main",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/cth35/domoticz-wazetimetravel-plugin@main",
+      "owner": "cth35",
+      "package_id": "Domoticz-WazeTimeTravel-Plugin",
+      "registry_platforms": [
+        "linux",
+        "windows"
+      ],
+      "repository": "Domoticz-WazeTimeTravel-Plugin",
       "reviewed": false,
       "source": "legacy_detected"
     },
@@ -3409,6 +2091,35 @@
       "source": "legacy_detected"
     },
     {
+      "branch": "main",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/akamming/domoticz-wordclock@main",
+      "owner": "akamming",
+      "package_id": "Domoticz-WordClock",
+      "registry_platforms": [
+        "linux",
+        "windows"
+      ],
+      "repository": "Domoticz-WordClock",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
+      "branch": "master",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/mvdklip/domoticz-wthermostatbeca@master",
+      "owner": "mvdklip",
+      "package_id": "Domoticz-WThermostatBeca",
+      "registry_platforms": [
+        "linux"
+      ],
+      "repository": "Domoticz-WThermostatBeca",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
       "branch": "master",
       "confidence": "unknown",
       "evidence_class": "legacy",
@@ -3424,6 +2135,64 @@
       "source": "legacy_detected"
     },
     {
+      "branch": "main",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/jacekholeczek/domoticz-xiaomi-mi-air-purifier-miot-plugin@main",
+      "owner": "JacekHoleczek",
+      "package_id": "Domoticz-Xiaomi-Mi-Air-Purifier-MIoT-Plugin",
+      "registry_platforms": [
+        "linux"
+      ],
+      "repository": "Domoticz-Xiaomi-Mi-Air-Purifier-MIoT-Plugin",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
+      "branch": "main",
+      "confidence": "medium",
+      "evidence_class": "linux_evidence",
+      "identity": "github.com/blooesky/domoticz-xiaomi-purifier-4-pro@main",
+      "last_detection": {
+        "confidence": "medium",
+        "evidence_class": "linux_evidence",
+        "platforms": [
+          "linux"
+        ],
+        "reasons": [
+          "README.md: uses sudo",
+          "README.md: uses systemd",
+          "README.md: uses chmod",
+          "README.md: uses shell commands",
+          "plugin.py: uses shell commands",
+          "uninstall.sh: Linux-oriented file name",
+          "uninstall.sh: uses shell commands",
+          "update.sh: Linux-oriented file name",
+          "update.sh: uses shell commands",
+          "install.sh: Linux-oriented file name",
+          "install.sh: uses apt package installation",
+          "install.sh: uses sudo",
+          "install.sh: uses chmod",
+          "install.sh: uses Unix system paths",
+          "install.sh: uses shell commands"
+        ],
+        "scores": {
+          "both": 0,
+          "linux": 41,
+          "windows": 0
+        }
+      },
+      "owner": "blooesky",
+      "package_id": "Domoticz-Xiaomi-Purifier-4-Pro",
+      "policy_action": "accepted_new_medium_or_high",
+      "registry_platforms": [
+        "linux"
+      ],
+      "repository": "Domoticz-Xiaomi-Purifier-4-Pro",
+      "reviewed": false,
+      "source": "detected"
+    },
+    {
       "branch": "master",
       "confidence": "unknown",
       "evidence_class": "legacy",
@@ -3435,6 +2204,34 @@
         "windows"
       ],
       "repository": "domoticz-zigbee2mqtt-plugin",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
+      "branch": "master",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/hedda/domoticz-zigpy@master",
+      "owner": "Hedda",
+      "package_id": "Domoticz-Zigpy",
+      "registry_platforms": [
+        "linux"
+      ],
+      "repository": "Domoticz-Zigpy",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
+      "branch": "main",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/galadril/domoticz-zonnedimmer-plugin@main",
+      "owner": "galadril",
+      "package_id": "Domoticz-ZonneDimmer-Plugin",
+      "registry_platforms": [
+        "linux"
+      ],
+      "repository": "Domoticz-ZonneDimmer-Plugin",
       "reviewed": false,
       "source": "legacy_detected"
     },
@@ -3497,6 +2294,21 @@
       "source": "legacy_detected"
     },
     {
+      "branch": "main",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/hopsilentsimon/domoticz_marstek_modbus@main",
+      "owner": "hopSilentSimon",
+      "package_id": "Domoticz_Marstek_Modbus",
+      "registry_platforms": [
+        "linux",
+        "windows"
+      ],
+      "repository": "Domoticz_Marstek_Modbus",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
       "branch": "master",
       "confidence": "unknown",
       "evidence_class": "legacy",
@@ -3507,6 +2319,21 @@
         "linux"
       ],
       "repository": "domoticz_panasonic_CZ-TACG1",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
+      "branch": "main",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/csutihu/domoticz_plugin_for_smasung_washer_dryer@main",
+      "owner": "csutihu",
+      "package_id": "Domoticz_plugin_for_Smasung_Washer_Dryer",
+      "registry_platforms": [
+        "linux",
+        "windows"
+      ],
+      "repository": "Domoticz_plugin_for_Smasung_Washer_Dryer",
       "reviewed": false,
       "source": "legacy_detected"
     },
@@ -3528,6 +2355,35 @@
       "branch": "main",
       "confidence": "unknown",
       "evidence_class": "legacy",
+      "identity": "github.com/akamming/domoticz_volvorecharge_plugin@main",
+      "owner": "akamming",
+      "package_id": "Domoticz_VolvoRecharge_Plugin",
+      "registry_platforms": [
+        "linux",
+        "windows"
+      ],
+      "repository": "Domoticz_VolvoRecharge_Plugin",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
+      "branch": "main",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/voyo/domoticz_wt53r_rain_tank_sensor@main",
+      "owner": "voyo",
+      "package_id": "Domoticz_WT53R_Rain_Tank_Sensor",
+      "registry_platforms": [
+        "linux"
+      ],
+      "repository": "Domoticz_WT53R_Rain_Tank_Sensor",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
+      "branch": "main",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
       "identity": "github.com/mibeus/domoticz_zigbee2tasmota@main",
       "owner": "Mibeus",
       "package_id": "domoticz_zigbee2tasmota",
@@ -3535,6 +2391,108 @@
         "linux"
       ],
       "repository": "domoticz_zigbee2tasmota",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
+      "branch": "main",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/ultrasuperpingu/domoticzd2lplugin@main",
+      "owner": "ultrasuperpingu",
+      "package_id": "DomoticzD2LPlugin",
+      "registry_platforms": [
+        "linux",
+        "windows"
+      ],
+      "repository": "DomoticzD2LPlugin",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
+      "branch": "master",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/sylvainper/domoticzmyhomeopenwebnet@master",
+      "owner": "SylvainPer",
+      "package_id": "DomoticzMyHomeOpenWebNet",
+      "registry_platforms": [
+        "linux"
+      ],
+      "repository": "DomoticzMyHomeOpenWebNet",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
+      "branch": "main",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/lbartuzi/domoticznestplugin@main",
+      "owner": "lbartuzi",
+      "package_id": "DomoticzNestPlugin",
+      "registry_platforms": [
+        "linux"
+      ],
+      "repository": "DomoticzNestPlugin",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
+      "branch": "master",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/trandbert37/domoticzproscenicvacuum@master",
+      "owner": "trandbert37",
+      "package_id": "DomoticzProscenicVacuum",
+      "registry_platforms": [
+        "linux",
+        "windows"
+      ],
+      "repository": "DomoticzProscenicVacuum",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
+      "branch": "master",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "gitlab.com/r.boeters/domoticzsabnzbdplugin@master",
+      "owner": "gitlab.com/r.boeters",
+      "package_id": "DomoticzSabNZBDPlugin",
+      "registry_platforms": [
+        "linux",
+        "windows"
+      ],
+      "repository": "DomoticzSabNZBDPlugin",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
+      "branch": "main",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/sydspost/domoticz-tile-plugin@main",
+      "owner": "sydspost",
+      "package_id": "DomoticzTile",
+      "registry_platforms": [
+        "linux",
+        "windows"
+      ],
+      "repository": "Domoticz-Tile-plugin",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
+      "branch": "main",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/madpatrick/domoticz_dreame@main",
+      "owner": "MadPatrick",
+      "package_id": "Dreame",
+      "registry_platforms": [
+        "linux"
+      ],
+      "repository": "Domoticz_dreame",
       "reviewed": false,
       "source": "legacy_detected"
     },
@@ -3553,6 +2511,51 @@
       "source": "legacy_detected"
     },
     {
+      "branch": "master",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/janjaapko/dysonpurelink@master",
+      "owner": "JanJaapKo",
+      "package_id": "DysonPureLink",
+      "registry_platforms": [
+        "linux",
+        "windows"
+      ],
+      "repository": "DysonPureLink",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
+      "branch": "master",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/phildesjda/dz_linkyd2l@master",
+      "owner": "PhilDeSJDA",
+      "package_id": "Dz_LinkyD2L",
+      "registry_platforms": [
+        "linux",
+        "windows"
+      ],
+      "repository": "Dz_LinkyD2L",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
+      "branch": "main",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/galadril/domoticz-e-flux-plugin@main",
+      "owner": "galadril",
+      "package_id": "E-Flux",
+      "registry_platforms": [
+        "linux",
+        "windows"
+      ],
+      "repository": "Domoticz-E-Flux-Plugin",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
       "branch": "main",
       "confidence": "unknown",
       "evidence_class": "legacy",
@@ -3564,6 +2567,20 @@
         "windows"
       ],
       "repository": "easee-domoticz",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
+      "branch": "master",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/bblaszkiewicz/easun-isolarsps-domoticz@master",
+      "owner": "bblaszkiewicz",
+      "package_id": "Easun-ISolarSPS-Domoticz",
+      "registry_platforms": [
+        "linux"
+      ],
+      "repository": "Easun-ISolarSPS-Domoticz",
       "reviewed": false,
       "source": "legacy_detected"
     },
@@ -3611,6 +2628,21 @@
       "source": "legacy_detected"
     },
     {
+      "branch": "main",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/madpatrick/domoticz_f1@main",
+      "owner": "MadPatrick",
+      "package_id": "F1_race",
+      "registry_platforms": [
+        "linux",
+        "windows"
+      ],
+      "repository": "Domoticz_F1",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
       "branch": "master",
       "confidence": "unknown",
       "evidence_class": "legacy",
@@ -3621,6 +2653,21 @@
         "linux"
       ],
       "repository": "fmi",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
+      "branch": "master",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/bblaszkiewicz/foxess-domoticz@master",
+      "owner": "bblaszkiewicz",
+      "package_id": "FoxESS-domoticz",
+      "registry_platforms": [
+        "linux",
+        "windows"
+      ],
+      "repository": "FoxESS-domoticz",
       "reviewed": false,
       "source": "legacy_detected"
     },
@@ -3654,6 +2701,35 @@
       "source": "legacy_detected"
     },
     {
+      "branch": "main",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/madpatrick/domoticz_fullykiosk@main",
+      "owner": "MadPatrick",
+      "package_id": "FullyKiosk",
+      "registry_platforms": [
+        "linux",
+        "windows"
+      ],
+      "repository": "Domoticz_fullykiosk",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
+      "branch": "main",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/madpatrick/domoticz_garbage@main",
+      "owner": "MadPatrick",
+      "package_id": "Garbage",
+      "registry_platforms": [
+        "linux"
+      ],
+      "repository": "Domoticz_garbage",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
       "branch": "master",
       "confidence": "unknown",
       "evidence_class": "legacy",
@@ -3668,6 +2744,50 @@
       "source": "legacy_detected"
     },
     {
+      "branch": "master",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/janjaapko/domoticz-goodwesems@master",
+      "owner": "JanJaapKo",
+      "package_id": "GoodWeAPI",
+      "registry_platforms": [
+        "linux"
+      ],
+      "repository": "domoticz-GoodWeSEMS",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
+      "branch": "main",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/galadril/domoticz-govee-plugin@main",
+      "owner": "galadril",
+      "package_id": "GoveeDiscovery",
+      "registry_platforms": [
+        "linux",
+        "windows"
+      ],
+      "repository": "Domoticz-Govee-Plugin",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
+      "branch": "master",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/bblaszkiewicz/hisense-aircon-domoticz@master",
+      "owner": "bblaszkiewicz",
+      "package_id": "Hisense-AirCon-Domoticz",
+      "registry_platforms": [
+        "linux",
+        "windows"
+      ],
+      "repository": "Hisense-AirCon-Domoticz",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
       "branch": "main",
       "confidence": "unknown",
       "evidence_class": "legacy",
@@ -3678,6 +2798,140 @@
         "linux"
       ],
       "repository": "home-connect",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
+      "branch": "master",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/rvdvoorde/domoticz-homewizard@master",
+      "owner": "rvdvoorde",
+      "package_id": "Homewizard",
+      "registry_platforms": [
+        "linux"
+      ],
+      "repository": "domoticz-homewizard",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
+      "branch": "main",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/etmmvdp/homewizard-battery-plugin@main",
+      "owner": "etmmvdp",
+      "package_id": "Homewizard-Battery",
+      "registry_platforms": [
+        "linux",
+        "windows"
+      ],
+      "repository": "HomeWizard-Battery-plugin",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
+      "branch": "main",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/freekdk/homewizard-wifi-3f-plugin@main",
+      "owner": "freekdk",
+      "package_id": "HomeWizard-Wifi-3F-plugin",
+      "registry_platforms": [
+        "linux",
+        "windows"
+      ],
+      "repository": "HomeWizard-Wifi-3F-plugin",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
+      "branch": "main",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/eraser3/homewizard-wifi-energy-socket@main",
+      "owner": "Eraser3",
+      "package_id": "HomeWizard-Wifi-Energy-Socket",
+      "registry_platforms": [
+        "linux",
+        "windows"
+      ],
+      "repository": "HomeWizard-Wifi-Energy-Socket",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
+      "branch": "main",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/siewert308sw/homewizard-wifi-kwh-meter@main",
+      "owner": "Siewert308SW",
+      "package_id": "HomeWizard-Wifi-kWh-Meter",
+      "registry_platforms": [
+        "linux",
+        "windows"
+      ],
+      "repository": "HomeWizard-Wifi-kWh-Meter",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
+      "branch": "main",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/henknl/homewizard-wifi-kwh-plugin@main",
+      "owner": "henkNL",
+      "package_id": "HomeWizard-Wifi-kWh-plugin",
+      "registry_platforms": [
+        "linux",
+        "windows"
+      ],
+      "repository": "HomeWizard-Wifi-kWh-plugin",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
+      "branch": "main",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/eraser3/homewizard-wifi-p1-plugin@main",
+      "owner": "Eraser3",
+      "package_id": "HomeWizard-Wifi-p1-plugin",
+      "registry_platforms": [
+        "linux",
+        "windows"
+      ],
+      "repository": "HomeWizard-Wifi-p1-plugin",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
+      "branch": "main",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/szelessavalapitvany/homewizard-wifi-p1-plugin-extended@main",
+      "owner": "szelessavalapitvany",
+      "package_id": "HomeWizard-Wifi-p1-plugin-Extended",
+      "registry_platforms": [
+        "linux",
+        "windows"
+      ],
+      "repository": "HomeWizard-Wifi-p1-plugin-Extended",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
+      "branch": "main",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/eraser3/homewizard-wifi-watermeter@main",
+      "owner": "Eraser3",
+      "package_id": "HomeWizard-Wifi-Watermeter",
+      "registry_platforms": [
+        "linux",
+        "windows"
+      ],
+      "repository": "HomeWizard-Wifi-Watermeter",
       "reviewed": false,
       "source": "legacy_detected"
     },
@@ -3711,6 +2965,34 @@
       "source": "unknown"
     },
     {
+      "branch": "main",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/madpatrick/domoticz_hp_ilo@main",
+      "owner": "MadPatrick",
+      "package_id": "HP_iLo",
+      "registry_platforms": [
+        "linux"
+      ],
+      "repository": "Domoticz_HP_ilo",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
+      "branch": "master",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/creasoltech/domoticz-hyundai-kia@master",
+      "owner": "CreasolTech",
+      "package_id": "HyundaiKiaConnect",
+      "registry_platforms": [
+        "linux"
+      ],
+      "repository": "domoticz-hyundai-kia",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
       "branch": "master",
       "confidence": "unknown",
       "evidence_class": "legacy",
@@ -3721,6 +3003,139 @@
         "linux"
       ],
       "repository": "Domoticz_iDetect",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
+      "branch": "master",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/moroen/ikea-tradfri-plugin@master",
+      "owner": "moroen",
+      "package_id": "IKEA-Tradfri",
+      "registry_platforms": [
+        "linux",
+        "windows"
+      ],
+      "repository": "IKEA-Tradfri-plugin",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
+      "branch": "main",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/mstojek/imgw-meteo@main",
+      "owner": "mstojek",
+      "package_id": "IMGW-Meteo",
+      "registry_platforms": [
+        "linux"
+      ],
+      "repository": "IMGW-Meteo",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
+      "branch": "main",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/voyo/intesisbox-panasonic-tcap-modbus@main",
+      "owner": "voyo",
+      "package_id": "IntesisBox-Panasonic-Tcap-modbus",
+      "registry_platforms": [
+        "linux",
+        "windows"
+      ],
+      "repository": "IntesisBox-Panasonic-Tcap-modbus",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
+      "branch": "main",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/luismalddonado/intesishomewithdomoticz@main",
+      "owner": "luismalddonado",
+      "package_id": "IntesishomewithDomoticz",
+      "registry_platforms": [
+        "linux",
+        "windows"
+      ],
+      "repository": "IntesishomewithDomoticz",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
+      "branch": "main",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/galadril/domoticz-itho-wifi-plugin@main",
+      "owner": "galadril",
+      "package_id": "IthoWifi",
+      "registry_platforms": [
+        "linux",
+        "windows"
+      ],
+      "repository": "Domoticz-Itho-Wifi-Plugin",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
+      "branch": "main",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/krakinou/frisquetconnectdomoticz@main",
+      "owner": "Krakinou",
+      "package_id": "Krakinou-FrisquetConnectDomoticz",
+      "registry_platforms": [
+        "linux"
+      ],
+      "repository": "FrisquetConnectDomoticz",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
+      "branch": "main",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/debugbill/link-tap@main",
+      "owner": "DebugBill",
+      "package_id": "Link-Tap",
+      "registry_platforms": [
+        "linux",
+        "windows"
+      ],
+      "repository": "Link-Tap",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
+      "branch": "master",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/guillaumezin/domoticzlinky@master",
+      "owner": "guillaumezin",
+      "package_id": "Linky",
+      "registry_platforms": [
+        "linux",
+        "windows"
+      ],
+      "repository": "DomoticzLinky",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
+      "branch": "main",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/lion251/liontasmoticz@main",
+      "owner": "Lion251",
+      "package_id": "LionTasmoticz",
+      "registry_platforms": [
+        "linux",
+        "windows"
+      ],
+      "repository": "LionTasmoticz",
       "reviewed": false,
       "source": "legacy_detected"
     },
@@ -3758,6 +3173,130 @@
       "source": "legacy_detected"
     },
     {
+      "branch": "main",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/madpatrick/domoticz_lyrion@main",
+      "owner": "MadPatrick",
+      "package_id": "Lyrion",
+      "registry_platforms": [
+        "linux"
+      ],
+      "repository": "domoticz_lyrion",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
+      "branch": "main",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/willemd61/marstek-venus-plugin@main",
+      "owner": "WillemD61",
+      "package_id": "Marstek-Venus-plugin",
+      "registry_platforms": [
+        "linux",
+        "windows"
+      ],
+      "repository": "Marstek-Venus-plugin",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
+      "branch": "main",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/haaibaai/domoticz-marstek@main",
+      "owner": "Haaibaai",
+      "package_id": "MarstekCT",
+      "registry_platforms": [
+        "linux",
+        "windows"
+      ],
+      "repository": "Domoticz-Marstek",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
+      "branch": "main",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/fleinze/mattericz@main",
+      "owner": "fleinze",
+      "package_id": "Mattericz",
+      "registry_platforms": [
+        "linux",
+        "windows"
+      ],
+      "repository": "Mattericz",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
+      "branch": "main",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/galadril/domoticz-meshcore-plugin@main",
+      "last_detection": {
+        "confidence": "medium",
+        "evidence_class": "windows_evidence",
+        "platforms": [
+          "windows"
+        ],
+        "reasons": [
+          "README.md: uses sudo",
+          "README.md: uses shell commands",
+          "tests/test_flood_scope.py: uses Windows serial port names",
+          "tests/run_tests.py: uses Windows serial port names",
+          "tests/test_serial.py: uses Windows serial port names",
+          "tests/test_rx_log.py: uses Windows serial port names"
+        ],
+        "scores": {
+          "both": 0,
+          "linux": 4,
+          "windows": 20
+        }
+      },
+      "owner": "galadril",
+      "package_id": "MeshCore",
+      "policy_action": "kept_existing_requires_high_confidence",
+      "registry_platforms": [
+        "linux",
+        "windows"
+      ],
+      "repository": "Domoticz-MeshCore-Plugin",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
+      "branch": "master",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/flatsiedatsie/mi_flower_mate_plugin@master",
+      "owner": "flatsiedatsie",
+      "package_id": "Mi_Flower_mate_plugin",
+      "registry_platforms": [
+        "linux"
+      ],
+      "repository": "Mi_Flower_mate_plugin",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
+      "branch": "development",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/emontnemery/domoticz_mqtt_discovery@development",
+      "owner": "emontnemery",
+      "package_id": "MQTTDiscovery",
+      "registry_platforms": [
+        "linux",
+        "windows"
+      ],
+      "repository": "domoticz_mqtt_discovery",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
       "branch": "dist",
       "confidence": "unknown",
       "evidence_class": "manual_registry_edit",
@@ -3790,6 +3329,80 @@
       "source": "reviewed"
     },
     {
+      "branch": "main",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/janjaapko/nedsolarforecast@main",
+      "owner": "JanJaapKo",
+      "package_id": "NEDsolarForecast",
+      "registry_platforms": [
+        "linux",
+        "windows"
+      ],
+      "repository": "NEDsolarForecast",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
+      "branch": "master",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/999lv/nut_ups@master",
+      "owner": "999LV",
+      "package_id": "NUT_UPS",
+      "registry_platforms": [
+        "linux"
+      ],
+      "repository": "NUT_UPS",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
+      "branch": "main",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/tmrealive/om310-domoticz-plugin@main",
+      "owner": "tmrealive",
+      "package_id": "OM310-Domoticz-plugin",
+      "registry_platforms": [
+        "linux",
+        "windows"
+      ],
+      "repository": "OM310-Domoticz-plugin",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
+      "branch": "master",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/ayasystems/openevseplugin@master",
+      "owner": "ayasystems",
+      "package_id": "OpenEVSEPlugin",
+      "registry_platforms": [
+        "linux",
+        "windows"
+      ],
+      "repository": "OpenEVSEPlugin",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
+      "branch": "main",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/nlovrens/pc321_ty_tuya_local@main",
+      "owner": "nlovrens",
+      "package_id": "PC321_TY_tuya_local",
+      "registry_platforms": [
+        "linux",
+        "windows"
+      ],
+      "repository": "PC321_TY_tuya_local",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
       "branch": "master",
       "confidence": "unknown",
       "evidence_class": "legacy",
@@ -3805,6 +3418,21 @@
       "source": "legacy_detected"
     },
     {
+      "branch": "main",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/galadril/domoticz-quatt-plugin@main",
+      "owner": "galadril",
+      "package_id": "Quatt",
+      "registry_platforms": [
+        "linux",
+        "windows"
+      ],
+      "repository": "Domoticz-Quatt-Plugin",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
       "branch": "master",
       "confidence": "unknown",
       "evidence_class": "legacy",
@@ -3815,6 +3443,50 @@
         "linux"
       ],
       "repository": "rest980-domoticz",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
+      "branch": "main",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/neutrino85/roomba@main",
+      "owner": "neutrino85",
+      "package_id": "Roomba",
+      "registry_platforms": [
+        "linux"
+      ],
+      "repository": "Roomba",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
+      "branch": "main",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/janjaapko/sessybattery@main",
+      "owner": "JanJaapKo",
+      "package_id": "SessyBattery",
+      "registry_platforms": [
+        "linux",
+        "windows"
+      ],
+      "repository": "SessyBattery",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
+      "branch": "main",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/mario-peters/shellycloudplugin2@main",
+      "owner": "mario-peters",
+      "package_id": "ShellyCloudPlugin2",
+      "registry_platforms": [
+        "linux",
+        "windows"
+      ],
+      "repository": "ShellyCloudPlugin2",
       "reviewed": false,
       "source": "legacy_detected"
     },
@@ -3849,6 +3521,51 @@
       "source": "legacy_detected"
     },
     {
+      "branch": "master",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/999lv/smartvirtualthermostat@master",
+      "owner": "999LV",
+      "package_id": "SmartVirtualThermostat",
+      "registry_platforms": [
+        "linux",
+        "windows"
+      ],
+      "repository": "SmartVirtualThermostat",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
+      "branch": "main",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/voyo/sofar-modbus@main",
+      "owner": "voyo",
+      "package_id": "Sofar-modbus",
+      "registry_platforms": [
+        "linux",
+        "windows"
+      ],
+      "repository": "Sofar-modbus",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
+      "branch": "main",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/madpatrick/solaredge_modbustcp@main",
+      "owner": "MadPatrick",
+      "package_id": "Solaredge_modbustcp",
+      "registry_platforms": [
+        "linux",
+        "windows"
+      ],
+      "repository": "Solaredge_modbustcp",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
       "branch": "main",
       "confidence": "unknown",
       "evidence_class": "legacy",
@@ -3860,6 +3577,65 @@
         "windows"
       ],
       "repository": "solarFlow2400AC",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
+      "branch": "main",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/janjaapko/solarforecast@main",
+      "owner": "JanJaapKo",
+      "package_id": "SolarForecast",
+      "registry_platforms": [
+        "linux",
+        "windows"
+      ],
+      "repository": "SolarForecast",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
+      "branch": "main",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/galadril/domoticz-solaxcloud-plugin@main",
+      "owner": "galadril",
+      "package_id": "SolaxCloud",
+      "registry_platforms": [
+        "linux",
+        "windows"
+      ],
+      "repository": "Domoticz-SolaxCloud-Plugin",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
+      "branch": "master",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/ayasystems/solaxhttp@master",
+      "owner": "ayasystems",
+      "package_id": "SolaxHTTP",
+      "registry_platforms": [
+        "linux",
+        "windows"
+      ],
+      "repository": "SolaxHTTP",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
+      "branch": "master",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/madpatrick/domoticz_somfy@master",
+      "owner": "MadPatrick",
+      "package_id": "Somfy",
+      "registry_platforms": [
+        "linux"
+      ],
+      "repository": "domoticz_somfy",
       "reviewed": false,
       "source": "legacy_detected"
     },
@@ -3912,6 +3688,49 @@
       "branch": "master",
       "confidence": "unknown",
       "evidence_class": "legacy",
+      "identity": "github.com/lolautruche/surveillancestationdomoticz@master",
+      "owner": "lolautruche",
+      "package_id": "Synology SurveillanceStation",
+      "registry_platforms": [
+        "linux",
+        "windows"
+      ],
+      "repository": "SurveillanceStationDomoticz",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
+      "branch": "main",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/janjaapko/teslaapidomoticz@main",
+      "owner": "JanJaapKo",
+      "package_id": "TeslaApiDomoticz",
+      "registry_platforms": [
+        "linux"
+      ],
+      "repository": "TeslaApiDomoticz",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
+      "branch": "main",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/janjaapko/tesladomoticz@main",
+      "owner": "JanJaapKo",
+      "package_id": "TeslaDomoticz",
+      "registry_platforms": [
+        "linux"
+      ],
+      "repository": "TeslaDomoticz",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
+      "branch": "master",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
       "identity": "github.com/zigbeefordomoticz/test_domoticzex@master",
       "owner": "zigbeefordomoticz",
       "package_id": "test_domoticzex",
@@ -3920,6 +3739,62 @@
         "windows"
       ],
       "repository": "test_domoticzex",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
+      "branch": "main",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/voyo/thesslagreen-modbus@main",
+      "last_detection": {
+        "confidence": "medium",
+        "evidence_class": "linux_evidence",
+        "platforms": [
+          "linux"
+        ],
+        "reasons": [
+          "plugin.py: uses sudo",
+          "plugin.py: uses Unix system paths",
+          "plugin.py: uses Linux device paths",
+          "serial/aio.py: uses Unix system paths",
+          "serial/aio.py: uses Linux device paths",
+          "serial/serialwin32.py: uses Windows serial port names",
+          "serial/serialposix.py: uses Unix system paths",
+          "serial/serialposix.py: uses Linux device paths",
+          "serial/serialposix.py: imports Linux-specific module termios",
+          "serial/serialposix.py: imports Linux-specific module fcntl",
+          "serial/rfc2217.py: uses Unix system paths",
+          "serial/rfc2217.py: uses Linux device paths"
+        ],
+        "scores": {
+          "both": 0,
+          "linux": 58,
+          "windows": 5
+        }
+      },
+      "owner": "voyo",
+      "package_id": "ThesslaGreen-modbus",
+      "policy_action": "kept_existing_requires_high_confidence",
+      "registry_platforms": [
+        "linux",
+        "windows"
+      ],
+      "repository": "ThesslaGreen-modbus",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
+      "branch": "main",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/madpatrick/domoticz_toon@main",
+      "owner": "MadPatrick",
+      "package_id": "Toon_Thermostat",
+      "registry_platforms": [
+        "linux"
+      ],
+      "repository": "Domoticz_toon",
       "reviewed": false,
       "source": "legacy_detected"
     },
@@ -3942,6 +3817,81 @@
       "branch": "main",
       "confidence": "unknown",
       "evidence_class": "legacy",
+      "identity": "github.com/christophe-dms/tvuhdorange@main",
+      "owner": "Christophe-dms",
+      "package_id": "TVUHDOrange",
+      "registry_platforms": [
+        "linux",
+        "windows"
+      ],
+      "repository": "TVUHDOrange",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
+      "branch": "master",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/rsp267/twc@master",
+      "owner": "RSP267",
+      "package_id": "TWC",
+      "registry_platforms": [
+        "linux"
+      ],
+      "repository": "TWC",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
+      "branch": "master",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/ycahome/wan-ip-checker@master",
+      "owner": "ycahome",
+      "package_id": "WAN-IP-CHECKER",
+      "registry_platforms": [
+        "linux"
+      ],
+      "repository": "WAN-IP-CHECKER",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
+      "branch": "main",
+      "confidence": "medium",
+      "evidence_class": "linux_evidence",
+      "identity": "github.com/madpatrick/domoticz_weatherinfo@main",
+      "last_detection": {
+        "confidence": "medium",
+        "evidence_class": "linux_evidence",
+        "platforms": [
+          "linux"
+        ],
+        "reasons": [
+          "README.md: uses sudo",
+          "README.md: uses systemd",
+          "README.md: uses shell commands"
+        ],
+        "scores": {
+          "both": 0,
+          "linux": 8,
+          "windows": 0
+        }
+      },
+      "owner": "MadPatrick",
+      "package_id": "WeatherInfo",
+      "policy_action": "accepted_new_medium_or_high",
+      "registry_platforms": [
+        "linux"
+      ],
+      "repository": "domoticz_weatherinfo",
+      "reviewed": false,
+      "source": "detected"
+    },
+    {
+      "branch": "main",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
       "identity": "github.com/tableflipper9001/weheat-domoticz-plugin@main",
       "owner": "Tableflipper9001",
       "package_id": "weheat-domoticz-plugin",
@@ -3950,6 +3900,51 @@
         "windows"
       ],
       "repository": "weheat-domoticz-plugin",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
+      "branch": "main",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/debugbill/wifitic@main",
+      "owner": "DebugBill",
+      "package_id": "WifiTIC",
+      "registry_platforms": [
+        "linux",
+        "windows"
+      ],
+      "repository": "WifiTIC",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
+      "branch": "master",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/galadril/domoticz-wlanthermo-plugin@master",
+      "owner": "galadril",
+      "package_id": "WLANThermo",
+      "registry_platforms": [
+        "linux",
+        "windows"
+      ],
+      "repository": "Domoticz-WLANThermo-Plugin",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
+      "branch": "master",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/frustreermeneer/domoticz-wled-plugin@master",
+      "owner": "frustreermeneer",
+      "package_id": "WLED",
+      "registry_platforms": [
+        "linux",
+        "windows"
+      ],
+      "repository": "domoticz-wled-plugin",
       "reviewed": false,
       "source": "legacy_detected"
     },
@@ -3966,6 +3961,112 @@
       "repository": "domoticz-mirobot-plugin",
       "reviewed": false,
       "source": "legacy_detected"
+    },
+    {
+      "branch": "master",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/whilser/xiaomi-mijia-philips-led-lamp@master",
+      "owner": "Whilser",
+      "package_id": "Xiaomi-MiJia-Philips-LED-Lamp",
+      "registry_platforms": [
+        "linux"
+      ],
+      "repository": "Xiaomi-MiJia-Philips-LED-Lamp",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
+      "branch": "main",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/willemd61/xtend-plugin@main",
+      "owner": "WillemD61",
+      "package_id": "XTEND-plugin",
+      "registry_platforms": [
+        "linux",
+        "windows"
+      ],
+      "repository": "XTEND-plugin",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
+      "branch": "stable8",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/zigbeefordomoticz/domoticz-zigbee@stable8",
+      "owner": "zigbeefordomoticz",
+      "package_id": "Zigate",
+      "registry_platforms": [
+        "linux",
+        "windows"
+      ],
+      "repository": "Domoticz-Zigbee",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
+      "branch": "master",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/stas-demydiuk/domoticz-zigbee2mqtt-plugin@master",
+      "owner": "stas-demydiuk",
+      "package_id": "Zigbee2Mqtt",
+      "registry_platforms": [
+        "linux",
+        "windows"
+      ],
+      "repository": "domoticz-zigbee2mqtt-plugin",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
+      "branch": "main-domoticzex",
+      "confidence": "unknown",
+      "evidence_class": "legacy",
+      "identity": "github.com/fleinze/zigbee2tasmoticz@main-domoticzex",
+      "owner": "fleinze",
+      "package_id": "Zigbee2Tasmoticz",
+      "registry_platforms": [
+        "linux",
+        "windows"
+      ],
+      "repository": "Zigbee2Tasmoticz",
+      "reviewed": false,
+      "source": "legacy_detected"
+    },
+    {
+      "branch": "master",
+      "confidence": "medium",
+      "evidence_class": "linux_evidence",
+      "identity": "github.com/frepke/zonneplan-domoticz-plugin@master",
+      "last_detection": {
+        "confidence": "medium",
+        "evidence_class": "linux_evidence",
+        "platforms": [
+          "linux"
+        ],
+        "reasons": [
+          "README.md: uses sudo",
+          "README.md: uses systemd",
+          "README.md: uses shell commands"
+        ],
+        "scores": {
+          "both": 0,
+          "linux": 8,
+          "windows": 0
+        }
+      },
+      "owner": "frepke",
+      "package_id": "Zonneplan-Domoticz-Plugin",
+      "policy_action": "accepted_new_medium_or_high",
+      "registry_platforms": [
+        "linux"
+      ],
+      "repository": "Zonneplan-Domoticz-Plugin",
+      "reviewed": false,
+      "source": "detected"
     }
   ],
   "schema_version": 2
