@@ -3278,8 +3278,13 @@
         const actions = [];
         const installed = Boolean(context && context.installed);
         if (!installed) return actions;
+        // The manager intentionally stays on its guarded Git-only update path.
+        if (context && context.isManager) {
+            if (context.isGit) actions.push('update');
+            return actions;
+        }
         if (!state) {
-            if (context && context.isGit && !context.isManager) actions.push('update');
+            if (context && context.isGit) actions.push('update');
             return actions;
         }
         if (state.restart_pending) {
