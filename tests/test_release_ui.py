@@ -111,6 +111,7 @@ def release_management_state(**overrides):
         "restart_pending": False,
         "git_supported": True,
         "release_available": True,
+        "migration_action_state": "blocked",
     }
     state.update(overrides)
     return state
@@ -597,6 +598,22 @@ def test_release_status_text_surfaces_versions_verification_migration_and_restar
         },
         {
             "state": release_management_state(
+                channel="git",
+                status="migration_confirmation_required",
+                migration_status="migration_confirmation_required",
+                migration_message=(
+                    "The release does not contain the installed commit."
+                ),
+                migration_action_state="confirmation_required",
+                updateable=False,
+            ),
+            "fragments": [
+                "Release switch to v2.0.0 requires confirmation",
+                "does not contain the installed commit",
+            ],
+        },
+        {
+            "state": release_management_state(
                 status="release_metadata_unavailable",
                 verification_status="unavailable",
                 verification_message="Accepted release metadata expired.",
@@ -689,6 +706,40 @@ def test_release_action_model_keeps_release_non_git_install_updateable():
                 channel="git",
                 status="migration_available",
                 rollback_available=False,
+                migration_action_state="available",
+            ),
+            "context": {"installed": True, "isGit": True, "isManager": False},
+            "expected": ["use_release"],
+        },
+        {
+            "state": release_management_state(
+                channel="git",
+                status="migration_confirmation_required",
+                updateable=False,
+                rollback_available=False,
+                migration_action_state="confirmation_required",
+            ),
+            "context": {"installed": True, "isGit": True, "isManager": False},
+            "expected": ["use_release"],
+        },
+        {
+            "state": release_management_state(
+                channel="git",
+                status="migration_waiting_for_release",
+                updateable=False,
+                rollback_available=False,
+                migration_action_state="blocked",
+            ),
+            "context": {"installed": True, "isGit": True, "isManager": False},
+            "expected": [],
+        },
+        {
+            "state": release_management_state(
+                channel="git",
+                status="git_available",
+                updateable=True,
+                rollback_available=False,
+                migration_action_state="available",
             ),
             "context": {"installed": True, "isGit": True, "isManager": False},
             "expected": ["update", "use_release"],
@@ -768,7 +819,7 @@ def test_ui_renders_explicit_channel_and_rollback_actions():
     assert "use_git" in script
     assert "Use Git" in script
     assert "use_release" in script
-    assert "Use Release" in script
+    assert "Switch to Release" in script
     assert "rollback" in script
     assert "Rollback" in script
     assert "handleReleaseManagementAction" in script

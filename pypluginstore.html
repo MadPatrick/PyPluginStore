@@ -3255,6 +3255,10 @@
             details.push('Release metadata unavailable' + (state.verification_message ? ': ' + state.verification_message : ''));
         } else if (String(state.status || '').indexOf('migration_blocked') === 0) {
             details.push('Migration blocked' + (state.migration_message ? ': ' + state.migration_message : ''));
+        } else if (state.status === 'migration_confirmation_required') {
+            const releaseTarget = target ? ' to ' + target : '';
+            details.push('Release switch' + releaseTarget + ' requires confirmation' +
+                (state.migration_message ? ': ' + state.migration_message : ''));
         } else if (state.status === 'migration_waiting_for_release') {
             details.push('Migration waiting for release' + (state.migration_message ? ': ' + state.migration_message : ''));
         } else if (state.status === 'git_available') {
@@ -3293,11 +3297,15 @@
             if (state.rollback_available) actions.push('rollback');
             return actions;
         }
-        if (state.updateable) actions.push('update');
+        const releaseSwitchAvailable = state.channel === 'git' &&
+            ['available', 'confirmation_required'].includes(state.migration_action_state);
+        const migrationIsActiveRoute = state.channel === 'git' &&
+            String(state.status || '').startsWith('migration_');
+        if (state.updateable && !migrationIsActiveRoute) actions.push('update');
         if (state.channel === 'release') {
             if (state.rollback_available) actions.push('rollback');
             if (state.git_supported) actions.push('use_git');
-        } else if (state.channel === 'git' && state.release_available) {
+        } else if (releaseSwitchAvailable) {
             actions.push('use_release');
         }
         return actions;
@@ -3581,7 +3589,7 @@
                     useReleaseButton.dataset.key = key;
                     useReleaseButton.dataset.action = 'use_release';
                     useReleaseButton.type = 'button';
-                    useReleaseButton.textContent = 'Use Release';
+                    useReleaseButton.textContent = 'Switch to Release';
                     actions.appendChild(useReleaseButton);
                 }
 

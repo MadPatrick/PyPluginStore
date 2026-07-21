@@ -54,6 +54,114 @@ def write_local_data(repository, relative_path, contents):
     return path
 
 
+def test_release_switch_planner_shares_manual_actionability_with_the_ui(
+    plugin_core_module,
+    tmp_path,
+    monkeypatch,
+):
+    configure_home(plugin_core_module, tmp_path)
+    plugin = plugin_core_module.BasePlugin()
+    repository, release_commit = initialize_repository(
+        os.path.join(plugin.get_host().plugins_dir(), PLUGIN_KEY)
+    )
+    plugin.installed_plugin_folders[PLUGIN_KEY] = PLUGIN_KEY
+    entry = configure_release_entry(plugin_core_module, plugin)
+    release = descriptor(plugin_core_module, release_commit)
+    context = {
+        "installed_mode": "git",
+        "release": release,
+        "tombstone": None,
+        "metadata_authorized": True,
+        "metadata_reason": "",
+        "installed_release": None,
+        "channel_preference": "keep_git",
+        "downgrade_confirmed": False,
+        "release_was_activated": False,
+        "git_status": "current",
+        "index_sequence": 42,
+    }
+
+    available = plugin._plan_release_switch(entry, context)
+
+    assert available.action_state == "available"
+    assert available.preflight.allowed is True
+
+    commit_files(
+        repository,
+        {"newer.py": "newer than the release\n"},
+        "advance installed checkout",
+    )
+    confirmation = plugin._plan_release_switch(entry, context)
+
+    assert confirmation.action_state == "confirmation_required"
+    assert confirmation.preflight.requires_confirmation is True
+
+    blocked_preflight = plugin_core_module.GitMigrationPreflightResult(
+        status="migration_waiting_for_release",
+        reason="ancestry_unavailable",
+        message="Release ancestry could not be verified.",
+    )
+    monkeypatch.setattr(
+        plugin.install_update_strategy.release_strategy,
+        "preflight_migration",
+        lambda requested_entry, requested_release, trigger: blocked_preflight,
+    )
+
+    blocked = plugin._plan_release_switch(entry, context)
+
+    assert blocked.action_state == "blocked"
+    assert blocked.message == "Release ancestry could not be verified."
+
+
+def test_management_map_exposes_confirmable_release_switch_not_artifact_only(
+    plugin_core_module,
+    tmp_path,
+    monkeypatch,
+):
+    configure_home(plugin_core_module, tmp_path)
+    plugin = plugin_core_module.BasePlugin()
+    repository, release_commit = initialize_repository(
+        os.path.join(plugin.get_host().plugins_dir(), PLUGIN_KEY)
+    )
+    plugin.installed_plugin_folders[PLUGIN_KEY] = PLUGIN_KEY
+    entry = configure_release_entry(plugin_core_module, plugin)
+    release = descriptor(plugin_core_module, release_commit)
+    commit_files(
+        repository,
+        {"newer.py": "newer than the release\n"},
+        "advance installed checkout",
+    )
+    selection = SimpleNamespace(
+        release_authorized=True,
+        release_index=SimpleNamespace(
+            plugins={PLUGIN_KEY: release},
+            tombstones={},
+        ),
+        reason="",
+        sequence=42,
+    )
+    monkeypatch.setattr(
+        plugin,
+        "getCurrentReleaseMetadataSelection",
+        lambda: selection,
+    )
+
+    management = plugin.getPluginManagementMap(
+        [PLUGIN_KEY],
+        {PLUGIN_KEY: "current"},
+        {},
+        plugin.get_host().plugins_dir(),
+    )[PLUGIN_KEY]
+
+    assert management["status"] == "migration_confirmation_required"
+    assert management["migration_action_state"] == "confirmation_required"
+    assert management["release_available"] is True
+    assert management["updateable"] is False
+    assert "does not contain the installed commit" in management[
+        "migration_message"
+    ].lower()
+
+
 @pytest.mark.parametrize(
     ("relative_path", "contents", "mutable_paths"),
     [

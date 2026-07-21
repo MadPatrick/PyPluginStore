@@ -7533,6 +7533,14 @@ class ReleaseTransactionPaths:
     live_code: str
     live_dependencies: str
 
+    @property
+    def staging_root(self):
+        return os.path.dirname(self.staged_code)
+
+    @property
+    def backup_root(self):
+        return os.path.dirname(self.backup_code)
+
     def to_document(self):
         return {
             "journal": self.journal,
@@ -7796,72 +7804,102 @@ class ReleaseTransactionManager:
             )
         return manager_dir, plugins_dir, state_root
 
-    def _paths(self, plugin_key, operation_id, create_parents=False):
+    def _canonical_paths(
+        self,
+        plugin_key,
+        operation_id,
+        *,
+        create_state=False,
+    ):
+        """Derive manager-owned paths without requiring payload containers."""
         plugin_key = _require_plugin_key(plugin_key)
         operation_id = _require_plugin_key(operation_id, "operation_id")
         manager_dir, plugins_dir, state_root = self._manager_paths(
-            create=create_parents
+            create=create_state
         )
-        staging_parent = os.path.join(
+        staging_root = os.path.join(
             state_root,
             "staging",
             plugin_key,
             operation_id,
         )
-        backup_parent = os.path.join(
+        backup_root = os.path.join(
             state_root,
             "backups",
             plugin_key,
             operation_id,
         )
-        if create_parents:
-            for directory in (
-                os.path.dirname(staging_parent),
-                os.path.dirname(backup_parent),
-            ):
-                if os.path.lexists(directory):
-                    if os.path.islink(directory) or not os.path.isdir(directory):
-                        raise ValueError(
-                            "Release transaction path must be a real directory."
-                        )
-                    continue
-                os.mkdir(directory)
-                self._fsync_directory(os.path.dirname(directory))
-            for directory in (staging_parent, backup_parent):
-                if os.path.lexists(directory):
-                    raise ValueError(
-                        "Release transaction operation path already exists."
-                    )
-                os.mkdir(directory)
-                self._fsync_directory(os.path.dirname(directory))
-        manager_device = os.stat(plugins_dir).st_dev
-        for directory in (
-            os.path.dirname(staging_parent),
-            staging_parent,
-            os.path.dirname(backup_parent),
-            backup_parent,
-        ):
-            if os.path.islink(directory) or not os.path.isdir(directory):
-                raise ValueError(
-                    "Release transaction path must be a real directory."
-                )
-            if os.stat(directory).st_dev != manager_device:
-                raise ValueError(
-                    "Release transaction paths must share one filesystem."
-                )
         return ReleaseTransactionPaths(
             journal=os.path.join(
                 state_root,
                 "transactions",
                 operation_id + ".json",
             ),
-            staged_code=os.path.join(staging_parent, "code"),
-            staged_dependencies=os.path.join(staging_parent, "dependencies"),
-            backup_code=os.path.join(backup_parent, "code"),
-            backup_dependencies=os.path.join(backup_parent, "dependencies"),
+            staged_code=os.path.join(staging_root, "code"),
+            staged_dependencies=os.path.join(staging_root, "dependencies"),
+            backup_code=os.path.join(backup_root, "code"),
+            backup_dependencies=os.path.join(backup_root, "dependencies"),
             live_code=os.path.join(plugins_dir, plugin_key),
             live_dependencies=os.path.join(manager_dir, ".shared_deps"),
         )
+
+    def _require_transaction_directory(self, directory, manager_device):
+        if os.path.islink(directory) or not os.path.isdir(directory):
+            raise ValueError(
+                "Release transaction path must be a real directory."
+            )
+        if os.stat(directory).st_dev != manager_device:
+            raise ValueError(
+                "Release transaction paths must share one filesystem."
+            )
+
+    def _require_operation_containers(self, paths):
+        """Validate package and operation directories before payload access."""
+        manager_device = os.stat(os.path.dirname(paths.journal)).st_dev
+        for directory in (
+            os.path.dirname(paths.staging_root),
+            paths.staging_root,
+            os.path.dirname(paths.backup_root),
+            paths.backup_root,
+        ):
+            self._require_transaction_directory(directory, manager_device)
+
+    def _create_operation_containers(self, paths):
+        """Create fresh operation roots without ever reusing old payloads."""
+        manager_device = os.stat(os.path.dirname(paths.journal)).st_dev
+        for directory in (
+            os.path.dirname(paths.staging_root),
+            os.path.dirname(paths.backup_root),
+        ):
+            if os.path.lexists(directory):
+                self._require_transaction_directory(
+                    directory,
+                    manager_device,
+                )
+                continue
+            os.mkdir(directory)
+            self._fsync_directory(os.path.dirname(directory))
+            self._require_transaction_directory(directory, manager_device)
+        for directory in (paths.staging_root, paths.backup_root):
+            if os.path.lexists(directory):
+                raise ValueError(
+                    "Release transaction operation path already exists."
+                )
+            os.mkdir(directory)
+            self._fsync_directory(os.path.dirname(directory))
+        self._require_operation_containers(paths)
+
+    def _paths(self, plugin_key, operation_id, create_parents=False):
+        paths = self._canonical_paths(
+            plugin_key,
+            operation_id,
+            create_state=create_parents,
+        )
+        if create_parents:
+            self._create_operation_containers(paths)
+        else:
+            self._require_operation_containers(paths)
+        return paths
 
     def _process_lock(self, state_root):
         with _RELEASE_TRANSACTION_LOCKS_GUARD:
@@ -7967,7 +8005,7 @@ class ReleaseTransactionManager:
         if update_timestamp:
             transaction.updated_at = self.plugin.get_host().utc_timestamp()
         document = transaction.to_document()
-        expected_paths = self._paths(
+        expected_paths = self._canonical_paths(
             transaction.plugin_key,
             transaction.operation_id,
         )
@@ -8153,7 +8191,7 @@ class ReleaseTransactionManager:
         self._write_pending_transactions_locked(queued)
         return queued
 
-    def _load_transaction(self, operation_id):
+    def _read_transaction_document(self, operation_id):
         operation_id = _require_plugin_key(operation_id, "operation_id")
         _manager, _plugins, state_root = self._manager_paths(create=False)
         journal = os.path.join(
@@ -8164,18 +8202,147 @@ class ReleaseTransactionManager:
         if os.path.islink(journal) or not os.path.isfile(journal):
             raise ValueError("Release transaction journal does not exist.")
         with open(journal, "rb") as journal_file:
-            document = _load_json_object(
+            return _load_json_object(
                 journal_file.read(),
                 "release transaction journal",
             )
-        is_legacy = (
-            type(document.get("schema_version")) is int
-            and document.get("schema_version")
-            == LEGACY_RELEASE_TRANSACTION_SCHEMA_VERSION
-        )
+
+    def _transaction_document_identity(self, document):
+        schema_version = document.get("schema_version")
+        if type(schema_version) is not int or schema_version not in {
+            RELEASE_TRANSACTION_SCHEMA_VERSION,
+            LEGACY_RELEASE_TRANSACTION_SCHEMA_VERSION,
+        }:
+            raise ValueError("Release transaction schema is unsupported.")
+        is_legacy = schema_version == LEGACY_RELEASE_TRANSACTION_SCHEMA_VERSION
         identity_field = "plugin_key" if is_legacy else "package_id"
-        plugin_key = document.get(identity_field, "")
-        expected_paths = self._paths(plugin_key, operation_id)
+        plugin_key = _require_plugin_key(
+            document.get(identity_field, ""),
+            identity_field,
+        )
+        return plugin_key, is_legacy
+
+    def _installed_state_matches_expected(self, transaction):
+        return bool(
+            self._metadata_matches(transaction)
+            and self._dependency_tree_matches(
+                transaction.paths.live_dependencies,
+                transaction.dependency_state["expected"],
+                "Installed dependency snapshot",
+            )
+        )
+
+    def _complete_pre_activation_rollback_locked(
+        self,
+        transaction,
+        error="",
+        *,
+        recreate_staging_root=False,
+    ):
+        """Converge an untouched-live transaction on one terminal state."""
+        resuming = bool(
+            transaction.phase == "rollback_pending"
+            and transaction.rollback_from
+            in RELEASE_TRANSACTION_PREACTIVATION_PHASES
+        )
+        if resuming:
+            rollback_from = transaction.rollback_from
+        elif transaction.phase in RELEASE_TRANSACTION_PREACTIVATION_PHASES:
+            rollback_from = transaction.phase
+        else:
+            raise RuntimeError(
+                "Transaction is not a pre-activation rollback."
+            )
+
+        installed_state_matches = self._installed_state_matches_expected(
+            transaction
+        )
+        fallback_error = (
+            "Recovered an interrupted pre-activation release operation."
+            if installed_state_matches
+            else (
+                "Installed state changed after an interrupted "
+                "pre-activation release operation."
+            )
+        )
+        requested_error = str(error or "")
+        if resuming:
+            primary_error = (
+                transaction.error or requested_error or fallback_error
+            )
+        else:
+            primary_error = (
+                requested_error or transaction.error or fallback_error
+            )
+            transaction.rollback_from = rollback_from
+            transaction.phase = "rollback_pending"
+            transaction.error = primary_error
+            self._write_transaction(transaction)
+        if resuming and not transaction.error:
+            transaction.error = primary_error
+            self._write_transaction(transaction)
+
+        if recreate_staging_root:
+            os.mkdir(transaction.paths.staging_root)
+            self._fsync_directory(
+                os.path.dirname(transaction.paths.staging_root)
+            )
+            self._require_operation_containers(transaction.paths)
+        self._discard_transaction_payloads(transaction)
+        return self._set_phase(
+            transaction,
+            "rolled_back" if installed_state_matches else "stale_target",
+            error=primary_error,
+        )
+
+    def _repair_missing_pre_activation_container(
+        self,
+        transaction,
+        *,
+        is_legacy,
+    ):
+        """Repair only the container shape created by the v2.19 abort bug."""
+        legacy_pre_activation = bool(
+            is_legacy
+            and transaction.phase
+            in RELEASE_TRANSACTION_PREACTIVATION_PHASES
+        )
+        interrupted_repair = bool(
+            transaction.phase == "rollback_pending"
+            and transaction.rollback_from
+            in RELEASE_TRANSACTION_PREACTIVATION_PHASES
+        )
+        if not (legacy_pre_activation or interrupted_repair):
+            return False
+
+        paths = transaction.paths
+        manager_device = os.stat(os.path.dirname(paths.journal)).st_dev
+        staging_package_root = os.path.dirname(paths.staging_root)
+        backup_package_root = os.path.dirname(paths.backup_root)
+        for directory in (
+            staging_package_root,
+            backup_package_root,
+            paths.backup_root,
+        ):
+            self._require_transaction_directory(directory, manager_device)
+        if os.path.lexists(paths.staging_root):
+            return False
+        if os.listdir(paths.backup_root):
+            raise RuntimeError(
+                "Legacy pre-activation backup is not empty; recovery stopped."
+            )
+        self._complete_pre_activation_rollback_locked(
+            transaction,
+            recreate_staging_root=True,
+        )
+        return True
+
+    def _load_transaction(self, operation_id, document=None):
+        operation_id = _require_plugin_key(operation_id, "operation_id")
+        if document is None:
+            document = self._read_transaction_document(operation_id)
+        plugin_key, is_legacy = self._transaction_document_identity(document)
+        expected_paths = self._canonical_paths(plugin_key, operation_id)
         parser = (
             ReleaseTransaction.from_legacy_document
             if is_legacy
@@ -8192,7 +8359,17 @@ class ReleaseTransactionManager:
         )
         transaction.expected_current = expected_current
         transaction.target = target
-        if is_legacy:
+        repaired = False
+        try:
+            self._require_operation_containers(transaction.paths)
+        except ValueError as path_error:
+            repaired = self._repair_missing_pre_activation_container(
+                transaction,
+                is_legacy=is_legacy,
+            )
+            if not repaired:
+                raise path_error
+        if is_legacy and not repaired:
             self._write_transaction(transaction, update_timestamp=False)
         return transaction
 
@@ -8210,9 +8387,21 @@ class ReleaseTransactionManager:
         for name in sorted(os.listdir(transaction_dir)):
             if not name.endswith(".json"):
                 continue
-            transaction = self._load_transaction(name[:-5])
-            if plugin_key is None or transaction.plugin_key == plugin_key:
-                transactions.append(transaction)
+            operation_id = name[:-5]
+            try:
+                document = self._read_transaction_document(operation_id)
+                document_plugin_key, _is_legacy = (
+                    self._transaction_document_identity(document)
+                )
+            except (OSError, ValueError):
+                if plugin_key is not None:
+                    continue
+                raise
+            if plugin_key is not None and document_plugin_key != plugin_key:
+                continue
+            transactions.append(
+                self._load_transaction(operation_id, document=document)
+            )
         return sorted(
             transactions,
             key=lambda item: (item.created_at, item.operation_id),
@@ -8243,10 +8432,10 @@ class ReleaseTransactionManager:
             )
         )
 
-    def _latest_verified_rollback_locked(self, plugin_key):
-        for transaction in reversed(
-            self._transactions_locked(plugin_key)
-        ):
+    def _latest_verified_rollback_locked(self, plugin_key, transactions=None):
+        if transactions is None:
+            transactions = self._transactions_locked(plugin_key)
+        for transaction in reversed(transactions):
             if self._rollback_snapshots_match_locked(transaction):
                 return transaction
         return None
@@ -8256,7 +8445,10 @@ class ReleaseTransactionManager:
         plugin_key = _require_plugin_key(plugin_key)
         with self.operation_lock():
             transactions = self._transactions_locked(plugin_key)
-            rollback = self._latest_verified_rollback_locked(plugin_key)
+            rollback = self._latest_verified_rollback_locked(
+                plugin_key,
+                transactions,
+            )
             restart_pending = False
             for transaction in reversed(transactions):
                 if transaction.phase == "restart_pending":
@@ -9067,14 +9259,20 @@ class ReleaseTransactionManager:
             os.unlink(path)
         self._fsync_directory(os.path.dirname(path))
 
-    def _remove_transaction_leaves(self, transaction):
-        for transaction_path in (
-            transaction.paths.staged_code,
-            transaction.paths.staged_dependencies,
-            transaction.paths.backup_code,
-            transaction.paths.backup_dependencies,
+    def _discard_transaction_payloads(self, transaction):
+        """Empty validated operation roots while retaining journal paths."""
+        self._require_operation_containers(transaction.paths)
+        for operation_root in (
+            transaction.paths.staging_root,
+            transaction.paths.backup_root,
         ):
-            self._remove_transaction_path(transaction_path)
+            with os.scandir(operation_root) as entries:
+                payloads = sorted(
+                    (entry.path for entry in entries),
+                    key=lambda path: os.path.basename(path).casefold(),
+                )
+            for payload in payloads:
+                self._remove_transaction_path(payload)
 
     def _restore_component(
         self,
@@ -9107,6 +9305,18 @@ class ReleaseTransactionManager:
     def _rollback_locked(self, transaction, error=""):
         if transaction.phase == "rolled_back":
             return transaction
+        if (
+            transaction.phase in RELEASE_TRANSACTION_PREACTIVATION_PHASES
+            or (
+                transaction.phase == "rollback_pending"
+                and transaction.rollback_from
+                in RELEASE_TRANSACTION_PREACTIVATION_PHASES
+            )
+        ):
+            return self._complete_pre_activation_rollback_locked(
+                transaction,
+                error,
+            )
         original_phase = (
             transaction.rollback_from
             if transaction.phase in ("rollback_pending", "queued_locked")
@@ -9239,7 +9449,7 @@ class ReleaseTransactionManager:
             transaction.operation == "release_install"
             or original_phase in RELEASE_TRANSACTION_PREACTIVATION_PHASES
         ):
-            self._remove_transaction_leaves(transaction)
+            self._discard_transaction_payloads(transaction)
         return self._set_phase(
             transaction,
             "rolled_back",
@@ -9387,45 +9597,27 @@ class ReleaseTransactionManager:
         error = str(error or "Release operation was aborted.")
         with self.operation_lock():
             transaction = self._load_transaction(operation_id)
-            resuming_abort = bool(
-                transaction.phase == "rollback_pending"
-                and transaction.rollback_from
+            if transaction.phase in {"rolled_back", "stale_target"} and (
+                transaction.rollback_from
                 in RELEASE_TRANSACTION_PREACTIVATION_PHASES
-            )
-            if (
+            ):
+                self._discard_transaction_payloads(transaction)
+                return transaction
+            if not (
                 transaction.phase
-                not in RELEASE_TRANSACTION_PREACTIVATION_PHASES
-                and not resuming_abort
-                and transaction.phase != "rolled_back"
+                in RELEASE_TRANSACTION_PREACTIVATION_PHASES
+                or (
+                    transaction.phase == "rollback_pending"
+                    and transaction.rollback_from
+                    in RELEASE_TRANSACTION_PREACTIVATION_PHASES
+                )
             ):
                 raise RuntimeError(
                     "An activation that may have changed live state must be rolled back."
                 )
-            if transaction.phase == "rolled_back":
-                if (
-                    transaction.rollback_from
-                    in RELEASE_TRANSACTION_PREACTIVATION_PHASES
-                ):
-                    self._remove_transaction_leaves(transaction)
-                return transaction
-            if not self._metadata_matches(transaction) or not self._dependency_tree_matches(
-                transaction.paths.live_dependencies,
-                transaction.dependency_state["expected"],
-                "Installed dependency snapshot",
-            ):
-                return self._set_phase(
-                    transaction,
-                    "stale_target",
-                    error="Installed state changed before the release operation aborted.",
-                )
-            if not resuming_abort:
-                transaction.rollback_from = transaction.phase
-                self._set_phase(transaction, "rollback_pending", error=error)
-            self._remove_transaction_leaves(transaction)
-            return self._set_phase(
+            return self._complete_pre_activation_rollback_locked(
                 transaction,
-                "rolled_back",
-                error=error,
+                error,
             )
 
     def rollback(self, operation_id):
@@ -9562,6 +9754,14 @@ class ReleaseTransactionManager:
     def _recover_transaction_locked(self, transaction):
         if transaction.phase == "queued_locked":
             return transaction
+        if (
+            transaction.phase == "rollback_pending"
+            and transaction.rollback_from
+            in RELEASE_TRANSACTION_PREACTIVATION_PHASES
+        ):
+            return self._complete_pre_activation_rollback_locked(
+                transaction
+            )
         if transaction.phase == "dependency_confirmation_required":
             return transaction
         if transaction.phase in RELEASE_TRANSACTION_FINAL_PHASES:
@@ -11405,6 +11605,26 @@ class GitMigrationPreflightResult:
     shallow: bool = False
     preservation_inventory: object = None
 
+    @property
+    def manual_action_state(self):
+        """Describe whether the reviewed manual switch can be offered."""
+        if not self.inventory_sha256:
+            return "blocked"
+        if self.requires_confirmation or self.requires_approval:
+            return "confirmation_required"
+        return "available" if self.allowed else "blocked"
+
+
+@dataclass(frozen=True)
+class ReleaseSwitchPlan:
+    """One shared read-only plan for rendering and executing a channel switch."""
+
+    action_state: str
+    message: str = ""
+    decision: object = None
+    preflight: object = None
+    release_strategy: object = None
+
 
 class GitMigrationPreflight:
     """Inspect a checkout, fetching only a verified release commit if needed."""
@@ -11896,7 +12116,7 @@ class GitMigrationPreflight:
                     if requires_confirmation
                     else relationship_reason
                 ),
-                message="The installed commit is not contained in the release.",
+                message="The release does not contain the installed commit.",
                 requires_confirmation=requires_confirmation,
                 **inventory_values,
                 **related,
@@ -14842,66 +15062,68 @@ class BasePlugin:
                     "restart_pending": False,
                 }
 
+            migration_action_state = "blocked"
+            decision_context = {
+                "installed_mode": ("release" if is_release else "git"),
+                "release": release,
+                "tombstone": tombstone,
+                "metadata_authorized": selection.release_authorized,
+                "metadata_reason": selection.reason,
+                "installed_release": metadata,
+                "channel_preference": preference,
+                "downgrade_confirmed": False,
+                "release_was_activated": is_release,
+                "git_status": update_status.get(plugin_key, "unknown"),
+                "index_sequence": selection.sequence,
+            }
             if metadata_invalid:
                 status = "verification_failed"
                 reason = "Installed release metadata is invalid: " + metadata_invalid
             else:
+                status_context = dict(decision_context)
+                status_context.pop("index_sequence")
                 decision = self.install_update_strategy.decide(
                     entry,
                     operation="status",
-                    installed_mode=("release" if is_release else "git"),
-                    release=release,
-                    tombstone=tombstone,
-                    metadata_authorized=selection.release_authorized,
-                    metadata_reason=selection.reason,
-                    installed_release=metadata,
-                    channel_preference=preference,
-                    release_was_activated=is_release,
-                    git_status=update_status.get(plugin_key, "unknown"),
+                    **status_context,
                 )
                 status = decision.status
                 reason = decision.reason
-                if (
-                    decision.route == "release_migration"
-                    and release is not None
-                ):
-                    release_strategy = getattr(
-                        self.install_update_strategy,
-                        "release_strategy",
-                        None,
-                    )
-                    preflight_migration = getattr(
-                        release_strategy,
-                        "preflight_migration",
-                        None,
-                    )
+                if is_git and release is not None:
                     try:
-                        if not callable(preflight_migration):
-                            raise RuntimeError(
-                                "Git migration preflight is unavailable."
-                            )
-                        preflight = preflight_migration(
+                        switch_plan = self._plan_release_switch(
                             entry,
-                            release,
+                            decision_context,
                             "manual",
                         )
-                        status = preflight.status
-                        if status not in {
-                            "migration_available",
-                            "migration_blocked_local_changes",
-                            "migration_blocked_local_files",
-                            "migration_waiting_for_release",
-                        }:
-                            status = "migration_waiting_for_release"
-                        reason = preflight.message or preflight.reason
                     except (
                         OSError,
                         ReleasePreservationError,
                         RuntimeError,
                         ValueError,
                     ) as error:
-                        status = "migration_waiting_for_release"
-                        reason = str(error)
+                        switch_plan = ReleaseSwitchPlan(
+                            "blocked",
+                            str(error),
+                        )
+                    migration_action_state = switch_plan.action_state
+                    if decision.route == "release_migration":
+                        if switch_plan.action_state == "confirmation_required":
+                            status = "migration_confirmation_required"
+                            reason = switch_plan.message
+                        elif switch_plan.preflight is not None:
+                            status = switch_plan.preflight.status
+                            if status not in {
+                                "migration_available",
+                                "migration_blocked_local_changes",
+                                "migration_blocked_local_files",
+                                "migration_waiting_for_release",
+                            }:
+                                status = "migration_waiting_for_release"
+                            reason = switch_plan.message
+                        else:
+                            status = "migration_waiting_for_release"
+                            reason = switch_plan.message
 
             version_info = versions.get(plugin_key, {})
             installed_version = (
@@ -14933,6 +15155,7 @@ class BasePlugin:
                 "migration_blocked_local_changes",
                 "migration_blocked_local_files",
                 "migration_waiting_for_release",
+                "migration_confirmation_required",
             }
             management[plugin_key] = {
                 "channel": channel,
@@ -14967,6 +15190,7 @@ class BasePlugin:
                 "restart_pending": lifecycle["restart_pending"],
                 "git_supported": entry.delivery.git_supported,
                 "release_available": release is not None,
+                "migration_action_state": migration_action_state,
             }
         return management
 
@@ -15544,6 +15768,95 @@ class BasePlugin:
             raise RuntimeError(error)
         return context
 
+    def _plan_release_switch(self, entry, context, trigger="manual"):
+        """Plan one Git-to-Release switch for both the API and the UI."""
+        if trigger not in ReleaseManagementCoordinator.TRIGGERS:
+            raise ValueError(
+                "Release management trigger must be manual or automatic."
+            )
+        error = str(context.get("error") or "")
+        if error:
+            return ReleaseSwitchPlan("blocked", error)
+        release = context.get("release")
+        if (
+            not context.get("metadata_authorized")
+            or release is None
+            or context.get("tombstone") is not None
+        ):
+            return ReleaseSwitchPlan(
+                "blocked",
+                "No authorized release is available for this plugin.",
+            )
+        if context.get("installed_mode") != "git":
+            return ReleaseSwitchPlan(
+                "blocked",
+                "The requested release migration is not applicable.",
+            )
+
+        decision_context = dict(context)
+        index_sequence = decision_context.pop("index_sequence", 0)
+        decision_context.pop("error", None)
+        decision_context["channel_preference"] = "release"
+        decision = self.install_update_strategy.decide(
+            entry,
+            operation="update",
+            trigger=trigger,
+            **decision_context,
+        )
+        decision = replace(decision, index_sequence=index_sequence)
+        if decision.route != "release_migration":
+            return ReleaseSwitchPlan(
+                "blocked",
+                decision.reason
+                or "Git-to-release migration is not available.",
+                decision=decision,
+            )
+
+        release_strategy = getattr(
+            self.install_update_strategy,
+            "release_strategy",
+            None,
+        )
+        preflight_migration = getattr(
+            release_strategy,
+            "preflight_migration",
+            None,
+        )
+        if not callable(preflight_migration):
+            return ReleaseSwitchPlan(
+                "blocked",
+                "Git-to-release migration is not configured.",
+                decision=decision,
+            )
+        try:
+            preflight = preflight_migration(entry, release, trigger)
+        except (
+            OSError,
+            ReleasePreservationError,
+            RuntimeError,
+            ValueError,
+        ) as error:
+            return ReleaseSwitchPlan(
+                "blocked",
+                str(error),
+                decision=decision,
+                release_strategy=release_strategy,
+            )
+        action_state = preflight.manual_action_state
+        return ReleaseSwitchPlan(
+            action_state,
+            preflight.message
+            or preflight.reason
+            or (
+                "Git-to-release migration is not available."
+                if action_state == "blocked"
+                else ""
+            ),
+            decision=decision,
+            preflight=preflight,
+            release_strategy=release_strategy,
+        )
+
     def _channel_action_target(self, entry, context, channel):
         release = context.get("release")
         target = {
@@ -15726,59 +16039,19 @@ class BasePlugin:
                     "The requested release migration is not applicable."
                 )
 
-            decision_context = dict(context)
-            index_sequence = decision_context.pop("index_sequence", 0)
-            decision_context.pop("error", None)
-            decision_context["channel_preference"] = "release"
-            decision = self.install_update_strategy.decide(
+            switch_plan = self._plan_release_switch(
                 entry,
-                operation="update",
-                trigger=trigger,
-                **decision_context,
-            )
-            decision = replace(
-                decision,
-                index_sequence=index_sequence,
-            )
-            if decision.route != "release_migration":
-                raise RuntimeError(
-                    decision.reason
-                    or "Git-to-release migration is not available."
-                )
-            release_strategy = getattr(
-                self.install_update_strategy,
-                "release_strategy",
-                None,
-            )
-            preflight_migration = getattr(
-                release_strategy,
-                "preflight_migration",
-                None,
-            )
-            if not callable(preflight_migration):
-                raise RuntimeError(
-                    "Git-to-release migration is not configured."
-                )
-            preflight = preflight_migration(
-                entry,
-                release,
+                context,
                 trigger,
             )
-            manually_authorizable = bool(
-                preflight.allowed
-                or preflight.requires_approval
-                or preflight.requires_confirmation
-            )
-            if not manually_authorizable:
+            if switch_plan.action_state == "blocked":
                 raise RuntimeError(
-                    preflight.message
-                    or preflight.reason
+                    switch_plan.message
                     or "Git-to-release migration is not available."
                 )
-            if not preflight.inventory_sha256:
-                raise RuntimeError(
-                    "Git migration inventory could not be verified."
-                )
+            decision = switch_plan.decision
+            preflight = switch_plan.preflight
+            release_strategy = switch_plan.release_strategy
             target = self._channel_action_target(
                 entry,
                 context,
@@ -15851,7 +16124,7 @@ class BasePlugin:
                 entry,
                 release,
                 trigger,
-                index_sequence=index_sequence,
+                index_sequence=decision.index_sequence,
                 approved_inventory_sha256=approved_digest,
                 downgrade_confirmed=bool(
                     preflight.requires_confirmation

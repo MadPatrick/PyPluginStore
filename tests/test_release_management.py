@@ -1146,6 +1146,7 @@ def test_management_map_rechecks_expiry_before_status_decisions(
     assert management["status"] == "git_current"
     assert management["channel"] == "git"
     assert management["release_available"] is False
+    assert management["migration_action_state"] == "blocked"
     assert "expired" in management["verification_message"].lower()
 
 

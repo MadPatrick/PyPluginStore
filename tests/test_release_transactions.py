@@ -237,6 +237,49 @@ def prepare_transaction(
     )
 
 
+def prepare_pre_activation_transaction(
+    manager,
+    plugins_dir,
+    manager_dir,
+    phase,
+):
+    """Reach a durable pre-activation phase through the public API."""
+    if phase == "created":
+        return manager.create_transaction(
+            plugin_key="ExamplePlugin",
+            operation_id="operation-001",
+            operation="release_install",
+            expected_current={"management_mode": "absent"},
+            target=target_release(),
+        )
+
+    transaction = prepare_transaction(
+        manager,
+        plugins_dir,
+        manager_dir,
+        stage_dependencies=False,
+    )
+    if phase == "staged_verified":
+        return transaction
+    if phase == "dependency_confirmation_required":
+        return manager.mark_dependency_confirmation_required(
+            transaction.operation_id,
+            dependency_snapshot(),
+        )
+    if phase == "dependencies_staged":
+        return manager.mark_dependencies_staged(
+            transaction.operation_id,
+            dependency_snapshot(),
+        )
+    if phase == "dependency_blocked":
+        return manager.mark_dependency_blocked(
+            transaction.operation_id,
+            "incompatible_dependencies",
+            "Original dependency failure.",
+        )
+    raise AssertionError("Unsupported test phase: " + phase)
+
+
 def migration_expected_from_preflight(preflight):
     return {
         "management_mode": "git",
@@ -583,6 +626,354 @@ def test_restart_recovery_upgrades_v1_journal_before_rollback(
     assert "plugin_key" not in document
 
 
+@pytest.mark.parametrize(
+    "phase",
+    [
+        "created",
+        "staged_verified",
+        "dependency_confirmation_required",
+        "dependencies_staged",
+        "dependency_blocked",
+    ],
+)
+def test_startup_repairs_v1_pre_activation_journal_with_missing_staging_parent(
+    plugin_core_module,
+    tmp_path,
+    phase,
+):
+    manager, plugins_dir, manager_dir = make_manager(
+        plugin_core_module,
+        tmp_path,
+    )
+    transaction = prepare_pre_activation_transaction(
+        manager,
+        plugins_dir,
+        manager_dir,
+        phase,
+    )
+    journal_path = Path(transaction.paths.journal)
+    document = json.loads(journal_path.read_text(encoding="utf-8"))
+    expected_error = document["error"] or (
+        "Recovered an interrupted pre-activation release operation."
+    )
+    journal_path.write_text(
+        json.dumps(legacy_transaction_document(document)),
+        encoding="utf-8",
+    )
+    staging_parent = Path(transaction.paths.staged_code).parent
+    backup_parent = Path(transaction.paths.backup_code).parent
+    shutil.rmtree(staging_parent)
+
+    recovered_manager = new_manager(plugin_core_module)
+    recovered_manager.finalize_startup()
+    recovered = recovered_manager.load_transaction(
+        transaction.operation_id
+    )
+    upgraded = json.loads(journal_path.read_text(encoding="utf-8"))
+
+    assert recovered.phase == "rolled_back"
+    assert recovered.rollback_from == phase
+    assert recovered.error == expected_error
+    assert staging_parent.is_dir()
+    assert backup_parent.is_dir()
+    assert list(staging_parent.iterdir()) == []
+    assert list(backup_parent.iterdir()) == []
+    assert upgraded["schema_version"] == 2
+    assert upgraded["package_id"] == "ExamplePlugin"
+    assert "plugin_key" not in upgraded
+    journal_after_recovery = journal_path.read_bytes()
+
+    recovered_manager.recover_pending()
+
+    assert journal_path.read_bytes() == journal_after_recovery
+
+
+def test_legacy_pre_activation_repair_marks_changed_live_state_stale(
+    plugin_core_module,
+    tmp_path,
+):
+    manager, plugins_dir, manager_dir = make_manager(
+        plugin_core_module,
+        tmp_path,
+    )
+    transaction = prepare_pre_activation_transaction(
+        manager,
+        plugins_dir,
+        manager_dir,
+        "created",
+    )
+    journal_path = Path(transaction.paths.journal)
+    document = legacy_transaction_document(
+        json.loads(journal_path.read_text(encoding="utf-8"))
+    )
+    journal_path.write_text(json.dumps(document), encoding="utf-8")
+    staging_parent = Path(transaction.paths.staged_code).parent
+    backup_parent = Path(transaction.paths.backup_code).parent
+    shutil.rmtree(staging_parent)
+    write_marker(transaction.paths.live_code, "later install")
+
+    recovered_manager = new_manager(plugin_core_module)
+    recovered_manager.finalize_startup()
+    recovered = recovered_manager.load_transaction(
+        transaction.operation_id
+    )
+
+    assert recovered.phase == "stale_target"
+    assert recovered.rollback_from == "created"
+    assert recovered.error == (
+        "Installed state changed after an interrupted pre-activation "
+        "release operation."
+    )
+    assert read_marker(transaction.paths.live_code) == "later install"
+    assert staging_parent.is_dir()
+    assert backup_parent.is_dir()
+    assert list(staging_parent.iterdir()) == []
+    assert list(backup_parent.iterdir()) == []
+
+
+def test_legacy_pre_activation_repair_resumes_after_container_creation_crash(
+    plugin_core_module,
+    tmp_path,
+    monkeypatch,
+):
+    manager, plugins_dir, manager_dir = make_manager(
+        plugin_core_module,
+        tmp_path,
+    )
+    transaction = prepare_pre_activation_transaction(
+        manager,
+        plugins_dir,
+        manager_dir,
+        "created",
+    )
+    journal_path = Path(transaction.paths.journal)
+    document = legacy_transaction_document(
+        json.loads(journal_path.read_text(encoding="utf-8"))
+    )
+    journal_path.write_text(json.dumps(document), encoding="utf-8")
+    staging_parent = Path(transaction.paths.staged_code).parent
+    shutil.rmtree(staging_parent)
+    real_mkdir = plugin_core_module.os.mkdir
+
+    def crash_before_container_creation(path, *args, **kwargs):
+        if Path(path) == staging_parent:
+            raise SimulatedCrash("container creation")
+        return real_mkdir(path, *args, **kwargs)
+
+    monkeypatch.setattr(
+        plugin_core_module.os,
+        "mkdir",
+        crash_before_container_creation,
+    )
+    with pytest.raises(SimulatedCrash, match="container creation"):
+        new_manager(plugin_core_module).finalize_startup()
+
+    interrupted = json.loads(journal_path.read_text(encoding="utf-8"))
+    assert interrupted["schema_version"] == 2
+    assert interrupted["phase"] == "rollback_pending"
+    assert interrupted["rollback_from"] == "created"
+    assert interrupted["error"] == (
+        "Recovered an interrupted pre-activation release operation."
+    )
+    assert not staging_parent.exists()
+
+    monkeypatch.setattr(plugin_core_module.os, "mkdir", real_mkdir)
+    recovered_manager = new_manager(plugin_core_module)
+    recovered_manager.finalize_startup()
+    recovered = recovered_manager.load_transaction(
+        transaction.operation_id
+    )
+
+    assert recovered.phase == "rolled_back"
+    assert recovered.rollback_from == "created"
+    assert recovered.error == interrupted["error"]
+    assert staging_parent.is_dir()
+
+
+def test_changed_state_repair_resumes_after_staging_root_was_recreated(
+    plugin_core_module,
+    tmp_path,
+    monkeypatch,
+):
+    manager, plugins_dir, manager_dir = make_manager(
+        plugin_core_module,
+        tmp_path,
+    )
+    transaction = prepare_pre_activation_transaction(
+        manager,
+        plugins_dir,
+        manager_dir,
+        "created",
+    )
+    journal_path = Path(transaction.paths.journal)
+    document = legacy_transaction_document(
+        json.loads(journal_path.read_text(encoding="utf-8"))
+    )
+    journal_path.write_text(json.dumps(document), encoding="utf-8")
+    staging_parent = Path(transaction.paths.staged_code).parent
+    shutil.rmtree(staging_parent)
+    write_marker(transaction.paths.live_code, "later install")
+
+    interrupted_manager = new_manager(plugin_core_module)
+
+    def crash_before_payload_discard(_transaction):
+        raise SimulatedCrash("payload discard")
+
+    monkeypatch.setattr(
+        interrupted_manager,
+        "_discard_transaction_payloads",
+        crash_before_payload_discard,
+    )
+    with pytest.raises(SimulatedCrash, match="payload discard"):
+        interrupted_manager.finalize_startup()
+
+    interrupted = json.loads(journal_path.read_text(encoding="utf-8"))
+    assert interrupted["schema_version"] == 2
+    assert interrupted["phase"] == "rollback_pending"
+    assert interrupted["rollback_from"] == "created"
+    assert staging_parent.is_dir()
+    assert read_marker(transaction.paths.live_code) == "later install"
+
+    recovered_manager = new_manager(plugin_core_module)
+    recovered_manager.finalize_startup()
+    recovered = recovered_manager.load_transaction(
+        transaction.operation_id
+    )
+    journal_after_recovery = journal_path.read_bytes()
+
+    assert recovered.phase == "stale_target"
+    assert recovered.rollback_from == "created"
+    assert recovered.error == interrupted["error"]
+    assert read_marker(transaction.paths.live_code) == "later install"
+    assert list(staging_parent.iterdir()) == []
+
+    recovered_manager.finalize_startup()
+
+    assert journal_path.read_bytes() == journal_after_recovery
+
+
+def test_missing_active_transaction_path_fails_closed_only_for_owning_package(
+    plugin_core_module,
+    tmp_path,
+):
+    manager, plugins_dir, manager_dir = make_manager(
+        plugin_core_module,
+        tmp_path,
+    )
+    transaction = prepare_transaction(manager, plugins_dir, manager_dir)
+
+    def crash_after_code_backup(phase, _transaction):
+        if phase == "code_backed_up":
+            raise SimulatedCrash(phase)
+
+    manager.fault_injector = crash_after_code_backup
+    with pytest.raises(SimulatedCrash):
+        manager.activate(transaction.operation_id)
+
+    journal_path = Path(transaction.paths.journal)
+    document = json.loads(journal_path.read_text(encoding="utf-8"))
+    assert document["phase"] == "code_backed_up"
+    journal_path.write_text(
+        json.dumps(legacy_transaction_document(document)),
+        encoding="utf-8",
+    )
+    journal_before = journal_path.read_bytes()
+    staging_parent = Path(transaction.paths.staged_code).parent
+    backup_code = Path(transaction.paths.backup_code)
+    backup_before = {
+        path.relative_to(backup_code).as_posix(): path.read_bytes()
+        for path in backup_code.rglob("*")
+        if path.is_file()
+    }
+    live_code_before = Path(transaction.paths.live_code).exists()
+    shutil.rmtree(staging_parent)
+
+    unrelated = manager.plugin_lifecycle_state("UnrelatedPlugin")
+
+    assert unrelated["rollback_available"] is False
+    assert unrelated["restart_pending"] is False
+    with pytest.raises(ValueError, match="path must be a real directory"):
+        manager.plugin_lifecycle_state("ExamplePlugin")
+    with pytest.raises(ValueError, match="path must be a real directory"):
+        new_manager(plugin_core_module).recover_pending()
+    assert not staging_parent.exists()
+    assert Path(transaction.paths.live_code).exists() is live_code_before
+    assert {
+        path.relative_to(backup_code).as_posix(): path.read_bytes()
+        for path in backup_code.rglob("*")
+        if path.is_file()
+    } == backup_before
+    assert journal_path.read_bytes() == journal_before
+
+
+def test_legacy_recovery_never_replaces_an_unsafe_staging_path(
+    plugin_core_module,
+    tmp_path,
+):
+    manager, _plugins_dir, _manager_dir = make_manager(
+        plugin_core_module,
+        tmp_path,
+    )
+    transaction = manager.create_transaction(
+        plugin_key="ExamplePlugin",
+        operation_id="operation-001",
+        operation="release_install",
+        expected_current={"management_mode": "absent"},
+        target=target_release(),
+    )
+    journal_path = Path(transaction.paths.journal)
+    document = legacy_transaction_document(
+        json.loads(journal_path.read_text(encoding="utf-8"))
+    )
+    journal_path.write_text(json.dumps(document), encoding="utf-8")
+    journal_before = journal_path.read_bytes()
+    staging_parent = Path(transaction.paths.staged_code).parent
+    shutil.rmtree(staging_parent)
+    staging_parent.write_text("untrusted replacement", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="path must be a real directory"):
+        new_manager(plugin_core_module).recover_pending()
+
+    assert staging_parent.read_text(encoding="utf-8") == (
+        "untrusted replacement"
+    )
+    assert journal_path.read_bytes() == journal_before
+
+
+def test_legacy_recovery_does_not_discard_an_unexpected_backup(
+    plugin_core_module,
+    tmp_path,
+):
+    manager, _plugins_dir, _manager_dir = make_manager(
+        plugin_core_module,
+        tmp_path,
+    )
+    transaction = manager.create_transaction(
+        plugin_key="ExamplePlugin",
+        operation_id="operation-001",
+        operation="release_install",
+        expected_current={"management_mode": "absent"},
+        target=target_release(),
+    )
+    journal_path = Path(transaction.paths.journal)
+    document = legacy_transaction_document(
+        json.loads(journal_path.read_text(encoding="utf-8"))
+    )
+    journal_path.write_text(json.dumps(document), encoding="utf-8")
+    journal_before = journal_path.read_bytes()
+    staging_parent = Path(transaction.paths.staged_code).parent
+    backup_parent = Path(transaction.paths.backup_code).parent
+    shutil.rmtree(staging_parent)
+    write_marker(backup_parent / "unexpected", "retained backup")
+
+    with pytest.raises(RuntimeError, match="backup is not empty"):
+        new_manager(plugin_core_module).recover_pending()
+
+    assert not staging_parent.exists()
+    assert read_marker(backup_parent / "unexpected") == "retained backup"
+    assert journal_path.read_bytes() == journal_before
+
+
 def test_release_transaction_refuses_activation_before_dependencies_are_staged(
     plugin_core_module, tmp_path
 ):
@@ -674,6 +1065,11 @@ def test_created_release_install_abort_cleans_staging_without_losing_journal(
         target=target_release(),
     )
     write_marker(transaction.paths.staged_code, "partial download")
+    staging_parent = Path(transaction.paths.staged_code).parent
+    archive_path = staging_parent / "artifact.zip"
+    extraction_path = staging_parent / "extracted"
+    archive_path.write_bytes(b"partial archive")
+    write_marker(extraction_path, "partially extracted")
 
     aborted = manager.abort(
         transaction.operation_id,
@@ -684,11 +1080,13 @@ def test_created_release_install_abort_cleans_staging_without_losing_journal(
     assert Path(aborted.paths.staged_code).parent.is_dir()
     assert Path(aborted.paths.backup_code).parent.is_dir()
     assert not Path(aborted.paths.staged_code).exists()
+    assert list(Path(aborted.paths.staged_code).parent.iterdir()) == []
+    assert list(Path(aborted.paths.backup_code).parent.iterdir()) == []
     assert Path(aborted.paths.journal).is_file()
     assert manager.load_transaction(aborted.operation_id).phase == "rolled_back"
 
 
-def test_pre_activation_abort_can_retry_after_partial_cleanup(
+def test_pre_activation_abort_retry_preserves_original_error(
     plugin_core_module,
     tmp_path,
     monkeypatch,
@@ -718,14 +1116,62 @@ def test_pre_activation_abort_can_retry_after_partial_cleanup(
     interrupted = manager.load_transaction(transaction.operation_id)
     assert interrupted.phase == "rollback_pending"
     assert interrupted.rollback_from == "dependencies_staged"
+    assert interrupted.error == "download failed"
     assert Path(interrupted.paths.staged_code).parent.is_dir()
     assert Path(interrupted.paths.backup_code).parent.is_dir()
+
+    monkeypatch.setattr(
+        manager,
+        "_remove_transaction_path",
+        original_remove,
+    )
+    retried_abort = manager.abort(
+        transaction.operation_id,
+        "retry cleanup",
+    )
+    assert retried_abort.phase == "rolled_back"
+    assert retried_abort.error == "download failed"
+    assert_old_live(retried_abort)
+
+
+def test_startup_recovery_resumes_interrupted_pre_activation_abort(
+    plugin_core_module,
+    tmp_path,
+    monkeypatch,
+):
+    manager, plugins_dir, manager_dir = make_manager(
+        plugin_core_module,
+        tmp_path,
+    )
+    transaction = prepare_transaction(manager, plugins_dir, manager_dir)
+    original_remove = manager._remove_transaction_path
+    calls = []
+
+    def interrupt_second_leaf(path):
+        calls.append(path)
+        if len(calls) == 2:
+            raise OSError("injected cleanup interruption")
+        original_remove(path)
+
+    monkeypatch.setattr(
+        manager,
+        "_remove_transaction_path",
+        interrupt_second_leaf,
+    )
+    with pytest.raises(OSError, match="injected cleanup interruption"):
+        manager.abort(transaction.operation_id, "download failed")
+
+    interrupted = manager.load_transaction(transaction.operation_id)
+    assert interrupted.phase == "rollback_pending"
+    assert interrupted.rollback_from == "dependencies_staged"
+    assert interrupted.error == "download failed"
 
     recovered_manager = new_manager(plugin_core_module)
     recovered_manager.recover_pending()
     retried = recovered_manager.load_transaction(transaction.operation_id)
 
     assert retried.phase == "rolled_back"
+    assert retried.error == "download failed"
     assert recovered_manager.abort(
         retried.operation_id,
         "retry",
