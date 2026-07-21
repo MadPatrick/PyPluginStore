@@ -1,6 +1,7 @@
 import hashlib
 import os
 from dataclasses import replace
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -292,6 +293,75 @@ def test_release_failure_aborts_without_falling_back_to_git(
 
     assert result == (False, "artifact digest mismatch")
     assert [call[0] for call in manager.calls] == ["create", "abort"]
+    assert dependencies.calls == []
+
+
+def test_identity_rejection_keeps_one_reloadable_clean_transaction(
+    plugin_core_module,
+    tmp_path,
+    monkeypatch,
+):
+    configure_home(plugin_core_module, tmp_path)
+    plugin = plugin_core_module.BasePlugin()
+    plugin.plugin_data = {
+        "ExamplePlugin": [
+            "owner",
+            "example-plugin",
+            "Example plugin",
+            "main",
+        ]
+    }
+    plugin.release_metadata_selection = (
+        plugin_core_module.ReleaseMetadataSelection(
+            sequence=42,
+            registry_bytes=b"{}",
+            release_index_bytes=b"{}",
+            release_index=None,
+            release_authorized=True,
+        )
+    )
+
+    class RejectingValidator:
+        def validate(self, **arguments):
+            del arguments
+            raise ValueError(
+                "The staged plugin identity does not match the requested plugin."
+            )
+
+    dependencies = RecordingDependencies()
+    strategy = plugin_core_module.ReleaseInstallUpdateStrategy(
+        plugin,
+        transaction_manager=plugin.release_transaction_manager,
+        dependency_service=dependencies,
+        http_client=RecordingHttpClient(),
+        extractor=StagingExtractor(),
+        validator=RejectingValidator(),
+    )
+    monkeypatch.setattr(strategy, "_operation_id", lambda: "operation-001")
+    entry = plugin.get_registry_entry("ExamplePlugin")
+
+    result = strategy.install(entry, descriptor(plugin_core_module), "manual")
+    transaction = plugin.release_transaction_manager.load_transaction(
+        "operation-001"
+    )
+    errors = [
+        args[0]
+        for args, _kwargs in plugin_core_module.Domoticz.calls["Error"]
+        if args
+    ]
+
+    assert result == (
+        False,
+        "The staged plugin identity does not match the requested plugin.",
+    )
+    assert transaction.phase == "rolled_back"
+    assert transaction.error == result[1]
+    assert Path(transaction.paths.journal).is_file()
+    assert Path(transaction.paths.staging_root).is_dir()
+    assert Path(transaction.paths.backup_root).is_dir()
+    assert list(Path(transaction.paths.staging_root).iterdir()) == []
+    assert list(Path(transaction.paths.backup_root).iterdir()) == []
+    assert not any("cleanup failed" in message.lower() for message in errors)
     assert dependencies.calls == []
 
 
