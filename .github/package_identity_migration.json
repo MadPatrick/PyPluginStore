@@ -1,0 +1,1813 @@
+{
+  "missing_certifications": [],
+  "package_count": 257,
+  "package_mappings": [
+    {
+      "domoticz_key": "RFSwitches",
+      "legacy_package_id": "433Switches",
+      "package_id": "433Switches",
+      "plugin_py_sha256": "8ecdd5dcdb84223f85ee7b5b7c465877d8cbad1dd629e2609069cf909d4eb63c",
+      "repository_identity": "github.com/flatsiedatsie/433switches"
+    },
+    {
+      "domoticz_key": "AirburgEmoPlus",
+      "legacy_package_id": "AirburgEmoPlus",
+      "package_id": "AirburgEmoPlus",
+      "plugin_py_sha256": "92069dc8b93fe456f938b125d0cc912cca5e2d12de0a596da2577fea1e49d01a",
+      "repository_identity": "github.com/wolfg1969/airburgemoplus"
+    },
+    {
+      "domoticz_key": "AlphaESS",
+      "legacy_package_id": "alphaESS-battery-plugin",
+      "package_id": "alphaESS-battery-plugin",
+      "plugin_py_sha256": "687de0aa5b53309bd36bd83909bf23e02ca04bb17c9b002449db035e8b54f7f1",
+      "repository_identity": "github.com/antoinevdh/alphaess-battery-plugin"
+    },
+    {
+      "domoticz_key": "AWTRIX3",
+      "legacy_package_id": "AWTRIX3",
+      "package_id": "AWTRIX3",
+      "plugin_py_sha256": "44edb2527947885843e46bcd0126f5ed63a035d410e89bea6415cd40f8546ac9",
+      "repository_identity": "github.com/galadril/domoticz-awtrix3-plugin"
+    },
+    {
+      "domoticz_key": "BabyWeatherPlugin",
+      "legacy_package_id": "baby_weather_plugin",
+      "package_id": "baby_weather_plugin",
+      "plugin_py_sha256": "c5babfee07de091e0906fdb94939b9acd46307a7c2f9d280a7bca5037f4b6c5c",
+      "repository_identity": "github.com/obaby/baby_weather_plugin"
+    },
+    {
+      "domoticz_key": "BatteryLevel",
+      "legacy_package_id": "BatteryLevel",
+      "package_id": "BatteryLevel",
+      "plugin_py_sha256": "a11ea07aabdccbdf811f0c813b7b90eff3eb8c03c7f79a5f94ad7730dd926738",
+      "repository_identity": "github.com/999lv/batterylevel"
+    },
+    {
+      "domoticz_key": "BboxPlugin",
+      "legacy_package_id": "BboxPlugin",
+      "package_id": "BboxPlugin",
+      "plugin_py_sha256": "a65f21fc1f44771bb506fd2b9dcbd5df021821cc3cb9e06bc75b8bcfaa2827b2",
+      "repository_identity": "github.com/neutrino85/bboxplugin"
+    },
+    {
+      "domoticz_key": "beemenergy",
+      "legacy_package_id": "BeemEnergy",
+      "package_id": "BeemEnergy",
+      "plugin_py_sha256": "d520dbed313a974d055ed36ee98deb1f0bcb1249cbb63cb0db8ca6684a4d1aed",
+      "repository_identity": "github.com/fratton/beemenergy"
+    },
+    {
+      "domoticz_key": "Broadlink",
+      "legacy_package_id": "Broadlink-Domoticz-plugin",
+      "package_id": "Broadlink-Domoticz-plugin",
+      "plugin_py_sha256": "5e1441e91fd1bfc4b2c0ea33be73aa62a2cf118fdde4c5b9b1ebad87d22cf995",
+      "repository_identity": "github.com/zak-45/broadlink-domoticz-plugin"
+    },
+    {
+      "domoticz_key": "Chromecast",
+      "legacy_package_id": "ChromecastPlugin",
+      "package_id": "ChromecastPlugin",
+      "plugin_py_sha256": "70b1774f1b9eaf024423a3992e670b01f567f862565163858f4c626a2e8442f8",
+      "repository_identity": "github.com/tsjippy/chromecastplugin"
+    },
+    {
+      "domoticz_key": "cometblue-domoticz",
+      "legacy_package_id": "cometblue-domoticz",
+      "package_id": "cometblue-domoticz",
+      "plugin_py_sha256": "a81c0d5a8e6f8e676b46fb7370b2cdf1010d6d51cc949284ec2212345ea15fef",
+      "repository_identity": "github.com/damsma/cometblue-domoticz"
+    },
+    {
+      "domoticz_key": "CreasolDomBus",
+      "legacy_package_id": "CreasolDomBus",
+      "package_id": "CreasolDomBus",
+      "plugin_py_sha256": "936a2bfa011467ea69bf2213815eb3afa1b504d5e789af593e9ef5367e6d68cb",
+      "repository_identity": "github.com/creasoltech/creasoldombus"
+    },
+    {
+      "domoticz_key": "DDS238",
+      "legacy_package_id": "DDS238-7-modbus",
+      "package_id": "DDS238-7-modbus",
+      "plugin_py_sha256": "5a457ee8adef4b35770b94099912c945005010fc8bab4387fe486f1deb10497d",
+      "repository_identity": "github.com/voyo/dds238-7-modbus"
+    },
+    {
+      "domoticz_key": "deCONZ",
+      "legacy_package_id": "deCONZ",
+      "package_id": "deCONZ",
+      "plugin_py_sha256": "9a7767f0b16b590a1bf70f4a7fce2a82aac3f36c77086fe3895afed413b432e6",
+      "repository_identity": "github.com/smanar/domoticz-deconz"
+    },
+    {
+      "domoticz_key": "Denon4306",
+      "legacy_package_id": "Denon4306",
+      "package_id": "Denon4306",
+      "plugin_py_sha256": "7b0eeef75dc9622362f78f9c67ec18fc93746118f4d372e19ff679b675c1b665",
+      "repository_identity": "github.com/dnpwwo/domoticz-denon-plugin"
+    },
+    {
+      "domoticz_key": "detect_presence_arp",
+      "legacy_package_id": "Detect-Presence-at-Home---Domoticz-plugin",
+      "package_id": "Detect-Presence-at-Home---Domoticz-plugin",
+      "plugin_py_sha256": "786233491640378cc8b32333a0c215b0f2920b13f61b24cf8b85989f7639f887",
+      "repository_identity": "github.com/blooesky/detect-presence-at-home---domoticz-plugin"
+    },
+    {
+      "domoticz_key": "DHT22_IIO",
+      "legacy_package_id": "DHT22-rpi",
+      "package_id": "DHT22-rpi",
+      "plugin_py_sha256": "8ea3bd77809d730e9b1449c15ac2f2797defd4c2805b8388f805aca0842b1d50",
+      "repository_identity": "github.com/mibeus/dht22-rpi"
+    },
+    {
+      "domoticz_key": "CEPT",
+      "legacy_package_id": "Domoticz---CEPT-plugin",
+      "package_id": "Domoticz---CEPT-plugin",
+      "plugin_py_sha256": "e5531426e22d4af6d2b64577fdcc47b352c5265f2b59a184ecb1dc1fc4e9cc70",
+      "repository_identity": "github.com/sydspost/domoticz---cept-plugin"
+    },
+    {
+      "domoticz_key": "AirHumidifier",
+      "legacy_package_id": "domoticz-AirHumidifier",
+      "package_id": "domoticz-AirHumidifier",
+      "plugin_py_sha256": "43eb2c14ceda6f38b58234bcf9b28384f0e45b752ecaf66ad0a8be32ad6ff85f",
+      "repository_identity": "github.com/mgrom/domoticz-airhumidifier"
+    },
+    {
+      "domoticz_key": "AIRLY",
+      "legacy_package_id": "domoticz-airly",
+      "package_id": "domoticz-airly",
+      "plugin_py_sha256": "a1d0c1d36de0dfb2bed73b1a09b827b399fe47682a2b5e5413ea8d7206180ddb",
+      "repository_identity": "github.com/lrybak/domoticz-airly"
+    },
+    {
+      "domoticz_key": "AirSend",
+      "legacy_package_id": "domoticz-airsend-plugin",
+      "package_id": "domoticz-airsend-plugin",
+      "plugin_py_sha256": "442bfcaac12f2d2826435c9d633f6948fe5939374e8fedc001b8ca95af585bf5",
+      "repository_identity": "github.com/flyingdomotic/domoticz-airsend-plugin"
+    },
+    {
+      "domoticz_key": "AldesTOneAir",
+      "legacy_package_id": "Domoticz-Aldes",
+      "package_id": "Domoticz-Aldes",
+      "plugin_py_sha256": "cbd02cfe3a41e66b7e43b4388cff598d9615f51a9f8c509fe8b741c0f889fb57",
+      "repository_identity": "github.com/ludosaxo/domoticz-aldes"
+    },
+    {
+      "domoticz_key": "AnkerSolixX1",
+      "legacy_package_id": "Domoticz-AnkerSolixX1-Plugin",
+      "package_id": "Domoticz-AnkerSolixX1-Plugin",
+      "plugin_py_sha256": "6510df4dd516d30c9cd3a42080e6ea9808620453d70edb2674cc4e352ca16aa2",
+      "repository_identity": "github.com/lemassykoi/domoticz-ankersolixx1-plugin"
+    },
+    {
+      "domoticz_key": "APCUPS",
+      "legacy_package_id": "domoticz-apc-ups-plugin",
+      "package_id": "domoticz-apc-ups-plugin",
+      "plugin_py_sha256": "e9f08264a97d2b4a8e41af21530da5f87cf44f484a762c26309d0407c6159794",
+      "repository_identity": "github.com/jgaalen/domoticz-apc-ups-plugin"
+    },
+    {
+      "domoticz_key": "AQIgovpl",
+      "legacy_package_id": "domoticz-aqi-poland",
+      "package_id": "domoticz-aqi-poland",
+      "plugin_py_sha256": "a3194cab42ab0457ad5445c16462ad77935f519c2658e4bacb5904eb44335ddd",
+      "repository_identity": "github.com/mgrom/domoticz-aqi-poland"
+    },
+    {
+      "domoticz_key": "Bluetti-AC500",
+      "legacy_package_id": "Domoticz-Bluetti-Plugin",
+      "package_id": "Domoticz-Bluetti-Plugin",
+      "plugin_py_sha256": "76a0a444357d3111b64d4c101ce317acf23b7706cea719d4f0559dfff0f6d5df",
+      "repository_identity": "github.com/lemassykoi/domoticz-bluetti-plugin"
+    },
+    {
+      "domoticz_key": "Bmw",
+      "legacy_package_id": "Domoticz-BMW-plugin",
+      "package_id": "Domoticz-BMW-plugin",
+      "plugin_py_sha256": "18ab63ffe9172bb48ffd5ca93cd100f618ec2a9c51e4281a1593cdd1877f3ed6",
+      "repository_identity": "github.com/filipdem/domoticz-bmw-plugin"
+    },
+    {
+      "domoticz_key": "Brel-Home-Hub-03",
+      "legacy_package_id": "Domoticz-Brel-Home-Hub-03-integration",
+      "package_id": "Domoticz-Brel-Home-Hub-03-integration",
+      "plugin_py_sha256": "82db7d1a4a9ae4b7097c6586065634368aa6f98615aa2debfee634542fbbb58d",
+      "repository_identity": "github.com/salmr/domoticz-brel-home-hub-03-integration"
+    },
+    {
+      "domoticz_key": "Brel-Home-Hub",
+      "legacy_package_id": "Domoticz-Brel-Plugin",
+      "package_id": "Domoticz-Brel-Plugin",
+      "plugin_py_sha256": "39351e2ad0989fa751b21c29e46e3931c132ab56a81afc2578bea1d55daaf4d0",
+      "repository_identity": "github.com/superjunky/domoticz-brel-plugin"
+    },
+    {
+      "domoticz_key": "BsrWasteCollection",
+      "legacy_package_id": "domoticz-BSR",
+      "package_id": "domoticz-BSR",
+      "plugin_py_sha256": "3d5492216c254f3207be87a6f49aa9b199e670f6d928b9f550894e1182a68f90",
+      "repository_identity": "github.com/belzetrigger/domoticz-bsr"
+    },
+    {
+      "domoticz_key": "bt-beacon-presence",
+      "legacy_package_id": "domoticz-bt-presence",
+      "package_id": "domoticz-bt-presence",
+      "plugin_py_sha256": "de2cd5ce1371b47f79d8a5317e51afa751c0ebfc87f67094884153e332967d49",
+      "repository_identity": "github.com/mrin/domoticz-bt-presence"
+    },
+    {
+      "domoticz_key": "CupraBorn",
+      "legacy_package_id": "domoticz-cupra-plugin",
+      "package_id": "domoticz-cupra-plugin",
+      "plugin_py_sha256": "6baa28e4770e891a432fb6df506c9c526b5d31666cf36f5626237958fe6ca32f",
+      "repository_identity": "github.com/jgaalen/domoticz-cupra-plugin"
+    },
+    {
+      "domoticz_key": "dds238",
+      "legacy_package_id": "domoticz-dds238",
+      "package_id": "domoticz-dds238",
+      "plugin_py_sha256": "53c5299237d46c277344c6b53e460b57b68b2c3fc4072a4a22220066f2e65fc7",
+      "repository_identity": "github.com/creasoltech/domoticz-dds238"
+    },
+    {
+      "domoticz_key": "DingtianRelay",
+      "legacy_package_id": "Domoticz-Dingtian-Relay-Plugin",
+      "package_id": "Domoticz-Dingtian-Relay-Plugin",
+      "plugin_py_sha256": "a843997404dc0b47acea97a89d0284b6e414c3b10a0ac96db85ca3d77538095b",
+      "repository_identity": "github.com/dtlzp/domoticz-dingtian-relay-plugin"
+    },
+    {
+      "domoticz_key": "DSP-W215",
+      "legacy_package_id": "Domoticz-DLinkSmartPlug-plugin",
+      "package_id": "Domoticz-DLinkSmartPlug-plugin",
+      "plugin_py_sha256": "7064a7dace7190d398bd234d56ae37a1a77712bb11f5ca0ce99a70e2c3cebac6",
+      "repository_identity": "github.com/jorcat/domoticz-dlinksmartplug-plugin"
+    },
+    {
+      "domoticz_key": "dts238",
+      "legacy_package_id": "domoticz-dts238",
+      "package_id": "domoticz-dts238",
+      "plugin_py_sha256": "c7affacacfce832e5b339df78b1ef5c44c47fcc3e69fb678adcb00936f135244",
+      "repository_identity": "github.com/creasoltech/domoticz-dts238"
+    },
+    {
+      "domoticz_key": "EmmetiMiraiEQ2021",
+      "legacy_package_id": "domoticz-emmeti-eq2021",
+      "package_id": "domoticz-emmeti-eq2021",
+      "plugin_py_sha256": "fed19e7ae80937091d2029fea9185fb2636e95ba6f7017cc5471ecfbecfe156d",
+      "repository_identity": "github.com/creasoltech/domoticz-emmeti-eq2021"
+    },
+    {
+      "domoticz_key": "EmmetiMirai",
+      "legacy_package_id": "domoticz-emmeti-mirai",
+      "package_id": "domoticz-emmeti-mirai",
+      "plugin_py_sha256": "87d9d4fabde6e3abf5148e63e751f38d0951888887852eb8980c214c023042ba",
+      "repository_identity": "github.com/creasoltech/domoticz-emmeti-mirai"
+    },
+    {
+      "domoticz_key": "Enigma2",
+      "legacy_package_id": "Domoticz-Enigma2",
+      "package_id": "Domoticz-Enigma2",
+      "plugin_py_sha256": "257098756f4ff965cdfecf306f737bd3605a2500bae069027001449ad0755220",
+      "repository_identity": "github.com/kofec/domoticz-enigma2"
+    },
+    {
+      "domoticz_key": "EspNowSerial",
+      "legacy_package_id": "domoticz-espnowserial-plugin",
+      "package_id": "domoticz-espnowserial-plugin",
+      "plugin_py_sha256": "1cc04dd3fa874299a56024dc3d492237b4986d797bed0495dc67361d87da5a8f",
+      "repository_identity": "github.com/flyingdomotic/domoticz-espnowserial-plugin"
+    },
+    {
+      "domoticz_key": "eSterownik",
+      "legacy_package_id": "domoticz-eSterownik_v3.5",
+      "package_id": "domoticz-eSterownik_v3.5",
+      "plugin_py_sha256": "e3ab3c6d05e339714b89bbd3bb73520136c3a8af458625ce9f09110481504698",
+      "repository_identity": "github.com/z1mek/domoticz-esterownik_v3.5"
+    },
+    {
+      "domoticz_key": "Domoticz-EVCC-IO-Plugin",
+      "legacy_package_id": "Domoticz-EVCC-IO-Plugin",
+      "package_id": "Domoticz-EVCC-IO-Plugin",
+      "plugin_py_sha256": "283d1c4d61a2bdaab16ed28802e077697374dbc7f6fd89cccb9ffe462bf7c295",
+      "repository_identity": "github.com/galadril/domoticz-evcc-io-plugin"
+    },
+    {
+      "domoticz_key": "EwpeSmartDirect",
+      "legacy_package_id": "domoticz-ewpe-smart-direct",
+      "package_id": "domoticz-ewpe-smart-direct",
+      "plugin_py_sha256": "1335008cb952106f7405e75065bac23749c7e8fe27e3d4fe9d46236ba99007ce",
+      "repository_identity": "github.com/achterhoeker/domoticz-ewpe-smart-direct"
+    },
+    {
+      "domoticz_key": "EwpeSmartMqtt",
+      "legacy_package_id": "domoticz-ewpe-smart-mqtt-plugin",
+      "package_id": "domoticz-ewpe-smart-mqtt-plugin",
+      "plugin_py_sha256": "73ac8dbdc54616b8b604a3cb6f04edc3243b6e8421c838bcbf19443c9168261c",
+      "repository_identity": "github.com/stas-demydiuk/domoticz-ewpe-smart-mqtt-plugin"
+    },
+    {
+      "domoticz_key": "FF_SmsServer",
+      "legacy_package_id": "domoticz-ff_smsserver-plugin",
+      "package_id": "domoticz-ff_smsserver-plugin",
+      "plugin_py_sha256": "adbb64850deb15055119be73bfd302280c610291a39111289566a758dd904106",
+      "repository_identity": "github.com/flyingdomotic/domoticz-ff_smsserver-plugin"
+    },
+    {
+      "domoticz_key": "FranceFuelPrice",
+      "legacy_package_id": "Domoticz-FranceFuelPrice-Plugin",
+      "package_id": "Domoticz-FranceFuelPrice-Plugin",
+      "plugin_py_sha256": "68bab560fd46a109f1e5ec6ce32f30c429437052b25368fab8f4a0af1b1d1a05",
+      "repository_identity": "github.com/cth35/domoticz-francefuelprice-plugin"
+    },
+    {
+      "domoticz_key": "froniusInverter",
+      "legacy_package_id": "domoticz-fronius-inverter-plugin",
+      "package_id": "domoticz-fronius-inverter-plugin",
+      "plugin_py_sha256": "14388406ed4f12a79a259822f25b132de4532a9c5c50de67ac0bdab1427f6a07",
+      "repository_identity": "github.com/aukedejong/domoticz-fronius-inverter-plugin"
+    },
+    {
+      "domoticz_key": "GitHubStats",
+      "legacy_package_id": "domoticz-github",
+      "package_id": "domoticz-github",
+      "plugin_py_sha256": "6a09b3c2b94dc534f53cd3b3206f758795126223b6e2414e1c9dbba2d82808b4",
+      "repository_identity": "github.com/j-b-n/domoticz-github"
+    },
+    {
+      "domoticz_key": "GC-100",
+      "legacy_package_id": "Domoticz-GlobalCache-Plugin",
+      "package_id": "Domoticz-GlobalCache-Plugin",
+      "plugin_py_sha256": "b99ea83957120434a9bac59d15256e5dc2ab9f9fa0ad13e315c76de4e2497b4f",
+      "repository_identity": "github.com/dnpwwo/domoticz-globalcache-plugin"
+    },
+    {
+      "domoticz_key": "DomoticzRPIGPIO",
+      "legacy_package_id": "Domoticz-GPIO-Debian-13",
+      "package_id": "Domoticz-GPIO-Debian-13",
+      "plugin_py_sha256": "5a648ca79e97649a567d8cf294704835e12c27557a47723e8a65c3fa719e144c",
+      "repository_identity": "github.com/mibeus/domoticz-gpio-debian-13"
+    },
+    {
+      "domoticz_key": "GPSD_STAT",
+      "legacy_package_id": "Domoticz-GPSD-plugin",
+      "package_id": "Domoticz-GPSD-plugin",
+      "plugin_py_sha256": "dcdefd6e265fa8584a7e27c873227978241783c43bce987ac283a538cccc118e",
+      "repository_identity": "github.com/marceldbo/domoticz-gpsd-plugin"
+    },
+    {
+      "domoticz_key": "GPSLogger",
+      "legacy_package_id": "Domoticz-GPSLogger-Plugin",
+      "package_id": "Domoticz-GPSLogger-Plugin",
+      "plugin_py_sha256": "6f07399fed60f663d050b905a2ceb71d7c0b96beda825db9c155f2d1915c0cc6",
+      "repository_identity": "github.com/turnofafriendlycard/domoticz-gpslogger-plugin"
+    },
+    {
+      "domoticz_key": "GreeAC",
+      "legacy_package_id": "Domoticz-Gree-Ac",
+      "package_id": "Domoticz-Gree-Ac",
+      "plugin_py_sha256": "b0d97333ad25e549b145b53e5427198dbad95198ddc2baf1320320831f58fbbd",
+      "repository_identity": "github.com/blooesky/domoticz-gree-ac"
+    },
+    {
+      "domoticz_key": "TasmotaH801",
+      "legacy_package_id": "domoticz-h801-tasmota-plugin",
+      "package_id": "domoticz-h801-tasmota-plugin",
+      "plugin_py_sha256": "7f71282bfdd821bf32804698b952f605794a89da89a59649eb2886dd0b4e371e",
+      "repository_identity": "github.com/stas-demydiuk/domoticz-h801-tasmota-plugin"
+    },
+    {
+      "domoticz_key": "Hewalex",
+      "legacy_package_id": "Domoticz-Hewalex",
+      "package_id": "Domoticz-Hewalex",
+      "plugin_py_sha256": "72304cdc170233e7593170d9da7c1ad99304263ed24641ddc41e225a12688207",
+      "repository_identity": "github.com/mvdklip/domoticz-hewalex"
+    },
+    {
+      "domoticz_key": "Domoticz-Home-Connect-Plugin",
+      "legacy_package_id": "Domoticz-Home-Connect-Plugin",
+      "package_id": "Domoticz-Home-Connect-Plugin",
+      "plugin_py_sha256": "e4b2cccee42eb8b7bb78ab1d5367218c9ed9a790556f99ade391456d38c5f2a6",
+      "repository_identity": "github.com/mario-peters/domoticz-home-connect-plugin"
+    },
+    {
+      "domoticz_key": "HomeConnectDishwasher",
+      "legacy_package_id": "domoticz-HomeConnectDishwasher",
+      "package_id": "domoticz-HomeConnectDishwasher",
+      "plugin_py_sha256": "df6169d9e20748b9f85808349a922f620839b78d6b13f463f74ce955ed303249",
+      "repository_identity": "github.com/bblaszkiewicz/domoticz-homeconnectdishwasher"
+    },
+    {
+      "domoticz_key": "Domoticz-Huawei-Inverter",
+      "legacy_package_id": "Domoticz-Huawei-Inverter",
+      "package_id": "Domoticz-Huawei-Inverter",
+      "plugin_py_sha256": "032f689df096d73c132a83bcd40f470a68a3649f13505afde3f965454e0cdc67",
+      "repository_identity": "github.com/jwgracht/domoticz-huawei-inverter"
+    },
+    {
+      "domoticz_key": "Husqvarna",
+      "legacy_package_id": "Domoticz-Husqvarna-Automower-plugin",
+      "package_id": "Domoticz-Husqvarna-Automower-plugin",
+      "plugin_py_sha256": "d76df2a051f496ff7c078f5f15148bdb7fcc47801961ab3610350f8e9acdc71f",
+      "repository_identity": "github.com/filipdem/domoticz-husqvarna-automower-plugin"
+    },
+    {
+      "domoticz_key": "Indevolt",
+      "legacy_package_id": "Domoticz-Indevolt-plugin",
+      "package_id": "Domoticz-Indevolt-plugin",
+      "plugin_py_sha256": "3a126bec26bb2d95eae9fbef607951421eede23470c462c7fce395805cf01a22",
+      "repository_identity": "github.com/marceldbo/domoticz-indevolt-plugin"
+    },
+    {
+      "domoticz_key": "ICC_IKV",
+      "legacy_package_id": "domoticz-ir-climate-controller",
+      "package_id": "domoticz-ir-climate-controller",
+      "plugin_py_sha256": "973394ca06c3c7cb3d5974ff50a820f1132dc03485d5522ec3b3422342556d6c",
+      "repository_identity": "github.com/szelessavalapitvany/domoticz-ir-climate-controller"
+    },
+    {
+      "domoticz_key": "Kodi",
+      "legacy_package_id": "Domoticz-Kodi-Plugin",
+      "package_id": "Domoticz-Kodi-Plugin",
+      "plugin_py_sha256": "9dc156a2fa8e003e2cdbcc6ba4d73158772016c34fb5a72ad4e0f9065cd66a87",
+      "repository_identity": "github.com/dnpwwo/domoticz-kodi-plugin"
+    },
+    {
+      "domoticz_key": "ExperiaV10",
+      "legacy_package_id": "domoticz-kpn-experia-v10",
+      "package_id": "domoticz-kpn-experia-v10",
+      "plugin_py_sha256": "c15121c6e2b6ae451e827ff6e2fc0026ac16d3bdb82c4e857fe5b56a05784b0e",
+      "repository_identity": "github.com/adrighem/domoticz-kpn-experia-v10"
+    },
+    {
+      "domoticz_key": "lgtv",
+      "legacy_package_id": "Domoticz-LGTV-WebOS-Plugin",
+      "package_id": "Domoticz-LGTV-WebOS-Plugin",
+      "plugin_py_sha256": "b0b7d8c8a2e8530c87910cdd42261d4eafe96195387b653cef3c82eaad245af0",
+      "repository_identity": "github.com/gamedevhobby/domoticz-lgtv-webos-plugin"
+    },
+    {
+      "domoticz_key": "LogMonitor",
+      "legacy_package_id": "domoticz-logmonitor-plugin",
+      "package_id": "domoticz-logmonitor-plugin",
+      "plugin_py_sha256": "25b5a7e8d62c38dd8431b099e3301efffc412c45eb2c4d9443ba2da6c90d5cb9",
+      "repository_identity": "github.com/mirkg/domoticz-logmonitor-plugin"
+    },
+    {
+      "domoticz_key": "Domoticz-MCP-Server",
+      "legacy_package_id": "Domoticz-MCP-Plugin",
+      "package_id": "Domoticz-MCP-Plugin",
+      "plugin_py_sha256": "d2fd1cb7e1fbea5d61c13285d3485ff94316967bb886fc23c37b298693fadbc1",
+      "repository_identity": "github.com/galadril/domoticz-mcp-plugin"
+    },
+    {
+      "domoticz_key": "SAIC-iSmart",
+      "legacy_package_id": "Domoticz-MG-Plugin",
+      "package_id": "Domoticz-MG-Plugin",
+      "plugin_py_sha256": "6956ac4c9df7fd9a5ae440d5931547865d8fac4ebc290d0964eed74c5bf28107",
+      "repository_identity": "github.com/lemassykoi/domoticz-mg-plugin"
+    },
+    {
+      "domoticz_key": "domoticz-mqtt-sync",
+      "legacy_package_id": "domoticz-mqtt-sync-plugin",
+      "package_id": "domoticz-mqtt-sync-plugin",
+      "plugin_py_sha256": "7d13a2864a9a5e7aa1a24c396b9fbf5d36edf8288e051d27e0a43a2e2040bbde",
+      "repository_identity": "github.com/flyingdomotic/domoticz-mqtt-sync-plugin"
+    },
+    {
+      "domoticz_key": "MqttMapper",
+      "legacy_package_id": "domoticz-mqttmapper-plugin",
+      "package_id": "domoticz-mqttmapper-plugin",
+      "plugin_py_sha256": "9a1ebfa82416940ac3c255a1e4d6564bf1a98be8bca4ed77c53094409610cae5",
+      "repository_identity": "github.com/flyingdomotic/domoticz-mqttmapper-plugin"
+    },
+    {
+      "domoticz_key": "Domoticz-N8N-Plugin",
+      "legacy_package_id": "Domoticz-N8N-Plugin",
+      "package_id": "Domoticz-N8N-Plugin",
+      "plugin_py_sha256": "332187a6903dfb99231ffef14f49e937f0d482d23500a8a5225e18395e74d61a",
+      "repository_identity": "github.com/galadril/domoticz-n8n-plugin"
+    },
+    {
+      "domoticz_key": "GoogleNest",
+      "legacy_package_id": "Domoticz-NEST-plugin",
+      "package_id": "Domoticz-NEST-plugin",
+      "plugin_py_sha256": "8bf38c7b60d33a7603c78ebbcdc27698ff6599b9a0b3d1b90ba4db88f555987e",
+      "repository_identity": "github.com/filipdem/domoticz-nest-plugin"
+    },
+    {
+      "domoticz_key": "Niu",
+      "legacy_package_id": "domoticz-Niu-escooter",
+      "package_id": "domoticz-Niu-escooter",
+      "plugin_py_sha256": "b49ffe1fdda02a1cb84dac30b3c829cd31ba2ed3717dc56aafc184bf5572cd5c",
+      "repository_identity": "github.com/mike19700/domoticz-niu-escooter"
+    },
+    {
+      "domoticz_key": "NukiLock",
+      "legacy_package_id": "domoticz-nuki",
+      "package_id": "domoticz-nuki",
+      "plugin_py_sha256": "db6c402f07387aec577ecd6a1c5a7ddc59454bcc67a9fb8f32b9343b99b36ca7",
+      "repository_identity": "github.com/heggink/domoticz-nuki"
+    },
+    {
+      "domoticz_key": "OmnikLocalWeb2",
+      "legacy_package_id": "Domoticz-Omnik-Local-Web-Plugin",
+      "package_id": "Domoticz-Omnik-Local-Web-Plugin",
+      "plugin_py_sha256": "665230eebeec607ccbcc631dcdca17f01dfae308c625da5cab7ab70f56ff8d47",
+      "repository_identity": "github.com/sincze/domoticz-omnik-local-web-plugin"
+    },
+    {
+      "domoticz_key": "Onkyo",
+      "legacy_package_id": "domoticz-onkyo-plugin",
+      "package_id": "domoticz-onkyo-plugin",
+      "plugin_py_sha256": "358463959601867801a094023bad8f79eccf25fcc66592c58d324df345bd3a26",
+      "repository_identity": "github.com/jorgh6/domoticz-onkyo-plugin"
+    },
+    {
+      "domoticz_key": "OpenDTU",
+      "legacy_package_id": "Domoticz-OpenDTU-Plugin",
+      "package_id": "Domoticz-OpenDTU-Plugin",
+      "plugin_py_sha256": "d88f1a8eba115be74bdec9bec3ecab364cf16c0dbc939f2eb864976ee039ed7d",
+      "repository_identity": "github.com/lemassykoi/domoticz-opendtu-plugin"
+    },
+    {
+      "domoticz_key": "OpenMeteo",
+      "legacy_package_id": "Domoticz-OpenMeteo-Plugin",
+      "package_id": "Domoticz-OpenMeteo-Plugin",
+      "plugin_py_sha256": "7005d3160dbaf896d70f563b84dd33a4606cc51d4670bbf36812f9d91e1648c7",
+      "repository_identity": "github.com/lemassykoi/domoticz-openmeteo-plugin"
+    },
+    {
+      "domoticz_key": "OWMTTL",
+      "legacy_package_id": "Domoticz-OpenWeatherMap",
+      "package_id": "Domoticz-OpenWeatherMap",
+      "plugin_py_sha256": "dcfffa47ba84647b7ab9d14d9de92b1f8dcecde37a6e020868d1d6c22d95c088",
+      "repository_identity": "github.com/cth35/domoticz-openweathermap"
+    },
+    {
+      "domoticz_key": "Ouman-C203",
+      "legacy_package_id": "domoticz-Ouman-C203-Modbus-plugin",
+      "package_id": "domoticz-Ouman-C203-Modbus-plugin",
+      "plugin_py_sha256": "d2dcd0e029b757e0e85195f5020d370d4f712afdc986b2c6ac57e69fb5f1f666",
+      "repository_identity": "github.com/pawelmuszynski/domoticz-ouman-c203-modbus-plugin"
+    },
+    {
+      "domoticz_key": "P110TapoPlugin",
+      "legacy_package_id": "domoticz-P110Tapo-plugin",
+      "package_id": "domoticz-P110Tapo-plugin",
+      "plugin_py_sha256": "52888cee00d709781f8f33a91eda5e291e34f42f19ba97a65f7ef049737288b4",
+      "repository_identity": "github.com/guintolli/domoticz-p110tapo-plugin"
+    },
+    {
+      "domoticz_key": "palazzetti-cbox",
+      "legacy_package_id": "Domoticz-Palazzetti",
+      "package_id": "Domoticz-Palazzetti",
+      "plugin_py_sha256": "0bc91b5971b9ff6cf32f02addb7464896d47c5d1d20663f1feb1f4268098ff63",
+      "repository_identity": "github.com/kinou74/domoticz-palazzetti"
+    },
+    {
+      "domoticz_key": "Peblar",
+      "legacy_package_id": "domoticz-peblar",
+      "package_id": "domoticz-peblar",
+      "plugin_py_sha256": "9912be1684fb0a3e7e4989ce4f469f4038fbcf9d083ecad8c23f570f38484a41",
+      "repository_identity": "github.com/achterhoeker/domoticz-peblar"
+    },
+    {
+      "domoticz_key": "PiHole",
+      "legacy_package_id": "Domoticz-PiHole-Control",
+      "package_id": "Domoticz-PiHole-Control",
+      "plugin_py_sha256": "4023a96f914d4800574f6b8ceefb859d055120f422c9b980d7edae2c28ef09fe",
+      "repository_identity": "github.com/janreimen/domoticz-pihole-control"
+    },
+    {
+      "domoticz_key": "ICMP",
+      "legacy_package_id": "Domoticz-Pinger-Plugin",
+      "package_id": "Domoticz-Pinger-Plugin",
+      "plugin_py_sha256": "645df1519b30d632ce7897e738b65aa2a3b5f8020153264bc1fed2c0a9950fbb",
+      "repository_identity": "github.com/dnpwwo/domoticz-pinger-plugin"
+    },
+    {
+      "domoticz_key": "SmartThingsWasher",
+      "legacy_package_id": "Domoticz-plugin-for-samsung-washing-machine",
+      "package_id": "Domoticz-plugin-for-samsung-washing-machine",
+      "plugin_py_sha256": "e60f6bc983dd817deaaaaa2a50695aa28b332dc5b69f46c7063743419fc022dc",
+      "repository_identity": "github.com/csutihu/domoticz-plugin-for-samsung-washing-machine"
+    },
+    {
+      "domoticz_key": "TasmotaP1",
+      "legacy_package_id": "Domoticz-plugin-for-Tasmota-P1-Smart-Meter",
+      "package_id": "Domoticz-plugin-for-Tasmota-P1-Smart-Meter",
+      "plugin_py_sha256": "8cad38ae6eff4ba51cfc34194e50099a12fd64fe7b5c7a0bd9d3a870876d2463",
+      "repository_identity": "github.com/csutihu/domoticz-plugin-for-tasmota-p1-smart-meter"
+    },
+    {
+      "domoticz_key": "HmIP-SWDM",
+      "legacy_package_id": "domoticz-plugin-hmip-swdm",
+      "package_id": "domoticz-plugin-hmip-swdm",
+      "plugin_py_sha256": "d10e1e67fdbc200ae812314aeacbf593e756604c34b78df79c625915dba9c2ca",
+      "repository_identity": "github.com/rwbl/domoticz-plugin-hmip-swdm"
+    },
+    {
+      "domoticz_key": "IndoorAirQualityMonitor",
+      "legacy_package_id": "domoticz-plugin-indoor-air-quality-monitor",
+      "package_id": "domoticz-plugin-indoor-air-quality-monitor",
+      "plugin_py_sha256": "b1d48bf26a3b85b534f94c41316b08e0da4a4a3af907fa513e4169ca68d123de",
+      "repository_identity": "github.com/rwbl/domoticz-plugin-indoor-air-quality-monitor"
+    },
+    {
+      "domoticz_key": "SoilMoistureMonitor",
+      "legacy_package_id": "domoticz-plugin-soil-moisture-monitor",
+      "package_id": "domoticz-plugin-soil-moisture-monitor",
+      "plugin_py_sha256": "bb35066045ed0889b9ed3658dc62e01dfc877544f88071cdec1f59a66b77a1fa",
+      "repository_identity": "github.com/rwbl/domoticz-plugin-soil-moisture-monitor"
+    },
+    {
+      "domoticz_key": "SonyAudio",
+      "legacy_package_id": "domoticz-plugin-sony-audio",
+      "package_id": "domoticz-plugin-sony-audio",
+      "plugin_py_sha256": "a79e30971fba1821df0ade25b1d445e4dc02acfce6be9f840e83fbe48dbd3e74",
+      "repository_identity": "github.com/stefounet/domoticz-plugin-sony-audio"
+    },
+    {
+      "domoticz_key": "tfambientlightlv2",
+      "legacy_package_id": "domoticz-plugin-tinkerforge-ambientlightv2",
+      "package_id": "domoticz-plugin-tinkerforge-ambientlightv2",
+      "plugin_py_sha256": "2c7fa69782f4af37a3ac9518e68b652e6bd2d34ea974a008f1a1d2623a76dc69",
+      "repository_identity": "github.com/rwbl/domoticz-plugin-tinkerforge-ambientlightv2"
+    },
+    {
+      "domoticz_key": "tfio4v2",
+      "legacy_package_id": "domoticz-plugin-tinkerforge-io4v2",
+      "package_id": "domoticz-plugin-tinkerforge-io4v2",
+      "plugin_py_sha256": "7e6c5ad3ece35efb32e6b98a41496ff2c7dc0ee51d67e399a5ad1a7bf53d63d8",
+      "repository_identity": "github.com/rwbl/domoticz-plugin-tinkerforge-io4v2"
+    },
+    {
+      "domoticz_key": "tflcd20x4",
+      "legacy_package_id": "domoticz-plugin-tinkerforge-lcd20x4",
+      "package_id": "domoticz-plugin-tinkerforge-lcd20x4",
+      "plugin_py_sha256": "2b8566d719b05829ae8c59a8fba4f21cd7cf5afdaa37d9daa04668454faab9a2",
+      "repository_identity": "github.com/rwbl/domoticz-plugin-tinkerforge-lcd20x4"
+    },
+    {
+      "domoticz_key": "tflcd20x4lite",
+      "legacy_package_id": "domoticz-plugin-tinkerforge-lcd20x4-lite",
+      "package_id": "domoticz-plugin-tinkerforge-lcd20x4-lite",
+      "plugin_py_sha256": "37af9edf694a0c0b887bb6a8c7d24742485c346752a3f10b298b77cc09b8be37",
+      "repository_identity": "github.com/rwbl/domoticz-plugin-tinkerforge-lcd20x4-lite"
+    },
+    {
+      "domoticz_key": "tfrgbledv2",
+      "legacy_package_id": "domoticz-plugin-tinkerforge-rgbledv2",
+      "package_id": "domoticz-plugin-tinkerforge-rgbledv2",
+      "plugin_py_sha256": "710122b0a8061eaf76fe7d584bd372679b15f1bb6dfecc2932c7d5923c6a5a96",
+      "repository_identity": "github.com/rwbl/domoticz-plugin-tinkerforge-rgbledv2"
+    },
+    {
+      "domoticz_key": "tftrafficlight",
+      "legacy_package_id": "domoticz-plugin-tinkerforge-trafficlight",
+      "package_id": "domoticz-plugin-tinkerforge-trafficlight",
+      "plugin_py_sha256": "1a8db4d0d5e173d06404e9484943813ac6b613978c8c22e1b434bd43ff05ed19",
+      "repository_identity": "github.com/rwbl/domoticz-plugin-tinkerforge-trafficlight"
+    },
+    {
+      "domoticz_key": "plugins-manager",
+      "legacy_package_id": "domoticz-plugins-manager",
+      "package_id": "domoticz-plugins-manager",
+      "plugin_py_sha256": "636b63c93824d16abe83a41eac20300b8a2a408a5578644b819cb43b07004e2b",
+      "repository_identity": "github.com/stas-demydiuk/domoticz-plugins-manager"
+    },
+    {
+      "domoticz_key": "powerview",
+      "legacy_package_id": "domoticz-powerview-plugin",
+      "package_id": "domoticz-powerview-plugin",
+      "plugin_py_sha256": "54bf66f212043d34264867c603f29afd87f90c4421101ce520de403587740061",
+      "repository_identity": "github.com/jgaalen/domoticz-powerview-plugin"
+    },
+    {
+      "domoticz_key": "PowerWorld",
+      "legacy_package_id": "domoticz-PowerWorld-heat-pump",
+      "package_id": "domoticz-PowerWorld-heat-pump",
+      "plugin_py_sha256": "876c41ccb061f2759f6a889a27a931e9b0287ad4b8289c075a7d9d4ef5a56f01",
+      "repository_identity": "github.com/mike19700/domoticz-powerworld-heat-pump"
+    },
+    {
+      "domoticz_key": "MELCloud",
+      "legacy_package_id": "domoticz-python-melcloud",
+      "package_id": "domoticz-python-melcloud",
+      "plugin_py_sha256": "089cc075db94553bd9de61f51b9042ca431bfc104f9c3a08120ed7a9189bd428",
+      "repository_identity": "github.com/gysmo38/domoticz-python-melcloud"
+    },
+    {
+      "domoticz_key": "Your-Plugin-Key",
+      "legacy_package_id": "Domoticz-Python-Plugin-Template",
+      "package_id": "Domoticz-Python-Plugin-Template",
+      "plugin_py_sha256": "5f45d88d75a0622f02606e0d86493f7f2dbd977fd85827c5383dd23f92a364bc",
+      "repository_identity": "github.com/galadril/domoticz-python-plugin-template"
+    },
+    {
+      "domoticz_key": "RAVEn",
+      "legacy_package_id": "Domoticz-RAVEn-Plugin",
+      "package_id": "Domoticz-RAVEn-Plugin",
+      "plugin_py_sha256": "86638bc31c57390cdcb4d90f2b86bfbd42a0efe602ef79973be46d8503e72fa4",
+      "repository_identity": "github.com/dnpwwo/domoticz-raven-plugin"
+    },
+    {
+      "domoticz_key": "mikrotik-routeros",
+      "legacy_package_id": "domoticz-routeros-plugin",
+      "package_id": "domoticz-routeros-plugin",
+      "plugin_py_sha256": "283bd9f8a477deb6df8b5e95a3337cb3c65719a83960bbfdf5b43824a459c5c1",
+      "repository_identity": "github.com/mrin/domoticz-routeros-plugin"
+    },
+    {
+      "domoticz_key": "ShellyGen2Switch",
+      "legacy_package_id": "Domoticz-Shelly-Plugin",
+      "package_id": "Domoticz-Shelly-Plugin",
+      "plugin_py_sha256": "0c463176ed316309653f5f69408f40320b9a30867fa51e60182280a42db5a2df",
+      "repository_identity": "github.com/lemassykoi/domoticz-shelly-plugin"
+    },
+    {
+      "domoticz_key": "Shelly",
+      "legacy_package_id": "Domoticz-Shelly-plugin",
+      "package_id": "hoog-domoticz-shelly-plugin",
+      "plugin_py_sha256": "3e5b53b9a73e226084fc6e44b9eb90f3d5f50e4d31bdb1a14d237e2e42f270a1",
+      "repository_identity": "codeberg.org/hoog/domoticz-shelly-plugin"
+    },
+    {
+      "domoticz_key": "SMA",
+      "legacy_package_id": "Domoticz-SMA-Inverter",
+      "package_id": "Domoticz-SMA-Inverter",
+      "plugin_py_sha256": "6362a24bf216b72ef22ccdfcfda1e7c7de5b290fec22a727866d567cdec7db2b",
+      "repository_identity": "github.com/derenback/domoticz-sma-inverter"
+    },
+    {
+      "domoticz_key": "SMASunnyBoy",
+      "legacy_package_id": "Domoticz-SMA-SunnyBoy",
+      "package_id": "Domoticz-SMA-SunnyBoy",
+      "plugin_py_sha256": "eb98f499955208098c5a63216da15e3918198bb84ab3b771d30f022c421cb5ad",
+      "repository_identity": "github.com/rklomp/domoticz-sma-sunnyboy"
+    },
+    {
+      "domoticz_key": "snapcast",
+      "legacy_package_id": "domoticz-snapcast",
+      "package_id": "domoticz-snapcast",
+      "plugin_py_sha256": "a94de9ca7fb5cb0a047b721e121c6b05bb9c982b8941a955c759f53d0a33300b",
+      "repository_identity": "github.com/akamming/domoticz-snapcast"
+    },
+    {
+      "domoticz_key": "SolarEdge_ModbusTCP",
+      "legacy_package_id": "domoticz-solaredge-modbustcp-plugin",
+      "package_id": "domoticz-solaredge-modbustcp-plugin",
+      "plugin_py_sha256": "7243c5bf321a8ffc36ace92131d00aa7d0a9f86b4013c32ccbd5a2cde6fd9aee",
+      "repository_identity": "github.com/addiejanssen/domoticz-solaredge-modbustcp-plugin"
+    },
+    {
+      "domoticz_key": "SolaxMODBUS",
+      "legacy_package_id": "Domoticz-Solax-plugin",
+      "package_id": "Domoticz-Solax-plugin",
+      "plugin_py_sha256": "3681c97eb47e53ea190579e793ab9bfa144c1c18d1f973a1994167c09abc4b1d",
+      "repository_identity": "github.com/saidlm/domoticz-solax-plugin"
+    },
+    {
+      "domoticz_key": "Stromer",
+      "legacy_package_id": "Domoticz-Stromer-plugin",
+      "package_id": "Domoticz-Stromer-plugin",
+      "plugin_py_sha256": "8ece0604d8971574d4af22641808f3ba8e5d84d9dc2c568560f446c8da7d281f",
+      "repository_identity": "codeberg.org/hoog/domoticz-stromer-plugin"
+    },
+    {
+      "domoticz_key": "SynoMonitor",
+      "legacy_package_id": "Domoticz-Synology-Plugin",
+      "package_id": "Domoticz-Synology-Plugin",
+      "plugin_py_sha256": "4489888808e71c677399696103972933420ba938f498eaaafb4cb78b5055bc27",
+      "repository_identity": "github.com/bramvreugd/domoticz-synology-plugin"
+    },
+    {
+      "domoticz_key": "Tailscale",
+      "legacy_package_id": "domoticz-tailscale-plugin",
+      "package_id": "domoticz-tailscale-plugin",
+      "plugin_py_sha256": "406a5610c2e6104e284821e3483198a230527c24aa4339a7f1920c1ccdcf9916",
+      "repository_identity": "github.com/mirkg/domoticz-tailscale-plugin"
+    },
+    {
+      "domoticz_key": "TasmotaSmartplug",
+      "legacy_package_id": "Domoticz-Tasmota-Smartplug",
+      "package_id": "Domoticz-Tasmota-Smartplug",
+      "plugin_py_sha256": "b9978ada265dfb9d552719a5fa9a570efe1636216af0b57ad8fdd3c7adda9ac4",
+      "repository_identity": "github.com/mvdklip/domoticz-tasmota-smartplug"
+    },
+    {
+      "domoticz_key": "TEMPNU",
+      "legacy_package_id": "Domoticz-Temperatur-nu",
+      "package_id": "Domoticz-Temperatur-nu",
+      "plugin_py_sha256": "32b9727a917a6844cdbbfe4474cf86985d62b9fedd31f2d6624ecc77e36fd833",
+      "repository_identity": "github.com/derenback/domoticz-temperatur-nu"
+    },
+    {
+      "domoticz_key": "TeslaFi",
+      "legacy_package_id": "Domoticz-TeslaFi-Plugin",
+      "package_id": "Domoticz-TeslaFi-Plugin",
+      "plugin_py_sha256": "755ddb189cb7c72ed917719d944880b53f46a40dc61c2b0f2b4b14ca243d6900",
+      "repository_identity": "github.com/lemassykoi/domoticz-teslafi-plugin"
+    },
+    {
+      "domoticz_key": "THEME-MANAGER",
+      "legacy_package_id": "domoticz-theme-manager",
+      "package_id": "domoticz-theme-manager",
+      "plugin_py_sha256": "6320c104a2587b325a2694a40dff600af585b1cf6e7f903c47cc496e6e6865ac",
+      "repository_identity": "github.com/galadril/domoticz-theme-manager"
+    },
+    {
+      "domoticz_key": "LanControler",
+      "legacy_package_id": "domoticz-tinycontrol",
+      "package_id": "domoticz-tinycontrol",
+      "plugin_py_sha256": "a6265a86743ff80030550413444793a8be5ede43faac785a383ef5d9efbfeb54",
+      "repository_identity": "github.com/kofec/domoticz-tinycontrol"
+    },
+    {
+      "domoticz_key": "tinytuyalocal",
+      "legacy_package_id": "Domoticz-TinyTUYA-Local-Plugin",
+      "package_id": "Domoticz-TinyTUYA-Local-Plugin",
+      "plugin_py_sha256": "32b92ef545e94f300437c8339613933304e3e85cfa73750f19194e52992ff320",
+      "repository_identity": "github.com/xenomes/domoticz-tinytuya-local-plugin"
+    },
+    {
+      "domoticz_key": "tinytuya",
+      "legacy_package_id": "Domoticz-TinyTUYA-Plugin",
+      "package_id": "Domoticz-TinyTUYA-Plugin",
+      "plugin_py_sha256": "fdaebd19c8b7321d33e7783b25c5a72edf1d7b40aae11d6612477b2a959b5492",
+      "repository_identity": "github.com/xenomes/domoticz-tinytuya-plugin"
+    },
+    {
+      "domoticz_key": "TPLinkRouter",
+      "legacy_package_id": "Domoticz-TPLinkRouter",
+      "package_id": "Domoticz-TPLinkRouter",
+      "plugin_py_sha256": "f2b99a362ea7659e5fc99f233f46328ccbcaf1895fab6a4c1d770be2e174c95c",
+      "repository_identity": "github.com/blooesky/domoticz-tplinkrouter"
+    },
+    {
+      "domoticz_key": "TuyaAPI",
+      "legacy_package_id": "domoticz-tuya-heatpump",
+      "package_id": "domoticz-tuya-heatpump",
+      "plugin_py_sha256": "fc60704e5cf09649710a4b076057a018d4783a964a9ce12c9d1cae7f3d2305f9",
+      "repository_identity": "github.com/jgaalen/domoticz-tuya-heatpump"
+    },
+    {
+      "domoticz_key": "tixi_tuya_smartplug_plugin",
+      "legacy_package_id": "Domoticz-Tuya-SmartPlug-Plugin",
+      "package_id": "Domoticz-Tuya-SmartPlug-Plugin",
+      "plugin_py_sha256": "b20586a15ca5758e9451f5ec28252e160deabbe63d4585a5c6d3d5090a6cbc9b",
+      "repository_identity": "github.com/tixi/domoticz-tuya-smartplug-plugin"
+    },
+    {
+      "domoticz_key": "UnifiPresence",
+      "legacy_package_id": "Domoticz-Unifi-Presence",
+      "package_id": "Domoticz-Unifi-Presence",
+      "plugin_py_sha256": "889480ab25529efd3456a992b3908c32a4cf47e8237eaac35c9af2361d6edad2",
+      "repository_identity": "github.com/lacha07/domoticz-unifi-presence"
+    },
+    {
+      "domoticz_key": "Veolia",
+      "legacy_package_id": "Domoticz-Veolia",
+      "package_id": "Domoticz-Veolia",
+      "plugin_py_sha256": "f349b79574dfe1fe01cc07471a086d51c9b04823153e24e99a49eec0fb6e345d",
+      "repository_identity": "github.com/smanar/domoticz-veolia"
+    },
+    {
+      "domoticz_key": "Verisure",
+      "legacy_package_id": "domoticz-verisure",
+      "package_id": "domoticz-verisure",
+      "plugin_py_sha256": "46576cac8a4db28b6a2e9d776126023f37a57589c1dddc24c17f936ae87429c7",
+      "repository_identity": "github.com/risca/domoticz-verisure"
+    },
+    {
+      "domoticz_key": "SVTP",
+      "legacy_package_id": "Domoticz-VirtualThermostat-PID",
+      "package_id": "Domoticz-VirtualThermostat-PID",
+      "plugin_py_sha256": "8dc0caa7ed3d653f49c57fc665496fd31e422fde1f06714457ef5c62a17adb35",
+      "repository_identity": "github.com/worops/domoticz-virtualthermostat-pid"
+    },
+    {
+      "domoticz_key": "Volumio",
+      "legacy_package_id": "Domoticz-Volumio-Plugin",
+      "package_id": "Domoticz-Volumio-Plugin",
+      "plugin_py_sha256": "cc337f3baf3538f0834701c18f84268398e6fddab349777415bade5a52d2ca9e",
+      "repository_identity": "github.com/frepkovsky/domoticz-volumio-plugin"
+    },
+    {
+      "domoticz_key": "WMPS",
+      "legacy_package_id": "domoticz-watermeter",
+      "package_id": "domoticz-watermeter",
+      "plugin_py_sha256": "1b48c4693f57652171b80fef319eaa86df7d8831c5ce13cb12e86f430080da07",
+      "repository_identity": "github.com/akamming/domoticz-watermeter"
+    },
+    {
+      "domoticz_key": "WazeRouteTime",
+      "legacy_package_id": "Domoticz-WazeTimeTravel-Plugin",
+      "package_id": "Domoticz-WazeTimeTravel-Plugin",
+      "plugin_py_sha256": "387a5d0a00197bbc7f38bd78852a13cbeedbc41eaddf9ac1bec6b0424df8398e",
+      "repository_identity": "github.com/cth35/domoticz-wazetimetravel-plugin"
+    },
+    {
+      "domoticz_key": "wellbeing",
+      "legacy_package_id": "domoticz-wellbeing-plugin",
+      "package_id": "domoticz-wellbeing-plugin",
+      "plugin_py_sha256": "03431acb669cfa97655c6f0b2a2eede1ee2ddbfbe989dac78982487835c351ef",
+      "repository_identity": "github.com/jgaalen/domoticz-wellbeing-plugin"
+    },
+    {
+      "domoticz_key": "WifiSensors",
+      "legacy_package_id": "domoticz-wifisensors-plugin",
+      "package_id": "domoticz-wifisensors-plugin",
+      "plugin_py_sha256": "5389d7d5c717f104e3a727403f0d6cc4dc4b4ca1b1bd5fde38e364e0b77f455c",
+      "repository_identity": "github.com/mirkg/domoticz-wifisensors-plugin"
+    },
+    {
+      "domoticz_key": "WiFiTic",
+      "legacy_package_id": "domoticz-wifitic",
+      "package_id": "domoticz-wifitic",
+      "plugin_py_sha256": "84cab8b121a0b51eee2295a184cb9d7edbadd302e3c39d934194b14866cd9c90",
+      "repository_identity": "github.com/debugbill/domoticz-wifitic"
+    },
+    {
+      "domoticz_key": "WoonveiligGate03",
+      "legacy_package_id": "domoticz-woonveilig-gate03",
+      "package_id": "domoticz-woonveilig-gate03",
+      "plugin_py_sha256": "e1da4fc71682289c7710f054cb063ffd4c77206afc98fbb7a91180d02baad120",
+      "repository_identity": "github.com/sjaakspiegels/domoticz-woonveilig-gate03"
+    },
+    {
+      "domoticz_key": "ESPWordClock",
+      "legacy_package_id": "Domoticz-WordClock",
+      "package_id": "Domoticz-WordClock",
+      "plugin_py_sha256": "ff4123e202f086cfe0bc4f377d9d656b23bf5d6a1c3caafc72489a59893af603",
+      "repository_identity": "github.com/akamming/domoticz-wordclock"
+    },
+    {
+      "domoticz_key": "WThermostatBeca",
+      "legacy_package_id": "Domoticz-WThermostatBeca",
+      "package_id": "Domoticz-WThermostatBeca",
+      "plugin_py_sha256": "7e01fd40dec42618c480b06a93c04137d135fda73b2c5daf1d98e0ce0857d7ee",
+      "repository_identity": "github.com/mvdklip/domoticz-wthermostatbeca"
+    },
+    {
+      "domoticz_key": "WuDirect",
+      "legacy_package_id": "domoticz-wudirect",
+      "package_id": "domoticz-wudirect",
+      "plugin_py_sha256": "20e03ea68ed24c7a263758ff8c00bd5e422972dbaac0d348d7882af63f02c1c2",
+      "repository_identity": "github.com/vaneeten/domoticz-wudirect"
+    },
+    {
+      "domoticz_key": "Xiaomi-Mi-Air-Purifier-MIoT",
+      "legacy_package_id": "Domoticz-Xiaomi-Mi-Air-Purifier-MIoT-Plugin",
+      "package_id": "Domoticz-Xiaomi-Mi-Air-Purifier-MIoT-Plugin",
+      "plugin_py_sha256": "c6d6a93bd338915f1499c9f3c21309808871e49015bbb63bcfd5aa2a2e89de28",
+      "repository_identity": "github.com/jacekholeczek/domoticz-xiaomi-mi-air-purifier-miot-plugin"
+    },
+    {
+      "domoticz_key": "XiaomiPurifier4Pro",
+      "legacy_package_id": "Domoticz-Xiaomi-Purifier-4-Pro",
+      "package_id": "Domoticz-Xiaomi-Purifier-4-Pro",
+      "plugin_py_sha256": "2ea8cab47622d478552a357285ecdc4779557b8e061d30698feaaa2da22223ac",
+      "repository_identity": "github.com/blooesky/domoticz-xiaomi-purifier-4-pro"
+    },
+    {
+      "domoticz_key": "Zigbee2MQTT",
+      "legacy_package_id": "domoticz-zigbee2mqtt-plugin",
+      "package_id": "domoticz-zigbee2mqtt-plugin",
+      "plugin_py_sha256": "673f4b727977e3e0f38494e892b36cfd21ff6d7acf0069c95a56543c55dbf4b0",
+      "repository_identity": "github.com/royp99/domoticz-zigbee2mqtt-plugin"
+    },
+    {
+      "domoticz_key": "Zigpy",
+      "legacy_package_id": "Domoticz-Zigpy",
+      "package_id": "Domoticz-Zigpy",
+      "plugin_py_sha256": "74379e165ed026df32d3dd84b05902579d90173b484ed320b1b4ec56f79eb7fd",
+      "repository_identity": "github.com/hedda/domoticz-zigpy"
+    },
+    {
+      "domoticz_key": "ZonneDimmer",
+      "legacy_package_id": "Domoticz-ZonneDimmer-Plugin",
+      "package_id": "Domoticz-ZonneDimmer-Plugin",
+      "plugin_py_sha256": "6df94e74e7b5d1acb0249be591db2346fa7dfce7303bf548034d787203c9f655",
+      "repository_identity": "github.com/galadril/domoticz-zonnedimmer-plugin"
+    },
+    {
+      "domoticz_key": "ZonneplanEnergy",
+      "legacy_package_id": "domoticz-zonneplan",
+      "package_id": "domoticz-zonneplan",
+      "plugin_py_sha256": "9ba23ff9fed343d2c3871f3a5e7398e0ab74f7547418bef4b46eb1c5317e39e5",
+      "repository_identity": "github.com/rayray4105/domoticz-zonneplan"
+    },
+    {
+      "domoticz_key": "HTU20D_FTDI",
+      "legacy_package_id": "domoticz_htu20d_python",
+      "package_id": "domoticz_htu20d_python",
+      "plugin_py_sha256": "c64c2659b3250d2939d819ec31eb6ec4735225fceaa5a0e85b06514bce01b4b8",
+      "repository_identity": "github.com/nijmeijer/domoticz_htu20d_python"
+    },
+    {
+      "domoticz_key": "LG_ThinQ",
+      "legacy_package_id": "domoticz_lg_thinq_plugin",
+      "package_id": "domoticz_lg_thinq_plugin",
+      "plugin_py_sha256": "9fbbf187c14457a1f9afee7eaf15c618628856f3e97f835799ce99048b2e404c",
+      "repository_identity": "github.com/majki09/domoticz_lg_thinq_plugin"
+    },
+    {
+      "domoticz_key": "LG_ThinQ_Connect",
+      "legacy_package_id": "domoticz_lg_thinqconnect_plugin",
+      "package_id": "domoticz_lg_thinqconnect_plugin",
+      "plugin_py_sha256": "c27b74a729bf9c27d0c628fa42537c11dfdb2e6d5e5841218d6cd25db9f45b21",
+      "repository_identity": "github.com/avriessen/domoticz_lg_thinqconnect_plugin"
+    },
+    {
+      "domoticz_key": "Marstek_modbus",
+      "legacy_package_id": "Domoticz_Marstek_Modbus",
+      "package_id": "Domoticz_Marstek_Modbus",
+      "plugin_py_sha256": "dafdaf9856e7480cb151fbe93c4fe7627e526dcb7ac14742ee468ec61b6f2701",
+      "repository_identity": "github.com/hopsilentsimon/domoticz_marstek_modbus"
+    },
+    {
+      "domoticz_key": "CZ-TACG1",
+      "legacy_package_id": "domoticz_panasonic_CZ-TACG1",
+      "package_id": "domoticz_panasonic_CZ-TACG1",
+      "plugin_py_sha256": "d90a3156b03bf4ddb7ae77574fa06bfe9167fa2ae659c57621f0419e6ad46bcb",
+      "repository_identity": "github.com/sdamasoc/domoticz_panasonic_cz-tacg1"
+    },
+    {
+      "domoticz_key": "SmartThingsWasherDryer",
+      "legacy_package_id": "Domoticz_plugin_for_Smasung_Washer_Dryer",
+      "package_id": "Domoticz_plugin_for_Smasung_Washer_Dryer",
+      "plugin_py_sha256": "650130fd2e889bfdccc5238ba93cee31a8bc302efaf2fd63c7796d68691fad0d",
+      "repository_identity": "github.com/csutihu/domoticz_plugin_for_smasung_washer_dryer"
+    },
+    {
+      "domoticz_key": "Reolink",
+      "legacy_package_id": "domoticz_reolink",
+      "package_id": "domoticz_reolink",
+      "plugin_py_sha256": "30f21cbba3043a77b9213d0b4d1277a7cde3ad831c4af7cdbb51d2fe29ec2d7e",
+      "repository_identity": "github.com/j-b-n/domoticz_reolink"
+    },
+    {
+      "domoticz_key": "VolvoEV",
+      "legacy_package_id": "Domoticz_VolvoRecharge_Plugin",
+      "package_id": "Domoticz_VolvoRecharge_Plugin",
+      "plugin_py_sha256": "08fb979b6dd02d5718cfb54e50f1379ca9bceb22a9500111bd24c5dfa190c65a",
+      "repository_identity": "github.com/akamming/domoticz_volvorecharge_plugin"
+    },
+    {
+      "domoticz_key": "WT53RSensor",
+      "legacy_package_id": "Domoticz_WT53R_Rain_Tank_Sensor",
+      "package_id": "Domoticz_WT53R_Rain_Tank_Sensor",
+      "plugin_py_sha256": "6fd38d88fdb0d6f3311eb176d651546f3b07888fa318872a5db963bbe966cb6c",
+      "repository_identity": "github.com/voyo/domoticz_wt53r_rain_tank_sensor"
+    },
+    {
+      "domoticz_key": "ZigbeeMQTT",
+      "legacy_package_id": "domoticz_zigbee2tasmota",
+      "package_id": "domoticz_zigbee2tasmota",
+      "plugin_py_sha256": "516ecadf7915a37847b42637d34682849d8574d8097c73dbbc3c09f07dcf51ef",
+      "repository_identity": "github.com/mibeus/domoticz_zigbee2tasmota"
+    },
+    {
+      "domoticz_key": "D2LModule",
+      "legacy_package_id": "DomoticzD2LPlugin",
+      "package_id": "DomoticzD2LPlugin",
+      "plugin_py_sha256": "1e09990b1b45a7e42d779def93213300fff0d4f50223daa4735d66af187015ba",
+      "repository_identity": "github.com/ultrasuperpingu/domoticzd2lplugin"
+    },
+    {
+      "domoticz_key": "MyHome",
+      "legacy_package_id": "DomoticzMyHomeOpenWebNet",
+      "package_id": "DomoticzMyHomeOpenWebNet",
+      "plugin_py_sha256": "a363b6dfc916d377eb15e158937d5a36c9ec59885d73ab9ba734d152d0c0b866",
+      "repository_identity": "github.com/sylvainper/domoticzmyhomeopenwebnet"
+    },
+    {
+      "domoticz_key": "GoogleNestSDM",
+      "legacy_package_id": "DomoticzNestPlugin",
+      "package_id": "DomoticzNestPlugin",
+      "plugin_py_sha256": "5b9aa99737be19a3f486db7bc90911e7380ba1b30c1912b1534ed062650588e6",
+      "repository_identity": "github.com/lbartuzi/domoticznestplugin"
+    },
+    {
+      "domoticz_key": "ProscenicVaccum",
+      "legacy_package_id": "DomoticzProscenicVacuum",
+      "package_id": "DomoticzProscenicVacuum",
+      "plugin_py_sha256": "17380513dbed3bba705cfcee1474262743d10e642ae880643eba970c3d1c1f42",
+      "repository_identity": "github.com/trandbert37/domoticzproscenicvacuum"
+    },
+    {
+      "domoticz_key": "SabNZBD",
+      "legacy_package_id": "DomoticzSabNZBDPlugin",
+      "package_id": "DomoticzSabNZBDPlugin",
+      "plugin_py_sha256": "50ee92a10d0ba3e64cb94a93a7f7cc32d24fb10393cd8fa904c8e712cc148b2c",
+      "repository_identity": "gitlab.com/r.boeters/domoticzsabnzbdplugin"
+    },
+    {
+      "domoticz_key": "Tile",
+      "legacy_package_id": "DomoticzTile",
+      "package_id": "DomoticzTile",
+      "plugin_py_sha256": "544babd023d5c5aa7575e5616bbee186748ba4a6900d10c643cfadf4dc962fc7",
+      "repository_identity": "github.com/sydspost/domoticz-tile-plugin"
+    },
+    {
+      "domoticz_key": "DreameApi",
+      "legacy_package_id": "Dreame",
+      "package_id": "Dreame",
+      "plugin_py_sha256": "36befb30e181d69d5349f1313ec4692a5f10ab745623ad13dbc2968401745e54",
+      "repository_identity": "github.com/madpatrick/domoticz_dreame"
+    },
+    {
+      "domoticz_key": "DS238_ModbusTCP",
+      "legacy_package_id": "ds238-modbus-tcp",
+      "package_id": "ds238-modbus-tcp",
+      "plugin_py_sha256": "2434be362f6ed73109e95f159d41ba588448966df98e8790b71eece992a90728",
+      "repository_identity": "github.com/xbeaudouin/domoticz-ds238-modbus-tcp"
+    },
+    {
+      "domoticz_key": "DysonPureLink",
+      "legacy_package_id": "DysonPureLink",
+      "package_id": "DysonPureLink",
+      "plugin_py_sha256": "42d328d616cf89b928fe74aea275cba732e6ca8a281bee28049cb3de2975e0e5",
+      "repository_identity": "github.com/janjaapko/dysonpurelink"
+    },
+    {
+      "domoticz_key": "LinkyD2L",
+      "legacy_package_id": "Dz_LinkyD2L",
+      "package_id": "Dz_LinkyD2L",
+      "plugin_py_sha256": "36e20223d0018a900ede4f2ee4b6dd60fbc844a0518f1d1e615a41cdfae12943",
+      "repository_identity": "github.com/phildesjda/dz_linkyd2l"
+    },
+    {
+      "domoticz_key": "Domoticz-E-Flux-Plugin",
+      "legacy_package_id": "E-Flux",
+      "package_id": "E-Flux",
+      "plugin_py_sha256": "5d5ce5019fdfb0373892cdac620e2e9355f5462ce62911d1e764cbd1d4ccbe3d",
+      "repository_identity": "github.com/galadril/domoticz-e-flux-plugin"
+    },
+    {
+      "domoticz_key": "EaseeCloudAutoDiscoveryV1000",
+      "legacy_package_id": "easee-domoticz",
+      "package_id": "easee-domoticz",
+      "plugin_py_sha256": "932ef5c7e44b97da6984bfafff185a72008d23380e0d5a89d88532ccb30c3843",
+      "repository_identity": "github.com/rleunk/easee-domoticz"
+    },
+    {
+      "domoticz_key": "easun_inverter",
+      "legacy_package_id": "Easun-ISolarSPS-Domoticz",
+      "package_id": "Easun-ISolarSPS-Domoticz",
+      "plugin_py_sha256": "a18a1359af420532e6bd604c76ad506f42107db68fd64ddf751acb6bc21c636f",
+      "repository_identity": "github.com/bblaszkiewicz/easun-isolarsps-domoticz"
+    },
+    {
+      "domoticz_key": "ebusd",
+      "legacy_package_id": "ebusd",
+      "package_id": "ebusd",
+      "plugin_py_sha256": "bca62bebfd71a57c1c9d30f39c040c3405b34602fed2ada24331d8602e2d619e",
+      "repository_identity": "github.com/guillaumezin/domoticzebusd"
+    },
+    {
+      "domoticz_key": "ems-gateway",
+      "legacy_package_id": "ems-gateway",
+      "package_id": "ems-gateway",
+      "plugin_py_sha256": "7f57dd3aeef23f00634164bf5e427d6a8cee497900f7befff3500561ee8961dc",
+      "repository_identity": "github.com/bbqkees/ems-esp-domoticz-plugin"
+    },
+    {
+      "domoticz_key": "BasePlug",
+      "legacy_package_id": "evcc_domoticz",
+      "package_id": "evcc_domoticz",
+      "plugin_py_sha256": "b2a4b7c9afcb36ab2d33b4888fc670de46aab47c0fcd57d0e0eaa6cd81339293",
+      "repository_identity": "github.com/enboer/evcc_domoticz"
+    },
+    {
+      "domoticz_key": "F1Info",
+      "legacy_package_id": "F1_race",
+      "package_id": "F1_race",
+      "plugin_py_sha256": "b7ae87ec93c12fd2770797b37f53899f2be9df7d41d3f1e9bea74dffce92ab8f",
+      "repository_identity": "github.com/madpatrick/domoticz_f1"
+    },
+    {
+      "domoticz_key": "FindMyiPhone",
+      "legacy_package_id": "fmi",
+      "package_id": "fmi",
+      "plugin_py_sha256": "452a083855c4d7612f8fdf8ee8b51fc77207decb7eb19c1e00bf2a84b06bba16",
+      "repository_identity": "github.com/keles75/fmi"
+    },
+    {
+      "domoticz_key": "foxess",
+      "legacy_package_id": "FoxESS-domoticz",
+      "package_id": "FoxESS-domoticz",
+      "plugin_py_sha256": "8c8d817ea907f20491aeea5f6638d19bf557512b1731a0486b5e988bbe6cd286",
+      "repository_identity": "github.com/bblaszkiewicz/foxess-domoticz"
+    },
+    {
+      "domoticz_key": "Freebox",
+      "legacy_package_id": "freeboxv6",
+      "package_id": "freeboxv6",
+      "plugin_py_sha256": "7ca54b17330c6472f5e4cd204c1e77705704cca92003a112706738674af8e3ca",
+      "repository_identity": "github.com/supermat/plugindomoticzfreebox"
+    },
+    {
+      "domoticz_key": "FroniusHttp",
+      "legacy_package_id": "froniusHttp",
+      "package_id": "froniusHttp",
+      "plugin_py_sha256": "1e609fb68339ab2d7af3da326f51e6fd9bf20854f38cda91cf7d0d243aae9b45",
+      "repository_identity": "github.com/ayasystems/froniushttp"
+    },
+    {
+      "domoticz_key": "FullyKiosk",
+      "legacy_package_id": "FullyKiosk",
+      "package_id": "FullyKiosk",
+      "plugin_py_sha256": "b4cf7e4b80748cdcb208c4b7a405a6e54b2ab7c427e879b910063d5ced7e6698",
+      "repository_identity": "github.com/madpatrick/domoticz_fullykiosk"
+    },
+    {
+      "domoticz_key": "GarbageCalendar",
+      "legacy_package_id": "Garbage",
+      "package_id": "Garbage",
+      "plugin_py_sha256": "c5557d5c131917e1b45249894ea611f709ffd0f8aa20949a71f5a2d90a10ac8b",
+      "repository_identity": "github.com/madpatrick/domoticz_garbage"
+    },
+    {
+      "domoticz_key": "Goodwe_RS485",
+      "legacy_package_id": "goodwe_rs485_domoticz",
+      "package_id": "goodwe_rs485_domoticz",
+      "plugin_py_sha256": "8a5323f585bda2ecb95c77fa03b29c67dc50c42afed88f2d1f012ef142e977f5",
+      "repository_identity": "github.com/nijmeijer/goodwe_rs485_domoticz"
+    },
+    {
+      "domoticz_key": "GoodWeSEMS",
+      "legacy_package_id": "GoodWeAPI",
+      "package_id": "GoodWeAPI",
+      "plugin_py_sha256": "e47fea900638aca0aa7bb3cc52b6e8c42a486a5ec5c562d3a9332067c852b42f",
+      "repository_identity": "github.com/janjaapko/domoticz-goodwesems"
+    },
+    {
+      "domoticz_key": "GoveeDiscovery",
+      "legacy_package_id": "GoveeDiscovery",
+      "package_id": "GoveeDiscovery",
+      "plugin_py_sha256": "ec935d7934926aae15f0677a14346d0ddfc929bdca10b0e1a65161e28fabcb48",
+      "repository_identity": "github.com/galadril/domoticz-govee-plugin"
+    },
+    {
+      "domoticz_key": "aircon_status",
+      "legacy_package_id": "Hisense-AirCon-Domoticz",
+      "package_id": "Hisense-AirCon-Domoticz",
+      "plugin_py_sha256": "694b5b92416d44c5a960dc0b895e7fe1bc3e8992057e8d5be99e46bba035d9a5",
+      "repository_identity": "github.com/bblaszkiewicz/hisense-aircon-domoticz"
+    },
+    {
+      "domoticz_key": "HomeConnect",
+      "legacy_package_id": "home-connect",
+      "package_id": "home-connect",
+      "plugin_py_sha256": "9d8b1a18e13d5b97770b9b13340d17e132b73742f1aed68ee27d91477fb40084",
+      "repository_identity": "github.com/domoticz/home-connect"
+    },
+    {
+      "domoticz_key": "Homewizard",
+      "legacy_package_id": "Homewizard",
+      "package_id": "Homewizard",
+      "plugin_py_sha256": "06b7851c79b7ecf178da07a0091b5ef79efaf2007c6bae5c09048c661f533b3a",
+      "repository_identity": "github.com/rvdvoorde/domoticz-homewizard"
+    },
+    {
+      "domoticz_key": "HomeWizardBattery",
+      "legacy_package_id": "Homewizard-Battery",
+      "package_id": "Homewizard-Battery",
+      "plugin_py_sha256": "9d859074389d46910cb1799cad4afb5304584fdffd2fa1d1f3526a9032b27983",
+      "repository_identity": "github.com/etmmvdp/homewizard-battery-plugin"
+    },
+    {
+      "domoticz_key": "HomeWizardWifi3FMeter",
+      "legacy_package_id": "HomeWizard-Wifi-3F-plugin",
+      "package_id": "HomeWizard-Wifi-3F-plugin",
+      "plugin_py_sha256": "ed7925a926240b4eba26a24b40ec61d0f9ef981593d98fe2187d95feabe406ca",
+      "repository_identity": "github.com/freekdk/homewizard-wifi-3f-plugin"
+    },
+    {
+      "domoticz_key": "HomeWizardEnergySocket",
+      "legacy_package_id": "HomeWizard-Wifi-Energy-Socket",
+      "package_id": "HomeWizard-Wifi-Energy-Socket",
+      "plugin_py_sha256": "4d035cfb21bdec6cff51cdc33fbca34cc10f9bbc975450934e027b5199df7aa0",
+      "repository_identity": "github.com/eraser3/homewizard-wifi-energy-socket"
+    },
+    {
+      "domoticz_key": "HomeWizardKWH3",
+      "legacy_package_id": "HomeWizard-Wifi-kWh-Meter",
+      "package_id": "HomeWizard-Wifi-kWh-Meter",
+      "plugin_py_sha256": "d815b701b907dc75421186c269f9f6540419915a8e051f4b181afee3b5296e3a",
+      "repository_identity": "github.com/siewert308sw/homewizard-wifi-kwh-meter"
+    },
+    {
+      "domoticz_key": "HomeWizardWifi-kWh",
+      "legacy_package_id": "HomeWizard-Wifi-kWh-plugin",
+      "package_id": "HomeWizard-Wifi-kWh-plugin",
+      "plugin_py_sha256": "94ffbd9dd35984bace23c5b56d7947556b3e189af07ff1f72db840c2c9cdddc2",
+      "repository_identity": "github.com/henknl/homewizard-wifi-kwh-plugin"
+    },
+    {
+      "domoticz_key": "HomeWizardWifiP1Meter",
+      "legacy_package_id": "HomeWizard-Wifi-p1-plugin",
+      "package_id": "HomeWizard-Wifi-p1-plugin",
+      "plugin_py_sha256": "eb2081d5ad50659d8bce4f5e2d3473ded1cc5ca8eebec074db63bef8febea638",
+      "repository_identity": "github.com/eraser3/homewizard-wifi-p1-plugin"
+    },
+    {
+      "domoticz_key": "HOME_WIZARD_ELECTRIC_P1_METER",
+      "legacy_package_id": "HomeWizard-Wifi-p1-plugin-Extended",
+      "package_id": "HomeWizard-Wifi-p1-plugin-Extended",
+      "plugin_py_sha256": "64316d24bdd22c00de9237bad2bfa9fd61ea1bfcc4ebd1107bbef80449ccba83",
+      "repository_identity": "github.com/szelessavalapitvany/homewizard-wifi-p1-plugin-extended"
+    },
+    {
+      "domoticz_key": "HomeWizardWifiWatermeter",
+      "legacy_package_id": "HomeWizard-Wifi-Watermeter",
+      "package_id": "HomeWizard-Wifi-Watermeter",
+      "plugin_py_sha256": "bf563189f53dc02d2fc22347e273242fad2eed16d590f4f85b129f0bc4fb9e44",
+      "repository_identity": "github.com/eraser3/homewizard-wifi-watermeter"
+    },
+    {
+      "domoticz_key": "hp_ilo",
+      "legacy_package_id": "HP_iLo",
+      "package_id": "HP_iLo",
+      "plugin_py_sha256": "156246418e76d87fc2ccdaad97b3f52d3d144441c629970041663e2fd000d180",
+      "repository_identity": "github.com/madpatrick/domoticz_hp_ilo"
+    },
+    {
+      "domoticz_key": "domoticz-hyundai-kia",
+      "legacy_package_id": "HyundaiKiaConnect",
+      "package_id": "HyundaiKiaConnect",
+      "plugin_py_sha256": "aee517913f46e1d63dd61f41627c3d4bcbb149bebe64b8687f26d50bcf17df32",
+      "repository_identity": "github.com/creasoltech/domoticz-hyundai-kia"
+    },
+    {
+      "domoticz_key": "idetect",
+      "legacy_package_id": "iDetect",
+      "package_id": "iDetect",
+      "plugin_py_sha256": "2ac106d598142602df8500fcb441070e2a8c1c606371dd8974ff6b50b0334b7e",
+      "repository_identity": "github.com/d-escape/domoticz_idetect"
+    },
+    {
+      "domoticz_key": "IKEA-Tradfri",
+      "legacy_package_id": "IKEA-Tradfri",
+      "package_id": "IKEA-Tradfri",
+      "plugin_py_sha256": "b4081ed20a1ad6d1db89e1fca164a792624b293dfdc2418d350683a636ad6a4c",
+      "repository_identity": "github.com/moroen/ikea-tradfri-plugin"
+    },
+    {
+      "domoticz_key": "IMGWMeteo",
+      "legacy_package_id": "IMGW-Meteo",
+      "package_id": "IMGW-Meteo",
+      "plugin_py_sha256": "aa42029c029a6a482c97f5aca4e61da0da964a842d090be76603e4b425f1f67a",
+      "repository_identity": "github.com/mstojek/imgw-meteo"
+    },
+    {
+      "domoticz_key": "Panasonic-IntesisBox",
+      "legacy_package_id": "IntesisBox-Panasonic-Tcap-modbus",
+      "package_id": "IntesisBox-Panasonic-Tcap-modbus",
+      "plugin_py_sha256": "ba045a41e0f8f80c943b923e1288e8d193a45337623e98ac56a2dbac169148d1",
+      "repository_identity": "github.com/voyo/intesisbox-panasonic-tcap-modbus"
+    },
+    {
+      "domoticz_key": "BasePlug",
+      "legacy_package_id": "IntesishomewithDomoticz",
+      "package_id": "IntesishomewithDomoticz",
+      "plugin_py_sha256": "22007ea0e73c9dee1b7d6f462bd22a7cfe4ae288919d581c065655500a55f3e8",
+      "repository_identity": "github.com/luismalddonado/intesishomewithdomoticz"
+    },
+    {
+      "domoticz_key": "IthoWifi",
+      "legacy_package_id": "IthoWifi",
+      "package_id": "IthoWifi",
+      "plugin_py_sha256": "d086ff02a2dc85b6802ee574aaed3f267b0ec7fe69dffa9baf3e1d7a8e1a307a",
+      "repository_identity": "github.com/galadril/domoticz-itho-wifi-plugin"
+    },
+    {
+      "domoticz_key": "Frisquet-connect",
+      "legacy_package_id": "Krakinou-FrisquetConnectDomoticz",
+      "package_id": "Krakinou-FrisquetConnectDomoticz",
+      "plugin_py_sha256": "81a2100ce1bb70db892b8dbc3b2267d9f055d4015fca416dec5f31e2944943e1",
+      "repository_identity": "github.com/krakinou/frisquetconnectdomoticz"
+    },
+    {
+      "domoticz_key": "linktap",
+      "legacy_package_id": "Link-Tap",
+      "package_id": "Link-Tap",
+      "plugin_py_sha256": "91623c208c80915ae9be13ba72981a6926caebd7373e7a15f5c544297c7a3dae",
+      "repository_identity": "github.com/debugbill/link-tap"
+    },
+    {
+      "domoticz_key": "linky",
+      "legacy_package_id": "Linky",
+      "package_id": "Linky",
+      "plugin_py_sha256": "7f3af414ea7d8df6d906539c71a708482ede3dac1c1b3c9e6bb0228344af213c",
+      "repository_identity": "github.com/guillaumezin/domoticzlinky"
+    },
+    {
+      "domoticz_key": "LionTasmoticz",
+      "legacy_package_id": "LionTasmoticz",
+      "package_id": "LionTasmoticz",
+      "plugin_py_sha256": "fcb2485a4a34bb0c1f5992941c090af9ab5cc8b4c33b1ba9e49abddd597aed07",
+      "repository_identity": "github.com/lion251/liontasmoticz"
+    },
+    {
+      "domoticz_key": "luxtronikex",
+      "legacy_package_id": "luxtronikex",
+      "package_id": "luxtronikex",
+      "plugin_py_sha256": "0b1abb608514c258bc10a4c5603c745c8d07d44dca300eb5638504724dcb5cf1",
+      "repository_identity": "github.com/rouzax/luxtronik-domoticz-plugin-v2"
+    },
+    {
+      "domoticz_key": "LyrionMusicServer",
+      "legacy_package_id": "Lyrion",
+      "package_id": "Lyrion",
+      "plugin_py_sha256": "069d020281e6eb16bd6a4013cde5d99d186ae3733ad60d13aa87b588573de476",
+      "repository_identity": "github.com/madpatrick/domoticz_lyrion"
+    },
+    {
+      "domoticz_key": "MarstekOpenAPI",
+      "legacy_package_id": "Marstek-Venus-plugin",
+      "package_id": "Marstek-Venus-plugin",
+      "plugin_py_sha256": "7b59665f5c8f9fd53aec325a6149b99465edfba58273b261b61b3d6f20061dc9",
+      "repository_identity": "github.com/willemd61/marstek-venus-plugin"
+    },
+    {
+      "domoticz_key": "MarstekCT",
+      "legacy_package_id": "MarstekCT",
+      "package_id": "MarstekCT",
+      "plugin_py_sha256": "77f0c82a80ca3fdaea00bdcdd6a0d193462fe09cd48d90448dd9a14ccb360851",
+      "repository_identity": "github.com/haaibaai/domoticz-marstek"
+    },
+    {
+      "domoticz_key": "Mattericz",
+      "legacy_package_id": "Mattericz",
+      "package_id": "Mattericz",
+      "plugin_py_sha256": "b3671441f1d605bd31c2246f9418cc65a5e635e7b30f3b743e1bfa44773e330f",
+      "repository_identity": "github.com/fleinze/mattericz"
+    },
+    {
+      "domoticz_key": "MeshCore",
+      "legacy_package_id": "MeshCore",
+      "package_id": "MeshCore",
+      "plugin_py_sha256": "44566ce2d9dfb143cbc0b7068d502631adc3fa2c2f6779913cbc046077de3ff8",
+      "repository_identity": "github.com/galadril/domoticz-meshcore-plugin"
+    },
+    {
+      "domoticz_key": "Mi_flower_mate",
+      "legacy_package_id": "Mi_Flower_mate_plugin",
+      "package_id": "Mi_Flower_mate_plugin",
+      "plugin_py_sha256": "fd00032b15c2157d6586fa62e723448fe7c3c572929dc63dd4c49c9e825390da",
+      "repository_identity": "github.com/flatsiedatsie/mi_flower_mate_plugin"
+    },
+    {
+      "domoticz_key": "MQTTDiscovery",
+      "legacy_package_id": "MQTTDiscovery",
+      "package_id": "MQTTDiscovery",
+      "plugin_py_sha256": "13731366fef7818b8bb27ec94e4b094e6e40286a1c7a78c30815a6b944423757",
+      "repository_identity": "github.com/emontnemery/domoticz_mqtt_discovery"
+    },
+    {
+      "domoticz_key": "myenergi",
+      "legacy_package_id": "myenergi",
+      "package_id": "myenergi",
+      "plugin_py_sha256": "5169f10c6b237ef9827f2814af5f628e21d2dbc8536c64a5e4db6047ac99fa08",
+      "repository_identity": "github.com/rouzax/myenergi-domoticz-plugin"
+    },
+    {
+      "domoticz_key": "NEDsolarForecast",
+      "legacy_package_id": "NEDsolarForecast",
+      "package_id": "NEDsolarForecast",
+      "plugin_py_sha256": "f93369b55a5a113e73d26f8aea433b0d253adb578ca4f92eeeba7a513e88985b",
+      "repository_identity": "github.com/janjaapko/nedsolarforecast"
+    },
+    {
+      "domoticz_key": "NUT_UPS",
+      "legacy_package_id": "NUT_UPS",
+      "package_id": "NUT_UPS",
+      "plugin_py_sha256": "62e93f966692a5749417cc1fc462124ad1c8d329fc3505f02194e79700979b36",
+      "repository_identity": "github.com/999lv/nut_ups"
+    },
+    {
+      "domoticz_key": "OM310",
+      "legacy_package_id": "OM310-Domoticz-plugin",
+      "package_id": "OM310-Domoticz-plugin",
+      "plugin_py_sha256": "d995dd62ea28ccde7a89c7d9ea550a85c4160bd86bd758d4fc8c4593524f5d2e",
+      "repository_identity": "github.com/tmrealive/om310-domoticz-plugin"
+    },
+    {
+      "domoticz_key": "BasePlug",
+      "legacy_package_id": "OpenEVSEPlugin",
+      "package_id": "OpenEVSEPlugin",
+      "plugin_py_sha256": "059f6c6d401ff6299807fbe62b370f6f940c490606dbf6217a410806d1838251",
+      "repository_identity": "github.com/ayasystems/openevseplugin"
+    },
+    {
+      "domoticz_key": "PC321_TY_tuya_local",
+      "legacy_package_id": "PC321_TY_tuya_local",
+      "package_id": "PC321_TY_tuya_local",
+      "plugin_py_sha256": "aa04ccc3746c6e2561db1e56081f115d3e87ca78a697958063ac8a621f28b185",
+      "repository_identity": "github.com/nlovrens/pc321_ty_tuya_local"
+    },
+    {
+      "domoticz_key": "pzem-016",
+      "legacy_package_id": "pzem016",
+      "package_id": "pzem016",
+      "plugin_py_sha256": "a88624a8e2ee1444f2ee672dd8ffe75f18fc9dfc2fb562f9d87746573685ca5e",
+      "repository_identity": "github.com/creasoltech/domoticz-pzem-016"
+    },
+    {
+      "domoticz_key": "Quatt",
+      "legacy_package_id": "Quatt",
+      "package_id": "Quatt",
+      "plugin_py_sha256": "affb18b6bcb86ab5df180e029df851c144d7763c75b8d1cf503824ca2ab12139",
+      "repository_identity": "github.com/galadril/domoticz-quatt-plugin"
+    },
+    {
+      "domoticz_key": "rest980-domoticz",
+      "legacy_package_id": "rest980-domoticz",
+      "package_id": "rest980-domoticz",
+      "plugin_py_sha256": "372b11ade48ce63037cb31a35904aa263cd842363a208af0bd8256bc7f92e8b4",
+      "repository_identity": "github.com/damsma/rest980-domoticz"
+    },
+    {
+      "domoticz_key": "Roomba",
+      "legacy_package_id": "Roomba",
+      "package_id": "Roomba",
+      "plugin_py_sha256": "16a8737edbf7f51733fbdccb3ba83edcd4b602242b57084cdf1942f4c3d62630",
+      "repository_identity": "github.com/neutrino85/roomba"
+    },
+    {
+      "domoticz_key": "SessyBattery",
+      "legacy_package_id": "SessyBattery",
+      "package_id": "SessyBattery",
+      "plugin_py_sha256": "c1d08dc5d23a1e3006f6635386133ad37c1d017ef3429414e3d3ba6f4408098c",
+      "repository_identity": "github.com/janjaapko/sessybattery"
+    },
+    {
+      "domoticz_key": "ShellyCloudPlugin2",
+      "legacy_package_id": "ShellyCloudPlugin2",
+      "package_id": "ShellyCloudPlugin2",
+      "plugin_py_sha256": "2f6af7ae4bbbae3f00558a846327875fcb6ebb257fb4a2f2906d00e5e3145375",
+      "repository_identity": "github.com/mario-peters/shellycloudplugin2"
+    },
+    {
+      "domoticz_key": "iim-slide",
+      "legacy_package_id": "slide-domoticz",
+      "package_id": "slide-domoticz",
+      "plugin_py_sha256": "96098f5375bff87db169c8374331f9235cef379f22c02d57f677c6b933ea12a2",
+      "repository_identity": "github.com/lokonli/slide-domoticz"
+    },
+    {
+      "domoticz_key": "Slsys",
+      "legacy_package_id": "slsys-domoticz",
+      "package_id": "slsys-domoticz",
+      "plugin_py_sha256": "ff7476e017309c18303007dcca64fb9b26349870c8bae2f8c3053da0219a71e4",
+      "repository_identity": "github.com/william-aqn/slsys-domoticz"
+    },
+    {
+      "domoticz_key": "SVT",
+      "legacy_package_id": "SmartVirtualThermostat",
+      "package_id": "SmartVirtualThermostat",
+      "plugin_py_sha256": "8b1f389b23420f7fe2e1204b1a31aa6af245d09f1a6ebfc30b47371040f7d040",
+      "repository_identity": "github.com/999lv/smartvirtualthermostat"
+    },
+    {
+      "domoticz_key": "Sofar",
+      "legacy_package_id": "Sofar-modbus",
+      "package_id": "Sofar-modbus",
+      "plugin_py_sha256": "9b19437684b66260f1df26b38bc6f9cc273c9e00bdd3d971d3700b6d08118300",
+      "repository_identity": "github.com/voyo/sofar-modbus"
+    },
+    {
+      "domoticz_key": "SolarEdge_ModbusTCP",
+      "legacy_package_id": "Solaredge_modbustcp",
+      "package_id": "Solaredge_modbustcp",
+      "plugin_py_sha256": "95171b7f62c5c9f6cef57e4f85c0247afc4086c1f775e0843bbe8c802e3dda47",
+      "repository_identity": "github.com/madpatrick/solaredge_modbustcp"
+    },
+    {
+      "domoticz_key": "Zendure",
+      "legacy_package_id": "solarFlow2400AC",
+      "package_id": "solarFlow2400AC",
+      "plugin_py_sha256": "5d47da4992d009d670c88c17fccbc75d412ce2225fd2e62f883b895bbeaad56e",
+      "repository_identity": "github.com/hermantb/solarflow2400ac"
+    },
+    {
+      "domoticz_key": "SolarForecast",
+      "legacy_package_id": "SolarForecast",
+      "package_id": "SolarForecast",
+      "plugin_py_sha256": "bd4ad5a3bd3be73b481fde1ab7ce504d20ee6a06942540ab5a67e81a5005903c",
+      "repository_identity": "github.com/janjaapko/solarforecast"
+    },
+    {
+      "domoticz_key": "Domoticz-SolaxCloud-Plugin",
+      "legacy_package_id": "SolaxCloud",
+      "package_id": "SolaxCloud",
+      "plugin_py_sha256": "a0cc02c5858d2fef6300aa0e7759e5b4b09f603bdc11ab8b6ab031d05bf814af",
+      "repository_identity": "github.com/galadril/domoticz-solaxcloud-plugin"
+    },
+    {
+      "domoticz_key": "SolaxHTTP",
+      "legacy_package_id": "SolaxHTTP",
+      "package_id": "SolaxHTTP",
+      "plugin_py_sha256": "b623e90b39411a249e84d6c08f0260c7f805d8320a7af2f5285b40ff39ef149f",
+      "repository_identity": "github.com/ayasystems/solaxhttp"
+    },
+    {
+      "domoticz_key": "tahomaIO",
+      "legacy_package_id": "Somfy",
+      "package_id": "Somfy",
+      "plugin_py_sha256": "ea7e8487c05d35d3c12212a713ced60aef0abebdeff0ea3f226b573f24da79a4",
+      "repository_identity": "github.com/madpatrick/domoticz_somfy"
+    },
+    {
+      "domoticz_key": "sonoff-mini",
+      "legacy_package_id": "sonoff-domoticz-plugin",
+      "package_id": "sonoff-domoticz-plugin",
+      "plugin_py_sha256": "cf417a718877f710c9f2b19537a2f6e51d690590e53f63ed74346cd69ebb4eac",
+      "repository_identity": "github.com/bobzomer/sonoff-domoticz-plugin"
+    },
+    {
+      "domoticz_key": "Domoticz-Steam-Plugin",
+      "legacy_package_id": "steam",
+      "package_id": "steam",
+      "plugin_py_sha256": "75fceaea29ec8f3f24e3c994c13ee919361c6edbb01aa9df7d66be5fc8e069b6",
+      "repository_identity": "github.com/galadril/domoticz-steam-plugin"
+    },
+    {
+      "domoticz_key": "SwedenEnergyPrice",
+      "legacy_package_id": "sweden_energyprice",
+      "package_id": "sweden_energyprice",
+      "plugin_py_sha256": "e2e8234b59094183dfc1f12c397dc518c1259040befa8ade0159853e3561c74d",
+      "repository_identity": "github.com/j-b-n/sweden_energyprice"
+    },
+    {
+      "domoticz_key": "SurveillanceStation",
+      "legacy_package_id": "Synology SurveillanceStation",
+      "package_id": "Synology SurveillanceStation",
+      "plugin_py_sha256": "1e83bfb528416f41a163a45a00a3d772f2b7888cf39eb18d41de696ac812fd0f",
+      "repository_identity": "github.com/lolautruche/surveillancestationdomoticz"
+    },
+    {
+      "domoticz_key": "TeslaApiDomoticz",
+      "legacy_package_id": "TeslaApiDomoticz",
+      "package_id": "TeslaApiDomoticz",
+      "plugin_py_sha256": "7b6493dce85b7a850037075104389fe49dfd54d7752e845238e349aeb3255ed4",
+      "repository_identity": "github.com/janjaapko/teslaapidomoticz"
+    },
+    {
+      "domoticz_key": "TeslaDomoticz",
+      "legacy_package_id": "TeslaDomoticz",
+      "package_id": "TeslaDomoticz",
+      "plugin_py_sha256": "82d850fd024f719ac855fc60f449c06ad67910a28a33d296a930fda6c9f9d18b",
+      "repository_identity": "github.com/janjaapko/tesladomoticz"
+    },
+    {
+      "domoticz_key": "test-domoticzex",
+      "legacy_package_id": "test_domoticzex",
+      "package_id": "test_domoticzex",
+      "plugin_py_sha256": "44e5dd371c6f148ad7c29f28f8afcd08a36938fa4703830c2f8603f43ea84487",
+      "repository_identity": "github.com/zigbeefordomoticz/test_domoticzex"
+    },
+    {
+      "domoticz_key": "ThesslaGreen",
+      "legacy_package_id": "ThesslaGreen-modbus",
+      "package_id": "ThesslaGreen-modbus",
+      "plugin_py_sha256": "cb56ed315c97974927c17c266e661c2abe1c160bf2075105cd9dc56f496afba9",
+      "repository_identity": "github.com/voyo/thesslagreen-modbus"
+    },
+    {
+      "domoticz_key": "RootedToonPlug",
+      "legacy_package_id": "Toon_Thermostat",
+      "package_id": "Toon_Thermostat",
+      "plugin_py_sha256": "cf43f697a0ac7a83e142c6dbe2aa76538fe7a7af2833270f08679d56e3698402",
+      "repository_identity": "github.com/madpatrick/domoticz_toon"
+    },
+    {
+      "domoticz_key": "tuya",
+      "legacy_package_id": "tuyaha",
+      "package_id": "tuyaha",
+      "plugin_py_sha256": "5aa8e5aaf06225c56cc746d2ddacacfea05e1892010aff66fc31856d31bf7101",
+      "repository_identity": "github.com/guino/tuyaha"
+    },
+    {
+      "domoticz_key": "TVUHDOrange",
+      "legacy_package_id": "TVUHDOrange",
+      "package_id": "TVUHDOrange",
+      "plugin_py_sha256": "6d25803fa33097e6eeb5b38f40c05820e33421549f202d99450479b938c609a7",
+      "repository_identity": "github.com/christophe-dms/tvuhdorange"
+    },
+    {
+      "domoticz_key": "TWC",
+      "legacy_package_id": "TWC",
+      "package_id": "TWC",
+      "plugin_py_sha256": "f1be5d7d04f980ff334802256a27549bd446b152b0e8d2aabddee57c13f493c3",
+      "repository_identity": "github.com/rsp267/twc"
+    },
+    {
+      "domoticz_key": "WAN-IP-CHECKER",
+      "legacy_package_id": "WAN-IP-CHECKER",
+      "package_id": "WAN-IP-CHECKER",
+      "plugin_py_sha256": "27adb5f0a5bdfbc5dbc2fa5bb90a18cf3584bbf338db69a4f5b0d843b977a303",
+      "repository_identity": "github.com/ycahome/wan-ip-checker"
+    },
+    {
+      "domoticz_key": "WeatherInfo",
+      "legacy_package_id": "WeatherInfo",
+      "package_id": "WeatherInfo",
+      "plugin_py_sha256": "1eccca8d28ecc0bca814d43f2d900c3efbfc082afcb40b43a3a554419eea60d5",
+      "repository_identity": "github.com/madpatrick/domoticz_weatherinfo"
+    },
+    {
+      "domoticz_key": "WeHeat",
+      "legacy_package_id": "weheat-domoticz-plugin",
+      "package_id": "weheat-domoticz-plugin",
+      "plugin_py_sha256": "a64603ff1be470b759e3be78415c1dc337916fb046bae6fb240b656ad6d4d803",
+      "repository_identity": "github.com/tableflipper9001/weheat-domoticz-plugin"
+    },
+    {
+      "domoticz_key": "WiFiTic",
+      "legacy_package_id": "WifiTIC",
+      "package_id": "WifiTIC",
+      "plugin_py_sha256": "84cab8b121a0b51eee2295a184cb9d7edbadd302e3c39d934194b14866cd9c90",
+      "repository_identity": "github.com/debugbill/wifitic"
+    },
+    {
+      "domoticz_key": "WLANThermo",
+      "legacy_package_id": "WLANThermo",
+      "package_id": "WLANThermo",
+      "plugin_py_sha256": "cac41ebf2df59eda6ae75bad5474c7e2d39b76323d9fda9f1e011740eb53ba54",
+      "repository_identity": "github.com/galadril/domoticz-wlanthermo-plugin"
+    },
+    {
+      "domoticz_key": "WLED",
+      "legacy_package_id": "WLED",
+      "package_id": "WLED",
+      "plugin_py_sha256": "96c85ab7fc5622f1543100ed01884e66a904900e5092ab8a2a6980921bf48b90",
+      "repository_identity": "github.com/frustreermeneer/domoticz-wled-plugin"
+    },
+    {
+      "domoticz_key": "xiaomi-mi-robot-vacuum",
+      "legacy_package_id": "xiaomi-mi-robot-vacuum",
+      "package_id": "xiaomi-mi-robot-vacuum",
+      "plugin_py_sha256": "cf82dfac441f4db0abe4bcb891c483d03c22c2ef1cc03de4bc20a6ace32dd566",
+      "repository_identity": "github.com/mrin/domoticz-mirobot-plugin"
+    },
+    {
+      "domoticz_key": "PhilipsLED",
+      "legacy_package_id": "Xiaomi-MiJia-Philips-LED-Lamp",
+      "package_id": "Xiaomi-MiJia-Philips-LED-Lamp",
+      "plugin_py_sha256": "b30ccadfd162fcb9c5f656f88649ab5523c877747c896d665dd1015bdd77f6e2",
+      "repository_identity": "github.com/whilser/xiaomi-mijia-philips-led-lamp"
+    },
+    {
+      "domoticz_key": "IntergasXtend",
+      "legacy_package_id": "XTEND-plugin",
+      "package_id": "XTEND-plugin",
+      "plugin_py_sha256": "b84aa9596a851deb2997148dbb4f6bbb1f384b8606cc74d6fd8cb4ee5ee99eae",
+      "repository_identity": "github.com/willemd61/xtend-plugin"
+    },
+    {
+      "domoticz_key": "Zigate",
+      "legacy_package_id": "Zigate",
+      "package_id": "Zigate",
+      "plugin_py_sha256": "b23f7fcd3df71af6968e3ce04e683b88d731f9a5bee667953d7f3184b9ce76f5",
+      "repository_identity": "github.com/zigbeefordomoticz/domoticz-zigbee"
+    },
+    {
+      "domoticz_key": "Zigbee2MQTT",
+      "legacy_package_id": "Zigbee2Mqtt",
+      "package_id": "Zigbee2Mqtt",
+      "plugin_py_sha256": "673f4b727977e3e0f38494e892b36cfd21ff6d7acf0069c95a56543c55dbf4b0",
+      "repository_identity": "github.com/stas-demydiuk/domoticz-zigbee2mqtt-plugin"
+    },
+    {
+      "domoticz_key": "Zigbee2Tasmoticz",
+      "legacy_package_id": "Zigbee2Tasmoticz",
+      "package_id": "Zigbee2Tasmoticz",
+      "plugin_py_sha256": "e3a2e28767bbfc9ed1a5c08f667f908ed1ff3a126582b3d6065524e7277ae77a",
+      "repository_identity": "github.com/fleinze/zigbee2tasmoticz"
+    },
+    {
+      "domoticz_key": "zonneplan-prices",
+      "legacy_package_id": "Zonneplan-Domoticz-Plugin",
+      "package_id": "Zonneplan-Domoticz-Plugin",
+      "plugin_py_sha256": "c1ce52f164907dc412a84781cff7659d6f78d866b4f335fb7690d3d81093469c",
+      "repository_identity": "github.com/frepke/zonneplan-domoticz-plugin"
+    }
+  ],
+  "renamed_packages": [
+    {
+      "legacy_package_id": "Domoticz-Shelly-plugin",
+      "package_id": "hoog-domoticz-shelly-plugin"
+    }
+  ],
+  "schema_version": 1,
+  "status": "ready"
+}
