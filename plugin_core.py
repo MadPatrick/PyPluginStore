@@ -6,6 +6,7 @@ from contextlib import contextmanager
 import hashlib
 import html
 import http.client
+import importlib.util
 import ipaddress
 import io
 import json
@@ -32,6 +33,38 @@ from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta, timezone
 
 import Domoticz
+
+
+def _load_package_registry():
+    """Import the sibling registry contract from normal or path-based loads."""
+    try:
+        from package_registry import PackageRegistry as registry_class
+
+        return registry_class
+    except ModuleNotFoundError as error:
+        if error.name != "package_registry":
+            raise
+
+    module_path = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), "package_registry.py"
+    )
+    specification = importlib.util.spec_from_file_location(
+        "package_registry", module_path
+    )
+    if specification is None or specification.loader is None:
+        raise ImportError("Could not load the package registry contract.")
+    module = importlib.util.module_from_spec(specification)
+    sys.modules["package_registry"] = module
+    try:
+        specification.loader.exec_module(module)
+    except Exception:
+        if sys.modules.get("package_registry") is module:
+            del sys.modules["package_registry"]
+        raise
+    return module.PackageRegistry
+
+
+PackageRegistry = _load_package_registry()
 
 
 API_PAYLOAD_MAX_LENGTH = 2000
@@ -1456,7 +1489,9 @@ def make_host_runtime(parameters):
     return LinuxHostRuntime(parameters)
 
 
-RELEASE_INDEX_SCHEMA_VERSION = 1
+RELEASE_INDEX_SCHEMA_VERSION = 2
+LEGACY_RELEASE_INDEX_SCHEMA_VERSION = 1
+RELEASE_METADATA_STATE_SCHEMA_VERSION = 1
 DELIVERY_POLICY_SCHEMA_VERSION = 1
 RELEASE_PROVIDERS = {
     "codeberg",
@@ -2089,6 +2124,31 @@ class ReleaseArtifact:
         )
 
 
+@dataclass(frozen=True)
+class CertifiedReleaseIdentity:
+    """Identity observed from the exact plugin.py certified by CI."""
+
+    domoticz_key: str
+    plugin_py_sha256: str
+
+    @classmethod
+    def from_document(cls, document):
+        document = _require_document(
+            document,
+            "certified identity",
+            ("domoticz_key", "plugin_py_sha256"),
+        )
+        return cls(
+            domoticz_key=_require_nonempty_string(
+                document["domoticz_key"], "certified_identity.domoticz_key"
+            ),
+            plugin_py_sha256=_require_sha256(
+                document["plugin_py_sha256"],
+                "certified_identity.plugin_py_sha256",
+            ),
+        )
+
+
 @dataclass
 class ReleaseDescriptor:
     """One accepted release target independent of its source forge."""
@@ -2104,6 +2164,8 @@ class ReleaseDescriptor:
     commit: str
     artifact: ReleaseArtifact
     source_revision: str = ""
+    package_id: str = ""
+    certified_identity: object = None
 
     @classmethod
     def from_document(cls, document):
@@ -2189,6 +2251,49 @@ class ReleaseDescriptor:
             source_revision=source_revision,
         )
 
+    @classmethod
+    def from_release_record(cls, document):
+        """Parse one strict schema-v2 release array record."""
+        document = _require_document(
+            document,
+            "release record",
+            (
+                "package_id",
+                "certified_identity",
+                "revision",
+                "release_id",
+                "supersedes",
+                "provider",
+                "repository_identity",
+                "version",
+                "tag",
+                "released_at",
+                "artifact",
+            ),
+            ("commit", "source_revision"),
+        )
+        descriptor_document = dict(document)
+        package_id = _require_nonempty_string(
+            descriptor_document.pop("package_id"), "release.package_id"
+        )
+        certified_identity = CertifiedReleaseIdentity.from_document(
+            descriptor_document.pop("certified_identity")
+        )
+        descriptor = cls.from_document(descriptor_document)
+        descriptor.package_id = package_id
+        descriptor.certified_identity = certified_identity
+        return descriptor
+
+    @property
+    def domoticz_key(self):
+        identity = self.certified_identity
+        return identity.domoticz_key if identity is not None else ""
+
+    @property
+    def plugin_py_sha256(self):
+        identity = self.certified_identity
+        return identity.plugin_py_sha256 if identity is not None else ""
+
     def same_accepted_target(self, other):
         """Return whether an equal revision still names the accepted source."""
         if not isinstance(other, ReleaseDescriptor):
@@ -2210,6 +2315,11 @@ class ReleaseDescriptor:
             == other.artifact.migration_eligible
             and self.artifact.tree_sha256 == other.artifact.tree_sha256
             and self.artifact.source_path == other.artifact.source_path
+            and (not other.package_id or self.package_id == other.package_id)
+            and (
+                other.certified_identity is None
+                or self.certified_identity == other.certified_identity
+            )
         )
         if not common_fields_match:
             return False
@@ -2232,6 +2342,7 @@ class ReleaseTombstone:
     release_id: str
     reason: str
     removed_at: str
+    package_id: str = ""
 
     @classmethod
     def from_document(cls, document):
@@ -2268,6 +2379,29 @@ class ReleaseTombstone:
             removed_at=removed_at,
         )
 
+    @classmethod
+    def from_tombstone_record(cls, document):
+        """Parse one strict schema-v2 tombstone array record."""
+        document = _require_document(
+            document,
+            "release tombstone record",
+            (
+                "package_id",
+                "repository_identity",
+                "last_revision",
+                "release_id",
+                "reason",
+                "removed_at",
+            ),
+        )
+        tombstone_document = dict(document)
+        package_id = _require_nonempty_string(
+            tombstone_document.pop("package_id"), "tombstone.package_id"
+        )
+        tombstone = cls.from_document(tombstone_document)
+        tombstone.package_id = package_id
+        return tombstone
+
 
 @dataclass
 class ReleaseIndex:
@@ -2281,27 +2415,31 @@ class ReleaseIndex:
     plugins: dict
     tombstones: dict
 
+    @property
+    def releases(self):
+        """Return the normalized release map used by runtime consumers."""
+        return self.plugins
+
+    @staticmethod
+    def _package_map(registry):
+        packages = getattr(registry, "packages", None)
+        if isinstance(packages, dict):
+            return packages
+        by_package_id = getattr(registry, "by_package_id", None)
+        if isinstance(by_package_id, dict):
+            return by_package_id
+        if isinstance(packages, (list, tuple)):
+            return {package.package_id: package for package in packages}
+        raise ValueError("registry packages are invalid.")
+
     @classmethod
-    def from_document(cls, document, registry_bytes, now=None, previous=None):
-        """Validate and normalize a release index document."""
-        document = _require_document(
-            document,
-            "release index",
-            (
-                "schema_version",
-                "sequence",
-                "generated_at",
-                "expires_at",
-                "registry_sha256",
-                "plugins",
-            ),
-            ("tombstones",),
-        )
-        if (
-            type(document["schema_version"]) is not int
-            or document["schema_version"] != RELEASE_INDEX_SCHEMA_VERSION
-        ):
-            raise ValueError("release_index.schema_version is not supported.")
+    def _validated_common(
+        cls,
+        document,
+        registry_bytes,
+        now,
+        previous,
+    ):
         sequence = _require_positive_integer(
             document["sequence"], "release_index.sequence"
         )
@@ -2320,69 +2458,211 @@ class ReleaseIndex:
         generated_time = _parse_utc_timestamp(
             generated_at, "release_index.generated_at"
         )
-        expiry_time = _parse_utc_timestamp(expires_at, "release_index.expires_at")
+        expiry_time = _parse_utc_timestamp(
+            expires_at, "release_index.expires_at"
+        )
         if expiry_time <= generated_time:
             raise ValueError("release index validity window is invalid.")
         if now is None:
             now = datetime.now(timezone.utc)
         if not isinstance(now, datetime) or now.tzinfo is None:
-            raise ValueError("release index validation time must be timezone-aware.")
+            raise ValueError(
+                "release index validation time must be timezone-aware."
+            )
         if expiry_time <= now.astimezone(timezone.utc):
             raise ValueError("release index is expired.")
 
-        registry = _load_json_object(registry_bytes, "registry")
         expected_registry_sha256 = _require_sha256(
             document["registry_sha256"], "release_index.registry_sha256"
         )
         actual_registry_sha256 = hashlib.sha256(bytes(registry_bytes)).hexdigest()
         if expected_registry_sha256 != actual_registry_sha256:
             raise ValueError("release index does not match registry bytes.")
+        return (
+            sequence,
+            generated_at,
+            expires_at,
+            expected_registry_sha256,
+        )
 
-        plugins_document = document["plugins"]
-        tombstones_document = document.get("tombstones", {})
-        if not isinstance(plugins_document, dict):
-            raise ValueError("release_index.plugins must be an object.")
-        if not isinstance(tombstones_document, dict):
-            raise ValueError("release_index.tombstones must be an object.")
-        if set(plugins_document) & set(tombstones_document):
-            raise ValueError("A plugin cannot be active and de-certified together.")
-
-        plugins = {}
-        active_release_ids = set()
-        for plugin_key, entry_document in plugins_document.items():
-            if plugin_key not in registry:
-                raise ValueError("Release index contains an unknown plugin.")
-            descriptor = ReleaseDescriptor.from_document(entry_document)
-            registry_identity = _registry_entry_identity(registry[plugin_key])
-            if not registry_identity or descriptor.repository_identity != registry_identity:
-                raise ValueError("Release repository does not match the registry.")
-            if descriptor.release_id in active_release_ids:
-                raise ValueError("Release index contains a duplicate release identity.")
-            active_release_ids.add(descriptor.release_id)
-            plugins[plugin_key] = descriptor
-
-        tombstones = {}
-        for plugin_key, tombstone_document in tombstones_document.items():
-            if plugin_key not in registry:
-                raise ValueError("Release index contains an unknown tombstone plugin.")
-            tombstone = ReleaseTombstone.from_document(tombstone_document)
-            registry_identity = _registry_entry_identity(registry[plugin_key])
-            if not registry_identity or tombstone.repository_identity != registry_identity:
-                raise ValueError("Tombstone repository does not match the registry.")
-            tombstones[plugin_key] = tombstone
-
+    @classmethod
+    def _result(
+        cls,
+        *,
+        common,
+        releases,
+        tombstones,
+        previous,
+    ):
+        sequence, generated_at, expires_at, registry_sha256 = common
         result = cls(
             schema_version=RELEASE_INDEX_SCHEMA_VERSION,
             sequence=sequence,
             generated_at=generated_at,
             expires_at=expires_at,
-            registry_sha256=expected_registry_sha256,
-            plugins=plugins,
+            registry_sha256=registry_sha256,
+            plugins=releases,
             tombstones=tombstones,
         )
         if previous is not None:
             result._validate_lineage(previous)
         return result
+
+    @classmethod
+    def from_document(cls, document, registry_bytes, now=None, previous=None):
+        """Validate and normalize one strict schema-v2 release index."""
+        document = _require_document(
+            document,
+            "release index",
+            (
+                "schema_version",
+                "sequence",
+                "generated_at",
+                "expires_at",
+                "registry_sha256",
+                "releases",
+                "tombstones",
+            ),
+        )
+        if (
+            type(document["schema_version"]) is not int
+            or document["schema_version"] != RELEASE_INDEX_SCHEMA_VERSION
+        ):
+            raise ValueError("release_index.schema_version is not supported.")
+        common = cls._validated_common(
+            document, registry_bytes, now, previous
+        )
+        registry_document = _load_json_object(registry_bytes, "registry")
+        registry = PackageRegistry.from_document(registry_document)
+        packages = cls._package_map(registry)
+        releases_document = document["releases"]
+        tombstones_document = document["tombstones"]
+        if not isinstance(releases_document, list):
+            raise ValueError("release_index.releases must be an array.")
+        if not isinstance(tombstones_document, list):
+            raise ValueError("release_index.tombstones must be an array.")
+
+        releases = {}
+        release_ids = set()
+        active_release_ids = set()
+        for entry_document in releases_document:
+            descriptor = ReleaseDescriptor.from_release_record(entry_document)
+            package_id = descriptor.package_id
+            collision_id = package_id.casefold()
+            if collision_id in release_ids:
+                raise ValueError("Release index contains a duplicate package ID.")
+            release_ids.add(collision_id)
+            package = packages.get(package_id)
+            if package is None:
+                raise ValueError("Release index contains an unknown package.")
+            if descriptor.repository_identity != package.repository_identity:
+                raise ValueError("Release repository does not match the registry.")
+            if descriptor.domoticz_key != package.domoticz_key:
+                raise ValueError("Release Domoticz identity does not match the registry.")
+            if descriptor.release_id in active_release_ids:
+                raise ValueError("Release index contains a duplicate release identity.")
+            active_release_ids.add(descriptor.release_id)
+            releases[package_id] = descriptor
+
+        tombstones = {}
+        tombstone_ids = set()
+        for tombstone_document in tombstones_document:
+            tombstone = ReleaseTombstone.from_tombstone_record(
+                tombstone_document
+            )
+            package_id = tombstone.package_id
+            collision_id = package_id.casefold()
+            if collision_id in tombstone_ids:
+                raise ValueError("Release index contains a duplicate package ID.")
+            if collision_id in release_ids:
+                raise ValueError(
+                    "A package cannot be active and de-certified together."
+                )
+            tombstone_ids.add(collision_id)
+            package = packages.get(package_id)
+            if package is None:
+                raise ValueError("Release index contains an unknown package tombstone.")
+            if tombstone.repository_identity != package.repository_identity:
+                raise ValueError("Tombstone repository does not match the registry.")
+            tombstones[package_id] = tombstone
+
+        return cls._result(
+            common=common,
+            releases=releases,
+            tombstones=tombstones,
+            previous=previous,
+        )
+
+    @classmethod
+    def from_legacy_document(
+        cls, document, registry_bytes, now=None, previous=None
+    ):
+        """Normalize schema-v1 keyed metadata at an explicit read boundary."""
+        document = _require_document(
+            document,
+            "legacy release index",
+            (
+                "schema_version",
+                "sequence",
+                "generated_at",
+                "expires_at",
+                "registry_sha256",
+                "plugins",
+            ),
+            ("tombstones",),
+        )
+        if (
+            type(document["schema_version"]) is not int
+            or document["schema_version"] != LEGACY_RELEASE_INDEX_SCHEMA_VERSION
+        ):
+            raise ValueError("legacy release_index.schema_version is not supported.")
+        common = cls._validated_common(
+            document, registry_bytes, now, previous
+        )
+        registry_document = _load_json_object(registry_bytes, "legacy registry")
+        registry = PackageRegistry.from_legacy_document(registry_document)
+        packages = cls._package_map(registry)
+        plugins_document = document["plugins"]
+        tombstones_document = document.get("tombstones", {})
+        if not isinstance(plugins_document, dict):
+            raise ValueError("legacy release_index.plugins must be an object.")
+        if not isinstance(tombstones_document, dict):
+            raise ValueError("legacy release_index.tombstones must be an object.")
+        if set(plugins_document) & set(tombstones_document):
+            raise ValueError("A package cannot be active and de-certified together.")
+
+        releases = {}
+        active_release_ids = set()
+        for package_id, entry_document in plugins_document.items():
+            package = packages.get(package_id)
+            if package is None:
+                raise ValueError("Release index contains an unknown package.")
+            descriptor = ReleaseDescriptor.from_document(entry_document)
+            descriptor.package_id = package_id
+            if descriptor.repository_identity != package.repository_identity:
+                raise ValueError("Release repository does not match the registry.")
+            if descriptor.release_id in active_release_ids:
+                raise ValueError("Release index contains a duplicate release identity.")
+            active_release_ids.add(descriptor.release_id)
+            releases[package_id] = descriptor
+
+        tombstones = {}
+        for package_id, tombstone_document in tombstones_document.items():
+            package = packages.get(package_id)
+            if package is None:
+                raise ValueError("Release index contains an unknown package tombstone.")
+            tombstone = ReleaseTombstone.from_document(tombstone_document)
+            tombstone.package_id = package_id
+            if tombstone.repository_identity != package.repository_identity:
+                raise ValueError("Tombstone repository does not match the registry.")
+            tombstones[package_id] = tombstone
+
+        return cls._result(
+            common=common,
+            releases=releases,
+            tombstones=tombstones,
+            previous=previous,
+        )
 
     def _validate_lineage(self, previous):
         """Reject revision regressions, gaps, mutations, and silent removals."""
@@ -2546,7 +2826,7 @@ class ReleaseMetadataStore:
         self._write_atomic_state(
             self.watermark_path,
             {
-                "schema_version": RELEASE_INDEX_SCHEMA_VERSION,
+                "schema_version": RELEASE_METADATA_STATE_SCHEMA_VERSION,
                 "highest_sequence": sequence,
             },
             "watermark_written",
@@ -2560,7 +2840,7 @@ class ReleaseMetadataStore:
         self._write_atomic_state(
             self.pointer_path,
             {
-                "schema_version": RELEASE_INDEX_SCHEMA_VERSION,
+                "schema_version": RELEASE_METADATA_STATE_SCHEMA_VERSION,
                 "sequence": sequence,
             },
             "pointer_written",
@@ -2581,7 +2861,8 @@ class ReleaseMetadataStore:
                 raise ValueError("State document has unexpected fields.")
             if "schema_version" in document and (
                 type(document["schema_version"]) is not int
-                or document["schema_version"] != RELEASE_INDEX_SCHEMA_VERSION
+                or document["schema_version"]
+                != RELEASE_METADATA_STATE_SCHEMA_VERSION
             ):
                 raise ValueError("State document schema is unsupported.")
             sequence = _require_positive_integer(document[field], field)
@@ -2595,10 +2876,25 @@ class ReleaseMetadataStore:
         generated_at = _parse_utc_timestamp(
             document.get("generated_at"), "release_index.generated_at"
         )
-        return ReleaseIndex.from_document(
+        return self._parse_index(
+            document,
+            registry_bytes,
+            now=generated_at,
+        )
+
+    def _parse_index(self, document, registry_bytes, *, now, previous=None):
+        """Normalize legacy v1 only at the metadata-store read boundary."""
+        parser = (
+            ReleaseIndex.from_legacy_document
+            if document.get("schema_version")
+            == LEGACY_RELEASE_INDEX_SCHEMA_VERSION
+            else ReleaseIndex.from_document
+        )
+        return parser(
             document,
             registry_bytes=registry_bytes,
-            now=generated_at,
+            now=now,
+            previous=previous,
         )
 
     def _generation_from_directory(self, generation_path):
@@ -2879,9 +3175,9 @@ class ReleaseMetadataStore:
 
         prior_generation, watermark, _ = self._trusted_generation(repair=True)
         document = _load_json_object(index_bytes, "release_index.json")
-        release_index = ReleaseIndex.from_document(
+        release_index = self._parse_index(
             document,
-            registry_bytes=registry_bytes,
+            registry_bytes,
             now=self.clock(),
             previous=(
                 prior_generation.release_index

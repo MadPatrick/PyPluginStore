@@ -35,21 +35,29 @@ can be tied safely to the release commit.
   immutable `package_id`; package IDs must not be JSON object property names.
 - Remove positional registry records and the synthetic `Idle` record from the
   published schema.
-- Store source coordinates, description, branch, update time, platforms,
-  delivery policy, and identity policy in each package record.
-- Represent the Domoticz runtime contract separately as
-  `identity.domoticz_key`. It is exact compatibility metadata, not a display
-  name or repository heuristic.
-- Reject duplicate package IDs, duplicate normalized repository identities, and
-  malformed or unknown schema fields before partially loading a registry.
+- Store a provider-neutral canonical HTTPS repository URL and branch,
+  description, platforms, delivery policy, and Domoticz identity
+  in each package record. Do not retain the legacy owner/repository split.
+- Represent the Domoticz runtime contract separately as `domoticz_key`. It is
+  exact compatibility metadata, not a display name or repository heuristic.
+- Reject exact or case-folded duplicate package IDs, duplicate normalized
+  repository identities, and malformed or unknown schema fields before
+  partially loading a registry.
+- Preserve current package-ID values during migration except where they are not
+  portable. Resolve the existing `Domoticz-Shelly-Plugin` /
+  `Domoticz-Shelly-plugin` case-fold collision with a distinct ID for the newer
+  Codeberg package, and map an existing installation using repository identity
+  plus Domoticz key without renaming its physical folder.
 - Expose normalized internal maps keyed by `package_id` to the existing UI and
   operation layer; the public serialized registry must remain record-based.
 
 ### Versioned release metadata
 
-- Publish release-index schema version 2 with record arrays containing explicit
-  `package_id` fields for releases and tombstones; package IDs must not be JSON
+- Publish release-index schema version 2 with `releases` and `tombstones` record
+  arrays containing explicit `package_id` fields; package IDs must not be JSON
   object property names.
+- Bind the observed `domoticz_key` and `plugin.py` SHA-256 to each certified
+  release so runtime validation repeats the exact CI contract.
 - Rename persisted release install and transaction identity fields from
   `plugin_key` to `package_id` in their next schema versions.
 - Keep the registry-byte digest, monotonic sequence, expiry, immutable release
@@ -79,7 +87,7 @@ can be tied safely to the release commit.
 
 - Use one provider-neutral certifier in release generation and runtime staging.
 - Certification must bind `package_id`, normalized repository identity,
-  selected source path, and exact `identity.domoticz_key` from the single root
+  selected source path, and exact `domoticz_key` from the single root
   `plugin.py` tag.
 - A missing identity may be proposed during initial onboarding, but release
   publication must not authorize the candidate until the proposed registry
@@ -141,6 +149,8 @@ can be tied safely to the release commit.
 - Weekly automation may retain a previously trusted release after transient
   provider failure, but must never publish a new runtime-incompatible entry.
 - Public v2 output is deterministic and sorted by `package_id`.
+- Public update-time records and CI-only platform-detection records must also
+  use versioned arrays with explicit `package_id` fields rather than keyed maps.
 
 ## Acceptance Criteria
 

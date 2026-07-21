@@ -2,10 +2,19 @@
 """Lossless registry records and reviewed delivery-policy validation."""
 
 import copy
+import os
 import re
+import sys
 import unicodedata
 import urllib.parse
 from dataclasses import dataclass, field
+
+
+REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
+if REPO_ROOT not in sys.path:
+    sys.path.insert(0, REPO_ROOT)
+
+from package_registry import RegistryDocument  # noqa: E402
 
 
 DEFAULT_GIT_HOST = "github.com"
