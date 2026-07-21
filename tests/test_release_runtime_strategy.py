@@ -14,7 +14,13 @@ TREE = "a" * 64
 ARCHIVE = "b" * 64
 
 
-def descriptor(plugin_core_module, commit=COMMIT):
+def descriptor(
+    plugin_core_module,
+    commit=COMMIT,
+    *,
+    migration_mode="automatic",
+    migration_evidence="commit_source_archive",
+):
     return plugin_core_module.ReleaseDescriptor.from_document(
         {
             "revision": 2,
@@ -29,7 +35,10 @@ def descriptor(plugin_core_module, commit=COMMIT):
             "artifact": {
                 "kind": "source_zip",
                 "provenance": "forge_source_archive",
-                "migration_eligible": True,
+                "migration": {
+                    "mode": migration_mode,
+                    "evidence": migration_evidence,
+                },
                 "url": (
                     "https://api.github.com/repos/owner/"
                     "example-plugin/zipball/"
@@ -350,6 +359,69 @@ def test_clean_git_checkout_migrates_through_the_same_pinned_pipeline(
     assert len(metadata.migration_inventory_sha256) == 64
     assert metadata.preserved_files == {}
     assert repository.is_dir()
+
+
+@pytest.mark.parametrize(
+    ("migration_mode", "trigger", "allowed", "message"),
+    [
+        ("automatic", "automatic", True, ""),
+        ("automatic", "manual", True, ""),
+        ("manual", "manual", True, ""),
+        ("manual", "automatic", False, "requires manual migration"),
+        ("blocked", "manual", False, "not migration eligible"),
+        ("blocked", "automatic", False, "not migration eligible"),
+    ],
+)
+def test_runtime_preflight_enforces_migration_mode_and_trigger(
+    plugin_core_module,
+    tmp_path,
+    monkeypatch,
+    migration_mode,
+    trigger,
+    allowed,
+    message,
+):
+    plugin, strategy, _manager, _http, _dependencies = make_strategy(
+        plugin_core_module,
+        tmp_path,
+    )
+    repository, installed_commit = initialize_repository(
+        os.path.join(plugin.get_host().plugins_dir(), "ExamplePlugin")
+    )
+    plugin.installed_plugin_folders["ExamplePlugin"] = "ExamplePlugin"
+    entry = plugin.get_registry_entry("ExamplePlugin")
+    sentinel = object()
+    evaluate_calls = []
+
+    def evaluate(**arguments):
+        evaluate_calls.append(arguments)
+        return sentinel
+
+    monkeypatch.setattr(
+        strategy,
+        "_preflight",
+        lambda: SimpleNamespace(evaluate=evaluate),
+    )
+    release = descriptor(
+        plugin_core_module,
+        installed_commit,
+        migration_mode=migration_mode,
+        migration_evidence=(
+            "commit_source_archive"
+            if migration_mode == "automatic"
+            else "unverified_asset"
+        ),
+    )
+
+    if allowed:
+        assert strategy.preflight_migration(entry, release, trigger) is sentinel
+        assert len(evaluate_calls) == 1
+        assert evaluate_calls[0]["plugin_dir"] == str(repository)
+        assert evaluate_calls[0]["trigger"] == trigger
+    else:
+        with pytest.raises(ValueError, match=message):
+            strategy.preflight_migration(entry, release, trigger)
+        assert evaluate_calls == []
 
 
 def test_dirty_git_checkout_is_blocked_before_download_or_transaction(

@@ -23,10 +23,17 @@ from detect_plugin_platforms import (
     save_platform_metadata,
     update_platform_metadata_entry,
 )
+from package_identity import MAX_PLUGIN_SOURCE_BYTES, certify_plugin_py
 from registry_records import (
     RegistryRecord,
+    build_package_document,
+    load_registry_file,
+    load_update_times_file,
     normalize_repository_identity,
+    normalize_update_timestamp,
     parse_registry_owner,
+    save_registry_file,
+    save_update_times_file,
 )
 
 REGISTRY_FILE = os.path.join(SCRIPT_DIR, '../../registry.json')
@@ -35,6 +42,7 @@ PLATFORM_METADATA_FILE = os.path.join(SCRIPT_DIR, '../../.github/platform_detect
 DEFAULT_GIT_HOST = "github.com"
 SUPPORTED_GIT_HOSTS = ("github.com", "gitlab.com", "codeberg.org")
 ROOT_PLUGIN_CHECKED_FIELD = "_pypluginstore_root_plugin_py_checked"
+ROOT_PLUGIN_IDENTITY_FIELD = "_pypluginstore_root_plugin_identity"
 REQUEST_TIMEOUT_SECONDS = 20
 
 # Repositories that should never be added to or kept in the registry.
@@ -108,17 +116,24 @@ def prune_stale_update_times(update_times, registry):
     return stale_keys
 
 
-def build_registry_entry(owner, repo_name, description, branch, platforms=None):
-    entry = {
-        "owner": owner,
-        "repository": repo_name,
-        "description": description,
-        "branch": branch,
-    }
-    normalized_platforms = normalize_platforms(platforms)
-    if normalized_platforms:
-        entry["platforms"] = normalized_platforms
-    return entry
+def build_registry_entry(
+    package_id,
+    domoticz_key,
+    owner,
+    repo_name,
+    description,
+    branch,
+    platforms=None,
+):
+    return build_package_document(
+        package_id,
+        domoticz_key,
+        owner,
+        repo_name,
+        description,
+        branch,
+        platforms,
+    )
 
 
 def github_headers():
@@ -229,7 +244,15 @@ def has_root_plugin_py(repo):
     try:
         req = urllib.request.Request(url, headers=headers)
         with urllib.request.urlopen(req, timeout=REQUEST_TIMEOUT_SECONDS) as response:
-            return response.read(4096).strip() != b""
+            contents = response.read(MAX_PLUGIN_SOURCE_BYTES + 1)
+        if len(contents) > MAX_PLUGIN_SOURCE_BYTES:
+            return False
+        identity = certify_plugin_py(contents)
+        repo[ROOT_PLUGIN_IDENTITY_FIELD] = {
+            "domoticz_key": identity.domoticz_key,
+            "plugin_py_sha256": identity.plugin_py_sha256,
+        }
+        return True
     except Exception:
         return False
 
@@ -251,6 +274,19 @@ def add_discovered_plugin_repo(all_items, seen_full_names, repo):
 
 def discovered_repo_has_root_plugin_py(repo):
     return bool(repo.get(ROOT_PLUGIN_CHECKED_FIELD)) or has_root_plugin_py(repo)
+
+
+def discovered_repo_identity(repo):
+    identity = repo.get(ROOT_PLUGIN_IDENTITY_FIELD)
+    if not isinstance(identity, dict):
+        return None
+    domoticz_key = identity.get("domoticz_key")
+    plugin_py_sha256 = identity.get("plugin_py_sha256")
+    if not isinstance(domoticz_key, str) or not domoticz_key:
+        return None
+    if not isinstance(plugin_py_sha256, str) or len(plugin_py_sha256) != 64:
+        return None
+    return identity
 
 
 def get_github_repo_info(owner, repo):
@@ -373,13 +409,11 @@ def main():
         print(f"Registry file not found at {REGISTRY_FILE}")
         return
 
-    with open(REGISTRY_FILE, 'r') as f:
-        registry = json.load(f)
-        
-    update_times = {}
-    if os.path.exists(UPDATE_TIMES_FILE):
-        with open(UPDATE_TIMES_FILE, 'r') as f:
-            update_times = json.load(f)
+    registry = load_registry_file(REGISTRY_FILE)
+    update_times = load_update_times_file(
+        UPDATE_TIMES_FILE,
+        missing_ok=True,
+    )
 
     platform_metadata_exists = os.path.exists(PLATFORM_METADATA_FILE)
     platform_metadata = ensure_platform_metadata_for_registry(
@@ -424,6 +458,8 @@ def main():
                 updated_desc = info.get('description') or registry_record.description
                 registry_branch = registry_record.branch
                 updated_at = info.get('pushed_at') or info.get('updated_at')
+                if updated_at:
+                    updated_at = normalize_update_timestamp(updated_at)
                 current_platforms = get_registry_entry_platforms(data)
                 platform_decision = detect_platforms_for_repo(owner, repo_name, registry_branch, info)
                 detected_platforms = decision_platforms(platform_decision)
@@ -517,6 +553,13 @@ def main():
             if not discovered_repo_has_root_plugin_py(repo):
                 print(f"[-] Skipping {repo['full_name']} (missing root plugin.py)")
                 continue
+            certified_identity = discovered_repo_identity(repo)
+            if certified_identity is None:
+                print(
+                    f"[-] Skipping {repo['full_name']} "
+                    "(uncertified Domoticz plugin identity)"
+                )
+                continue
 
             description = repo['description'] or f"{repo_name} plugin for Domoticz"
             default_branch = repo['default_branch']
@@ -529,9 +572,18 @@ def main():
                 is_new=True,
             )
 
+            existing_package_ids = {
+                package_id.casefold() for package_id in registry
+            }
             key = repo_name
-            if key in registry:
+            if key.casefold() in existing_package_ids:
                 key = f"{owner}-{repo_name}"
+            if key.casefold() in existing_package_ids:
+                print(
+                    f"[-] Skipping {repo['full_name']} "
+                    "(package_id collision)"
+                )
+                continue
 
             print(f"[+] Adding {key}")
             detected_platforms = decision_platforms(platform_decision)
@@ -543,6 +595,8 @@ def main():
             elif platforms:
                 print(f"    platforms {platforms} ({decision_confidence(platform_decision)}, {platform_policy})")
             registry[key] = build_registry_entry(
+                key,
+                certified_identity["domoticz_key"],
                 registry_owner,
                 repo_name,
                 description,
@@ -550,7 +604,7 @@ def main():
                 platforms
             )
             if pushed_at:
-                update_times[key] = pushed_at
+                update_times[key] = normalize_update_timestamp(pushed_at)
             before = json.dumps(platform_metadata["entries"].get(key, {}), sort_keys=True)
             platform_metadata = update_platform_metadata_entry(
                 platform_metadata,
@@ -573,12 +627,8 @@ def main():
     # 3. Save Results
     if any(stats.values()):
         platform_metadata = ensure_platform_metadata_for_registry(platform_metadata, registry)
-        with open(REGISTRY_FILE, 'w') as f:
-            json.dump(registry, f, indent=4)
-            f.write('\n')
-        with open(UPDATE_TIMES_FILE, 'w') as f:
-            json.dump(update_times, f, indent=4)
-            f.write('\n')
+        save_registry_file(REGISTRY_FILE, registry)
+        save_update_times_file(UPDATE_TIMES_FILE, update_times)
         save_platform_metadata(platform_metadata, PLATFORM_METADATA_FILE)
         print(
             "Registry updated: "

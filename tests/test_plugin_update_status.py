@@ -84,12 +84,29 @@ def add_self_update_candidate_checks(
     upstream_ref="origin/master",
     plugin_py="print('plugin')\n",
     plugin_core_py="print('core')\n",
+    package_registry_py="REGISTRY_SCHEMA_VERSION = 2\n",
+    package_identity_py="def certify_plugin_py(contents): return contents\n",
 ):
-    for candidate_path in ("plugin.py", "plugin_core.py", "pypluginstore.html", "registry.json"):
+    for candidate_path in (
+        "plugin.py",
+        "plugin_core.py",
+        "package_registry.py",
+        "package_identity.py",
+        "pypluginstore.html",
+        "registry.json",
+    ):
         scenario.expect(["git", "cat-file", "-e", upstream_ref + ":" + candidate_path])
     scenario.expect(["git", "show", upstream_ref + ":plugin.py"], stdout=plugin_py)
     if plugin_core_py is not None:
         scenario.expect(["git", "show", upstream_ref + ":plugin_core.py"], stdout=plugin_core_py)
+        scenario.expect(
+            ["git", "show", upstream_ref + ":package_registry.py"],
+            stdout=package_registry_py,
+        )
+        scenario.expect(
+            ["git", "show", upstream_ref + ":package_identity.py"],
+            stdout=package_identity_py,
+        )
     return scenario
 
 

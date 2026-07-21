@@ -138,6 +138,8 @@ def validate(
     plugin_key="ExamplePlugin",
     expected_tree_sha256,
     repository_identity=None,
+    expected_domoticz_key=None,
+    expected_plugin_py_sha256=None,
 ):
     return service.validate(
         extraction_dir=str(extraction_dir),
@@ -146,6 +148,8 @@ def validate(
         plugin_key=plugin_key,
         expected_tree_sha256=expected_tree_sha256,
         repository_identity=repository_identity,
+        expected_domoticz_key=expected_domoticz_key,
+        expected_plugin_py_sha256=expected_plugin_py_sha256,
     )
 
 
@@ -624,6 +628,126 @@ def test_identity_certification_accepts_flexible_existing_registry_evidence(
 
     assert result.plugin_key == "HP_iLo"
     assert result.identity_source == "normalized folder name"
+
+
+def test_explicit_package_identity_accepts_sma_without_package_id_guessing(
+    plugin_core_module, tmp_path
+):
+    plugin_contents = plugin_source(key="SMA", name="SMA Inverter")
+    source_files = {
+        "plugin.py": plugin_contents,
+        "README.md": b"SMA inverter plugin\n",
+    }
+    extraction_dir, _wrapper, _source, _files, all_files = extracted_tree(
+        tmp_path,
+        source_path="upstream-payload",
+        source_files=source_files,
+    )
+    plugin = plugin_core_module.BasePlugin()
+    plugin.normalize_registry(
+        {
+            "schema_version": 2,
+            "packages": [
+                {
+                    "package_id": "Domoticz-SMA-Inverter",
+                    "domoticz_key": "SMA",
+                    "description": "SMA inverter",
+                    "repository": {
+                        "url": (
+                            "https://github.com/SBFspot/"
+                            "Domoticz-SMA-Inverter"
+                        ),
+                        "branch": "master",
+                    },
+                    "platforms": ["linux"],
+                    "delivery": {
+                        "preferred": "release_if_indexed",
+                        "git_supported": True,
+                        "release": {
+                            "provider": "github",
+                            "channel": "stable",
+                            "tag_pattern": r"^v[0-9]+\.[0-9]+\.[0-9]+$",
+                            "artifact": "source_zip",
+                            "source_path": "upstream-payload",
+                            "mutable_paths": [],
+                        },
+                    },
+                }
+            ],
+        }
+    )
+    service = plugin_core_module.ReleaseArtifactValidationService(plugin)
+
+    result = validate(
+        service,
+        extraction_dir,
+        source_path="upstream-payload",
+        plugin_key="Domoticz-SMA-Inverter",
+        expected_tree_sha256=canonical_tree_sha256(all_files),
+        repository_identity=(
+            "github.com/sbfspot/domoticz-sma-inverter"
+        ),
+        expected_domoticz_key="SMA",
+        expected_plugin_py_sha256=sha256(plugin_contents),
+    )
+
+    assert result.plugin_key == "Domoticz-SMA-Inverter"
+    assert result.identity_source == "certified plugin.py identity"
+
+
+@pytest.mark.parametrize(
+    ("expected_domoticz_key", "expected_digest"),
+    [
+        ("OTHER", "actual"),
+        ("SMA", "0" * 64),
+    ],
+)
+def test_explicit_package_identity_rejects_wrong_release_certification(
+    plugin_core_module,
+    tmp_path,
+    expected_domoticz_key,
+    expected_digest,
+):
+    plugin_contents = plugin_source(key="SMA", name="SMA Inverter")
+    extraction_dir, _wrapper, _source, _files, all_files = extracted_tree(
+        tmp_path,
+        source_files={"plugin.py": plugin_contents},
+    )
+    plugin = plugin_core_module.BasePlugin()
+    plugin.plugin_data = {
+        "SmaPackage": [
+            "owner",
+            "sma-plugin",
+            "SMA inverter",
+            "main",
+        ]
+    }
+    plugin.registry_entries = {
+        "SmaPackage": plugin_core_module.RegistryEntry(
+            "SmaPackage",
+            "owner",
+            "sma-plugin",
+            "SMA inverter",
+            "main",
+            domoticz_key="SMA",
+        )
+    }
+    service = plugin_core_module.ReleaseArtifactValidationService(plugin)
+    if expected_digest == "actual":
+        expected_digest = sha256(plugin_contents)
+
+    assert_rejected(
+        plugin_core_module,
+        "identity_mismatch",
+        lambda: validate(
+            service,
+            extraction_dir,
+            plugin_key="SmaPackage",
+            expected_tree_sha256=canonical_tree_sha256(all_files),
+            expected_domoticz_key=expected_domoticz_key,
+            expected_plugin_py_sha256=expected_digest,
+        ),
+    )
 
 
 def test_identity_certification_accepts_externallink_for_arbitrary_layout(

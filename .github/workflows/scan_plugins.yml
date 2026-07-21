@@ -38,7 +38,10 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITLAB_TOKEN: ${{ secrets.GITLAB_TOKEN }}
-        run: python .github/scripts/cleanup_registry.py --apply
+        run: >-
+          python .github/scripts/cleanup_registry.py --apply
+          --tombstone-requests-output
+          "${{ runner.temp }}/release-tombstone-requests.json"
 
       - name: Refresh platform metadata
         env:
@@ -53,6 +56,8 @@ jobs:
         run: >-
           python .github/scripts/generate_release_index.py --report-only
           --cache "${{ runner.temp }}/release-candidate-cache.json"
+          --tombstone-requests
+          "${{ runner.temp }}/release-tombstone-requests.json"
 
       - name: Update release index
         env:
@@ -61,6 +66,8 @@ jobs:
         run: >-
           python .github/scripts/generate_release_index.py --update
           --cache "${{ runner.temp }}/release-candidate-cache.json"
+          --tombstone-requests
+          "${{ runner.temp }}/release-tombstone-requests.json"
 
       - name: Validate registry and release-index binding
         run: python .github/scripts/validate_plugins.py
@@ -74,7 +81,7 @@ jobs:
           body: |
             This automated PR updates the Domoticz Python plugin registry with newly discovered plugins, refreshed repository metadata, and inferred platform badges from supported Git forges.
 
-            Newly discovered plugins use named object records. Existing positional records remain unchanged during the compatibility migration.
+            Newly discovered plugins use explicit package records with a certified Domoticz runtime key, a provider-neutral repository URL, and a reviewed release-first delivery policy. Git delivery remains available.
 
             The platform badge inference checks repository metadata, README and install text, selected source files, platform-specific imports, scripts, and OS-specific paths or commands.
           branch: "auto-add-plugins"

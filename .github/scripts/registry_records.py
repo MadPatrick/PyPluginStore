@@ -2,10 +2,26 @@
 """Lossless registry records and reviewed delivery-policy validation."""
 
 import copy
+from datetime import datetime, timezone
+import json
+import os
+from pathlib import Path
 import re
+import sys
+import tempfile
 import unicodedata
 import urllib.parse
 from dataclasses import dataclass, field
+
+
+REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
+if REPO_ROOT not in sys.path:
+    sys.path.insert(0, REPO_ROOT)
+
+from package_registry import (  # noqa: E402
+    PackageRecord,
+    RegistryDocument,
+)
 
 
 DEFAULT_GIT_HOST = "github.com"
@@ -57,6 +73,23 @@ RELEASE_FIELDS = {
 }
 RESERVED_MUTABLE_ROOTS = {".git", ".pypluginstore"}
 RESERVED_MUTABLE_PATHS = {".pypluginstore.json", "plugin.py"}
+UPDATE_TIMES_SCHEMA_VERSION = 2
+UPDATE_TIMES_FIELDS = {"schema_version", "updates"}
+UPDATE_TIME_FIELDS = {"package_id", "updated_at"}
+PUBLIC_FORGE_PROVIDERS = {
+    "github.com": "github",
+    "gitlab.com": "gitlab",
+    "codeberg.org": "codeberg",
+}
+EXPLICIT_RELEASE_FIELDS = {
+    "provider",
+    "channel",
+    "tag_pattern",
+    "artifact",
+    "source_path",
+    "mutable_paths",
+}
+DEFAULT_STABLE_TAG_PATTERN = r"^v?[0-9]+(?:\.[0-9]+){1,3}$"
 
 
 def _require_string(value, label, *, allow_empty=False, canonical=True):
@@ -84,6 +117,271 @@ def _require_exact_fields(document, label, allowed, required=()):
     return document
 
 
+def _strict_json_object(contents, label):
+    if not isinstance(contents, (bytes, bytearray)):
+        raise ValueError(label + " contents must be bytes.")
+
+    def reject_duplicate_keys(pairs):
+        result = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError(
+                    label + " contains duplicate JSON key " + str(key) + "."
+                )
+            result[key] = value
+        return result
+
+    try:
+        document = json.loads(
+            bytes(contents).decode("utf-8"),
+            object_pairs_hook=reject_duplicate_keys,
+        )
+    except (UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise ValueError(label + " is not valid UTF-8 JSON.") from error
+    if not isinstance(document, dict):
+        raise ValueError(label + " must contain a JSON object.")
+    return document
+
+
+def _canonical_json_bytes(document):
+    return (
+        json.dumps(
+            document,
+            ensure_ascii=False,
+            indent=2,
+            allow_nan=False,
+        )
+        + "\n"
+    ).encode("utf-8")
+
+
+def _atomic_write(path, contents):
+    target = Path(path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    descriptor, temporary_path = tempfile.mkstemp(
+        prefix="." + target.name + ".",
+        suffix=".tmp",
+        dir=str(target.parent),
+    )
+    try:
+        with os.fdopen(descriptor, "wb") as output:
+            output.write(contents)
+            output.flush()
+            os.fsync(output.fileno())
+        os.replace(temporary_path, target)
+        temporary_path = ""
+    finally:
+        if temporary_path and os.path.exists(temporary_path):
+            os.unlink(temporary_path)
+
+
+def validate_explicit_delivery(package):
+    """Validate the reviewed release policy against its repository host."""
+    if not isinstance(package, PackageRecord):
+        package = PackageRecord.from_document(package)
+    host = urllib.parse.urlsplit(package.repository_url).hostname or ""
+    expected_provider = PUBLIC_FORGE_PROVIDERS.get(host.lower())
+    release = package.delivery.release
+    if expected_provider is None:
+        if release is not None:
+            raise ValueError(
+                "Release delivery is unsupported for repository host "
+                + host
+                + "."
+            )
+        return package
+    if release is None:
+        if package.delivery.preferred != "git":
+            raise ValueError(
+                "Release-first delivery requires an explicit release policy."
+            )
+        return package
+    if not isinstance(release, dict):
+        raise ValueError("delivery.release must be an object.")
+    missing = sorted(EXPLICIT_RELEASE_FIELDS - set(release))
+    if missing:
+        raise ValueError(
+            "delivery.release is missing explicit field " + missing[0] + "."
+        )
+    provider = _require_string(
+        release["provider"], "delivery.release.provider"
+    ).lower()
+    if provider != expected_provider:
+        raise ValueError(
+            "Release provider "
+            + provider
+            + " does not match repository host "
+            + host
+            + "."
+        )
+    if release["channel"] != "stable":
+        raise ValueError("Only the stable release channel is supported.")
+    tag_pattern = _require_string(
+        release["tag_pattern"], "delivery.release.tag_pattern"
+    )
+    try:
+        re.compile(tag_pattern)
+    except re.error as error:
+        raise ValueError("delivery.release.tag_pattern is invalid.") from error
+    if release["artifact"] not in {"source_zip", "asset_zip"}:
+        raise ValueError("delivery.release.artifact is unsupported.")
+    _normalize_relative_path(
+        release["source_path"],
+        "delivery.release.source_path",
+    )
+    mutable_paths = release["mutable_paths"]
+    if not isinstance(mutable_paths, list):
+        raise ValueError("delivery.release.mutable_paths must be a list.")
+    normalized_paths = []
+    for value in mutable_paths:
+        path = _normalize_relative_path(
+            value,
+            "delivery.release.mutable_paths entry",
+            allow_root=False,
+        )
+        folded = unicodedata.normalize("NFC", path).casefold()
+        if any(
+            folded == prior
+            or folded.startswith(prior + "/")
+            or prior.startswith(folded + "/")
+            for prior in normalized_paths
+        ):
+            raise ValueError("Mutable paths must be unique and non-overlapping.")
+        if (
+            folded in RESERVED_MUTABLE_PATHS
+            or folded.split("/", 1)[0] in RESERVED_MUTABLE_ROOTS
+        ):
+            raise ValueError("Mutable path is manager-reserved.")
+        normalized_paths.append(folded)
+    return package
+
+
+def registry_mapping_from_bytes(contents):
+    registry = RegistryDocument.from_bytes(contents)
+    result = {}
+    for package in registry.packages:
+        validate_explicit_delivery(package)
+        result[package.package_id] = package.to_document()
+    return result
+
+
+def load_registry_file(path):
+    return registry_mapping_from_bytes(Path(path).read_bytes())
+
+
+def registry_bytes_from_mapping(packages):
+    if not isinstance(packages, dict):
+        raise ValueError("Registry packages must be a package mapping in memory.")
+    documents = []
+    for package_id, package_document in packages.items():
+        if not isinstance(package_document, dict):
+            raise ValueError("Registry package must be an object.")
+        if package_document.get("package_id") != package_id:
+            raise ValueError(
+                "Registry package_id does not match its in-memory key."
+            )
+        package = PackageRecord.from_document(copy.deepcopy(package_document))
+        validate_explicit_delivery(package)
+        documents.append(package.to_document())
+    registry = RegistryDocument.from_document(
+        {"schema_version": 2, "packages": documents}
+    )
+    return registry.to_bytes()
+
+
+def save_registry_file(path, packages):
+    _atomic_write(path, registry_bytes_from_mapping(packages))
+
+
+def normalize_update_timestamp(value):
+    value = _require_string(value, "updated_at")
+    try:
+        timestamp = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError as error:
+        raise ValueError("updated_at must be an ISO 8601 timestamp.") from error
+    if timestamp.tzinfo is None:
+        raise ValueError("updated_at must include a timezone.")
+    return (
+        timestamp.astimezone(timezone.utc)
+        .replace(microsecond=0)
+        .strftime("%Y-%m-%dT%H:%M:%SZ")
+    )
+
+
+def update_times_mapping_from_bytes(contents):
+    document = _strict_json_object(contents, "update_times.json")
+    _require_exact_fields(
+        document,
+        "update_times.json",
+        UPDATE_TIMES_FIELDS,
+        UPDATE_TIMES_FIELDS,
+    )
+    if document["schema_version"] != UPDATE_TIMES_SCHEMA_VERSION:
+        raise ValueError("update_times.json schema is unsupported.")
+    updates = document["updates"]
+    if not isinstance(updates, list):
+        raise ValueError("update_times.json updates must be an array.")
+    result = {}
+    folded_ids = set()
+    for update in updates:
+        _require_exact_fields(
+            update,
+            "update time",
+            UPDATE_TIME_FIELDS,
+            UPDATE_TIME_FIELDS,
+        )
+        package_id = _validate_plugin_key(update["package_id"])
+        folded = unicodedata.normalize("NFC", package_id).casefold()
+        if folded in folded_ids:
+            raise ValueError("update_times.json contains a duplicate package_id.")
+        folded_ids.add(folded)
+        updated_at = normalize_update_timestamp(update["updated_at"])
+        if updated_at != update["updated_at"]:
+            raise ValueError("update_times.json timestamp is not canonical UTC.")
+        result[package_id] = updated_at
+    return result
+
+
+def load_update_times_file(path, *, missing_ok=False):
+    try:
+        contents = Path(path).read_bytes()
+    except FileNotFoundError:
+        if missing_ok:
+            return {}
+        raise
+    return update_times_mapping_from_bytes(contents)
+
+
+def update_times_bytes_from_mapping(update_times):
+    if not isinstance(update_times, dict):
+        raise ValueError("Update times must be a package mapping in memory.")
+    updates = []
+    folded_ids = set()
+    for package_id, updated_at in update_times.items():
+        package_id = _validate_plugin_key(package_id)
+        folded = unicodedata.normalize("NFC", package_id).casefold()
+        if folded in folded_ids:
+            raise ValueError("Update times contain a duplicate package_id.")
+        folded_ids.add(folded)
+        updates.append(
+            {
+                "package_id": package_id,
+                "updated_at": normalize_update_timestamp(updated_at),
+            }
+        )
+    updates.sort(key=lambda item: (item["package_id"].casefold(), item["package_id"]))
+    return _canonical_json_bytes(
+        {
+            "schema_version": UPDATE_TIMES_SCHEMA_VERSION,
+            "updates": updates,
+        }
+    )
+
+
+def save_update_times_file(path, update_times):
+    _atomic_write(path, update_times_bytes_from_mapping(update_times))
+
+
 def _validate_path_segment(value, label):
     value = _require_string(value, label)
     if (
@@ -100,7 +398,13 @@ def _validate_path_segment(value, label):
 
 def _validate_plugin_key(value):
     value = _require_string(value, "Plugin key")
-    if value.startswith(".") or "/" in value or "\\" in value:
+    if (
+        value.startswith(".")
+        or "/" in value
+        or "\\" in value
+        or unicodedata.normalize("NFC", value) != value
+        or value.casefold() == "idle"
+    ):
         raise ValueError("Plugin key is not a visible folder name.")
     return value
 
@@ -203,6 +507,66 @@ def build_clone_url(owner, repository):
         + repository
         + ".git"
     )
+
+
+def build_repository_url(owner, repository):
+    location = parse_registry_owner(owner)
+    repository = _validate_path_segment(repository, "Repository")
+    return (
+        location.web_base
+        + "/"
+        + location.owner_path
+        + "/"
+        + repository
+    )
+
+
+def default_delivery_for_repository(repository_url):
+    try:
+        parsed = urllib.parse.urlsplit(repository_url)
+    except ValueError as error:
+        raise ValueError("Repository URL is invalid.") from error
+    provider = PUBLIC_FORGE_PROVIDERS.get((parsed.hostname or "").lower())
+    if provider is None:
+        return {"preferred": "git", "git_supported": True}
+    return {
+        "preferred": "release_if_indexed",
+        "git_supported": True,
+        "release": {
+            "provider": provider,
+            "channel": "stable",
+            "tag_pattern": DEFAULT_STABLE_TAG_PATTERN,
+            "artifact": "source_zip",
+            "source_path": ".",
+            "mutable_paths": [],
+        },
+    }
+
+
+def build_package_document(
+    package_id,
+    domoticz_key,
+    owner,
+    repository,
+    description,
+    branch,
+    platforms=None,
+):
+    repository_url = build_repository_url(owner, repository)
+    document = {
+        "package_id": package_id,
+        "domoticz_key": domoticz_key,
+        "description": description,
+        "repository": {
+            "url": repository_url,
+            "branch": branch,
+        },
+        "platforms": _normalize_platforms(platforms),
+        "delivery": default_delivery_for_repository(repository_url),
+    }
+    package = PackageRecord.from_document(document)
+    validate_explicit_delivery(package)
+    return package.to_document()
 
 
 def _validate_https_url(value, label, *, origin_only=False):
@@ -556,7 +920,21 @@ class RegistryRecord:
     def from_entry(cls, key, entry):
         key = _validate_plugin_key(key)
         original = copy.deepcopy(entry)
-        if isinstance(entry, list):
+        if isinstance(entry, dict) and "package_id" in entry:
+            if entry.get("package_id") != key:
+                raise ValueError("Registry package_id does not match its key.")
+            package = PackageRecord.from_document(entry)
+            validate_explicit_delivery(package)
+            owner = package.author
+            repository = package.repository_name
+            description = package.description
+            branch = package.branch
+            updated_at = ""
+            platforms = list(package.platforms)
+            delivery = package.delivery
+            extra_fields = copy.deepcopy(package.annotations or {})
+            is_legacy = False
+        elif isinstance(entry, list):
             if len(entry) < 4:
                 raise ValueError("Legacy registry entry must contain four fields.")
             owner = _require_string(entry[0], "Registry owner")
@@ -673,7 +1051,9 @@ class RegistryRecord:
             description, "Description", canonical=False
         )
         document = self.to_document()
-        if self.is_legacy:
+        if isinstance(document, dict) and "package_id" in document:
+            document["description"] = description
+        elif self.is_legacy:
             document[2] = description
         else:
             document["description"] = description
@@ -682,7 +1062,9 @@ class RegistryRecord:
     def with_platforms(self, platforms):
         platforms = _normalize_platforms(platforms)
         document = self.to_document()
-        if self.is_legacy:
+        if isinstance(document, dict) and "package_id" in document:
+            document["platforms"] = platforms
+        elif self.is_legacy:
             while len(document) < 5:
                 document.append("")
             if len(document) == 5:

@@ -21,3 +21,8 @@ This file tracks all major tracks for the project. Each track has its own detail
 
 ## [x] Track: Release-first plugin installation and updates
 *Link: [./conductor/tracks/release_first_plugin_management_20260718/](./conductor/tracks/release_first_plugin_management_20260718/)*
+
+---
+
+## [x] Track: Explicit package identities and automatic Git-to-release transitions
+*Link: [./conductor/tracks/package_identity_transition_20260721/](./conductor/tracks/package_identity_transition_20260721/)*

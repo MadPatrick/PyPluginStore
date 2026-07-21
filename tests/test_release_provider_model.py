@@ -19,10 +19,12 @@ EXPECTED_FIELDS = {
     "artifact_kind",
     "artifact_provenance",
     "artifact_url",
+    "source_archive_url",
     "artifact_size",
     "provider_sha256",
     "source_path",
-    "migration_eligible",
+    "migration_mode",
+    "migration_evidence",
 }
 
 
@@ -50,10 +52,15 @@ def candidate_values(**overrides):
             "https://gitlab.com/api/v4/projects/group%2Fexample/"
             "repository/archive.zip?sha=" + "1" * 40
         ),
+        "source_archive_url": (
+            "https://gitlab.com/api/v4/projects/group%2Fexample/"
+            "repository/archive.zip?sha=" + "1" * 40
+        ),
         "artifact_size": None,
         "provider_sha256": "",
         "source_path": ".",
-        "migration_eligible": True,
+        "migration_mode": "automatic",
+        "migration_evidence": "commit_source_archive",
     }
     values.update(overrides)
     return values
@@ -80,15 +87,18 @@ def test_release_candidate_allows_generic_non_git_revision(providers_module):
             artifact_kind="asset_zip",
             artifact_provenance="generic_manifest",
             artifact_url="https://downloads.example.test/example/plugin.zip",
+            source_archive_url="",
             artifact_size=1234,
             provider_sha256="a" * 64,
             source_path="plugin",
-            migration_eligible=False,
+            migration_mode="manual",
+            migration_evidence="generic_manifest",
         )
     )
 
     assert candidate.commit == ""
     assert candidate.tag == ""
+    assert candidate.source_archive_url == ""
 
 
 @pytest.mark.parametrize(
@@ -98,11 +108,16 @@ def test_release_candidate_allows_generic_non_git_revision(providers_module):
         ("released_at", "2026-07-17"),
         ("commit", "1" * 39),
         ("artifact_url", "http://downloads.example.test/plugin.zip"),
+        ("source_archive_url", "http://downloads.example.test/source.zip"),
+        ("source_archive_url", "https://user@example.test/source.zip"),
         ("artifact_size", 0),
         ("artifact_size", True),
         ("provider_sha256", "A" * 64),
         ("source_path", "../plugin"),
-        ("migration_eligible", "yes"),
+        ("migration_mode", "sometimes"),
+        ("migration_mode", ["automatic"]),
+        ("migration_evidence", "tag_name"),
+        ("migration_evidence", ["commit_source_archive"]),
     ],
 )
 def test_release_candidate_rejects_invalid_fields(
@@ -116,7 +131,7 @@ def test_release_candidate_rejects_invalid_fields(
         providers_module.ReleaseCandidate(**values)
 
 
-def test_migration_eligibility_requires_full_commit(providers_module):
+def test_automatic_migration_requires_full_commit(providers_module):
     with pytest.raises(ValueError):
         providers_module.ReleaseCandidate(
             **candidate_values(
@@ -126,6 +141,58 @@ def test_migration_eligibility_requires_full_commit(providers_module):
                 commit="",
             )
         )
+
+
+def test_automatic_migration_requires_source_archive_url(providers_module):
+    with pytest.raises(ValueError, match="source archive URL"):
+        providers_module.ReleaseCandidate(
+            **candidate_values(source_archive_url="")
+        )
+
+
+def test_manual_forge_candidate_requires_source_archive_url(providers_module):
+    with pytest.raises(ValueError, match="Forge candidates"):
+        providers_module.ReleaseCandidate(
+            **candidate_values(
+                artifact_kind="asset_zip",
+                artifact_provenance="attached_asset",
+                source_archive_url="",
+                migration_mode="manual",
+                migration_evidence="unverified_asset",
+            )
+        )
+
+
+def test_automatic_migration_requires_commit_source_archive_evidence(
+    providers_module,
+):
+    with pytest.raises(ValueError, match="commit source archive"):
+        providers_module.ReleaseCandidate(
+            **candidate_values(migration_evidence="unverified_asset")
+        )
+
+
+@pytest.mark.parametrize("migration_mode", ["manual", "blocked"])
+def test_commit_source_archive_must_be_automatic(
+    providers_module, migration_mode
+):
+    with pytest.raises(ValueError, match="must use automatic"):
+        providers_module.ReleaseCandidate(
+            **candidate_values(migration_mode=migration_mode)
+        )
+
+
+def test_unverified_asset_can_be_explicitly_blocked(providers_module):
+    candidate = providers_module.ReleaseCandidate(
+        **candidate_values(
+            artifact_kind="asset_zip",
+            artifact_provenance="attached_asset",
+            migration_mode="blocked",
+            migration_evidence="unverified_asset",
+        )
+    )
+
+    assert candidate.migration_mode == "blocked"
 
 
 def test_release_provider_adapter_defines_abstract_resolve_contract(

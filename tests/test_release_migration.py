@@ -92,14 +92,19 @@ def initialize_repository(path, remote_url=GITHUB_REMOTE):
 
 
 def repository_snapshot(repository):
-    """Capture the state a read-only preflight must leave unchanged."""
+    """Capture the HEAD, worktree status, and index bytes."""
     status = git(
         repository,
         "status",
         "--porcelain=v1",
         "--untracked-files=all",
     ).stdout
-    return head_commit(repository), status
+    index_path = Path(
+        git(repository, "rev-parse", "--git-path", "index").stdout.strip()
+    )
+    if not index_path.is_absolute():
+        index_path = Path(repository) / index_path
+    return head_commit(repository), status, index_path.read_bytes()
 
 
 def evaluate_preflight(
@@ -825,8 +830,8 @@ def test_non_git_directory_reports_unknown(plugin_core_module, tmp_path):
     assert result.relationship == "unknown"
 
 
-def test_shallow_checkout_with_missing_ancestry_waits_without_fetching(
-    plugin_core_module, tmp_path
+def test_shallow_checkout_with_missing_ancestry_waits_when_fetch_fails(
+    plugin_core_module, tmp_path, monkeypatch
 ):
     source, release_commit = initialize_repository(
         tmp_path / "source",
@@ -853,8 +858,6 @@ def test_shallow_checkout_with_missing_ancestry_waits_without_fetching(
         source.resolve().as_uri(),
         str(shallow),
     )
-    # This parses as the reviewed identity but fails immediately if code tries
-    # to fetch it as a local path. Migration preflight must remain read-only.
     git(
         shallow,
         "remote",
@@ -874,11 +877,20 @@ def test_shallow_checkout_with_missing_ancestry_waits_without_fetching(
         != 0
     )
     before = repository_snapshot(shallow)
+    plugin = plugin_core_module.BasePlugin()
+    fetches = []
+
+    def reject_fetch(command, cwd, timeout=15):
+        fetches.append((command, cwd, timeout))
+        return subprocess.CompletedProcess(command, 1, "", "fetch rejected")
+
+    monkeypatch.setattr(plugin.get_host(), "run_git", reject_fetch)
 
     result = evaluate_preflight(
         plugin_core_module,
         shallow,
         release_commit,
+        plugin=plugin,
     )
 
     assert result.allowed is False
@@ -888,6 +900,8 @@ def test_shallow_checkout_with_missing_ancestry_waits_without_fetching(
     assert result.shallow is True
     assert result.installed_commit == installed_commit
     assert repository_snapshot(shallow) == before
+    assert len(fetches) == 1
+    assert fetches[0][0][-2:] == ["origin", release_commit]
     assert (
         git(
             shallow,
@@ -901,16 +915,28 @@ def test_shallow_checkout_with_missing_ancestry_waits_without_fetching(
 
 
 def test_missing_release_commit_reports_unknown_ancestry(
-    plugin_core_module, tmp_path
+    plugin_core_module, tmp_path, monkeypatch
 ):
     repository, _ = initialize_repository(tmp_path / "plugin")
     unavailable_commit = "f" * 40
     before = repository_snapshot(repository)
+    plugin = plugin_core_module.BasePlugin()
+    monkeypatch.setattr(
+        plugin.get_host(),
+        "run_git",
+        lambda command, cwd, timeout=15: subprocess.CompletedProcess(
+            command,
+            1,
+            "",
+            "fetch rejected",
+        ),
+    )
 
     result = evaluate_preflight(
         plugin_core_module,
         repository,
         unavailable_commit,
+        plugin=plugin,
     )
 
     assert result.allowed is False
@@ -922,17 +948,97 @@ def test_missing_release_commit_reports_unknown_ancestry(
     assert repository_snapshot(repository) == before
 
 
+def test_missing_release_commit_is_fetched_from_verified_configured_remote(
+    plugin_core_module,
+    tmp_path,
+):
+    source, installed_commit = initialize_repository(
+        tmp_path / "source",
+        remote_url=None,
+    )
+    remote = tmp_path / "remote.git"
+    git(tmp_path, "init", "--bare", "--quiet", str(remote))
+    git(source, "remote", "add", "origin", remote.resolve().as_uri())
+    git(source, "push", "--quiet", "--set-upstream", "origin", "main")
+
+    installed = tmp_path / "installed"
+    git(
+        tmp_path,
+        "clone",
+        "--quiet",
+        "--branch",
+        "main",
+        remote.resolve().as_uri(),
+        str(installed),
+    )
+    release_commit = commit_files(
+        source,
+        {"plugin.py": "print('release')\n"},
+        "release",
+    )
+    git(source, "push", "--quiet", "origin", "main")
+    assert head_commit(installed) == installed_commit
+    assert (
+        git(
+            installed,
+            "cat-file",
+            "-e",
+            release_commit + "^{commit}",
+            check=False,
+        ).returncode
+        != 0
+    )
+
+    git(installed, "remote", "set-url", "origin", GITHUB_REMOTE)
+    git(
+        installed,
+        "config",
+        "url." + remote.resolve().as_uri() + ".insteadOf",
+        GITHUB_REMOTE,
+    )
+    git(installed, "config", "protocol.file.allow", "always")
+    before = repository_snapshot(installed)
+
+    result = evaluate_preflight(
+        plugin_core_module,
+        installed,
+        release_commit,
+    )
+
+    assert result.allowed is True
+    assert result.relationship == "release_descendant"
+    assert result.installed_repository_identity == GITHUB_IDENTITY
+    assert repository_snapshot(installed) == before
+    assert (
+        git(
+            installed,
+            "cat-file",
+            "-e",
+            release_commit + "^{commit}",
+            check=False,
+        ).returncode
+        == 0
+    )
+
+
 def test_repository_identity_mismatch_is_explicit_and_read_only(
-    plugin_core_module, tmp_path
+    plugin_core_module, tmp_path, monkeypatch
 ):
     repository, release_commit = initialize_repository(tmp_path / "plugin")
     before = repository_snapshot(repository)
+    plugin = plugin_core_module.BasePlugin()
+
+    def unexpected_fetch(*args, **kwargs):
+        raise AssertionError("repository mismatch must be rejected before fetch")
+
+    monkeypatch.setattr(plugin.get_host(), "run_git", unexpected_fetch)
 
     result = evaluate_preflight(
         plugin_core_module,
         repository,
-        release_commit,
+        "f" * 40,
         repository_identity="gitlab.com/owner/example-plugin",
+        plugin=plugin,
     )
 
     assert result.allowed is False

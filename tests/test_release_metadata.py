@@ -89,7 +89,7 @@ def release_tombstone(
 
 
 def parse_index(plugin_core_module, document, previous=None):
-    return plugin_core_module.ReleaseIndex.from_document(
+    return plugin_core_module.ReleaseIndex.from_legacy_document(
         document,
         registry_bytes=REGISTRY_BYTES,
         now=NOW,
@@ -196,7 +196,7 @@ def test_normalized_release_index_exposes_provider_neutral_descriptor(
 ):
     index = parse_index(plugin_core_module, release_index_document())
 
-    assert index.schema_version == 1
+    assert index.schema_version == 2
     assert index.sequence == 42
     assert index.generated_at == "2026-07-18T08:00:00Z"
     assert index.expires_at == "2026-07-25T08:00:00Z"

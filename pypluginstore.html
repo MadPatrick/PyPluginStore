@@ -3239,6 +3239,10 @@
 
     function formatReleaseManagementStatus(state) {
         if (!state) return '';
+        if (state.channel === 'git' &&
+            (state.status === 'git_current' || state.status === 'git_unknown')) {
+            return '';
+        }
         const channel = state.channel === 'release' ? 'Release' :
             (state.channel === 'git' ? 'Git' : '');
         const version = state.available_version || state.installed_version || '';
@@ -3254,9 +3258,7 @@
         } else if (state.status === 'migration_waiting_for_release') {
             details.push('Migration waiting for release' + (state.migration_message ? ': ' + state.migration_message : ''));
         } else if (state.status === 'git_available') {
-            details.push('Git update available');
-        } else if (state.status === 'git_current') {
-            details.push('Git current');
+            details.push('Update available');
         } else if (state.status === 'rollback_available') {
             const rollbackVersion = state.rollback_version ? 'v' + String(state.rollback_version).replace(/^v/i, '') : '';
             details.push('Rollback available' + (rollbackVersion ? ': ' + rollbackVersion : ''));
@@ -3482,14 +3484,17 @@
             }
 
             if (isInstalled && management) {
-                const managementDetail = document.createElement('span');
-                const isManagementError = management.status === 'verification_failed' ||
-                    management.status === 'release_metadata_unavailable' ||
-                    String(management.status || '').indexOf('migration_blocked') === 0;
-                managementDetail.className = isManagementError ? 'release-error-detail' : 'release-status-detail';
-                managementDetail.textContent = formatReleaseManagementStatus(management);
-                meta.appendChild(document.createElement('br'));
-                meta.appendChild(managementDetail);
+                const managementText = formatReleaseManagementStatus(management);
+                if (managementText) {
+                    const managementDetail = document.createElement('span');
+                    const isManagementError = management.status === 'verification_failed' ||
+                        management.status === 'release_metadata_unavailable' ||
+                        String(management.status || '').indexOf('migration_blocked') === 0;
+                    managementDetail.className = isManagementError ? 'release-error-detail' : 'release-status-detail';
+                    managementDetail.textContent = managementText;
+                    meta.appendChild(document.createElement('br'));
+                    meta.appendChild(managementDetail);
+                }
             }
 
             if (isManager) {

@@ -1,261 +1,1033 @@
 {
-    "AWTRIX3": "2025-01-10T07:59:36Z",
-    "BatteryLevel": "2026-04-06T16:05:31Z",
-    "ChromecastPlugin": "2023-12-04T13:13:46Z",
-    "CreasolDomBus": "2026-07-11T15:37:41Z",
-    "deCONZ": "2026-03-29T14:23:47Z",
-    "Denon4306": "2023-12-10T23:41:25Z",
-    "domoticz-dds238": "2025-11-10T17:38:25Z",
-    "domoticz-dts238": "2025-11-10T17:38:49Z",
-    "domoticz-theme-manager": "2024-10-08T10:52:19Z",
-    "DysonPureLink": "2025-12-05T16:32:59Z",
-    "ebusd": "2026-05-27T19:15:06Z",
-    "E-Flux": "2025-01-06T09:06:43Z",
-    "domoticz-emmeti-eq2021": "2025-11-10T17:39:23Z",
-    "domoticz-emmeti-mirai": "2026-02-09T07:50:13Z",
-    "ems-gateway": "2021-12-28T08:35:35Z",
-    "Domoticz-EVCC-IO-Plugin": "2026-03-18T19:53:22Z",
-    "freeboxv6": "2022-09-02T11:22:12Z",
-    "GoodWeAPI": "2026-05-14T10:23:01Z",
-    "GoveeDiscovery": "2025-01-06T09:03:27Z",
-    "Homewizard": "2022-12-18T22:48:06Z",
-    "Homewizard-Battery": "2026-03-31T17:37:30Z",
-    "HyundaiKiaConnect": "2026-04-16T15:40:32Z",
-    "iDetect": "2024-11-01T12:24:13Z",
-    "IthoWifi": "2025-01-06T09:08:03Z",
-    "IKEA-Tradfri": "2021-05-31T22:06:39Z",
-    "Linky": "2026-05-27T19:12:50Z",
-    "MeshCore": "2026-05-23T08:42:35Z",
-    "SolaxCloud": "2025-06-24T07:22:04Z",
-    "Link-Tap": "2026-06-11T21:56:15Z",
-    "MQTTDiscovery": "2023-05-09T18:48:35Z",
-    "pzem016": "2025-11-10T17:40:45Z",
-    "Quatt": "2026-03-11T19:18:31Z",
-    "sonoff-domoticz-plugin": "2025-10-07T07:11:19Z",
-    "steam": "2025-01-16T07:32:07Z",
-    "Synology SurveillanceStation": "2023-02-17T21:00:45Z",
-    "tuyaha": "2024-07-07T17:45:34Z",
-    "WLANThermo": "2025-01-06T09:08:06Z",
-    "WLED": "2022-01-05T14:42:29Z",
-    "WAN-IP-CHECKER": "2023-10-21T09:33:12Z",
-    "Mi_Flower_mate_plugin": "2023-02-20T12:26:51Z",
-    "xiaomi-mi-robot-vacuum": "2021-01-09T10:50:57Z",
-    "Zigate": "2026-07-09T15:15:41Z",
-    "Zigbee2Mqtt": "2024-03-26T07:36:44Z",
-    "ds238-modbus-tcp": "2023-10-14T17:33:45Z",
-    "DomoticzTile": "2025-10-22T15:19:55Z",
-    "FoxESS-domoticz": "2026-04-05T14:55:38Z",
-    "luxtronikex": "2026-07-06T07:09:50Z",
-    "domoticz-tailscale-plugin": "2026-02-16T14:45:59Z",
-    "domoticz-mqttmapper-plugin": "2026-02-15T11:25:51Z",
-    "domoticz-solaredge-modbustcp-plugin": "2025-12-23T17:17:13Z",
-    "domoticz-tuya-cloud": "2025-12-20T17:05:07Z",
-    "Domoticz-SMA-Inverter": "2025-12-16T20:09:30Z",
-    "Domoticz-SMA-SunnyBoy": "2021-05-26T16:00:26Z",
-    "Broadlink-Domoticz-plugin": "2025-11-03T16:37:49Z",
-    "domoticz_lg_thinq_plugin": "2025-03-12T06:42:05Z",
-    "Domoticz-Solax-plugin": "2025-01-11T18:37:09Z",
-    "domoticz-peblar": "2024-10-11T11:49:31Z",
-    "Hisense-AirCon-Domoticz": "2024-10-04T13:43:11Z",
-    "domoticz-wellbeing-plugin": "2024-08-19T07:00:20Z",
-    "home-connect": "2026-04-30T10:10:34Z",
-    "domoticz_lg_thinqconnect_plugin": "2026-05-31T13:55:41Z",
-    "Roomba": "2026-04-29T11:07:17Z",
-    "Domoticz---CEPT-plugin": "2026-04-28T06:53:01Z",
-    "Somfy": "2026-07-12T19:28:20Z",
-    "Domoticz-TinyTUYA-Plugin": "2026-06-29T18:50:53Z",
-    "Domoticz_WT53R_Rain_Tank_Sensor": "2026-04-23T15:08:16Z",
-    "weheat-domoticz-plugin": "2026-06-20T08:50:56Z",
-    "Mattericz": "2026-04-18T14:28:48Z",
-    "Domoticz_VolvoRecharge_Plugin": "2026-06-15T13:48:32Z",
-    "BboxPlugin": "2026-04-10T16:19:20Z",
-    "Domoticz-Stromer-plugin": "2026-06-30T21:36:29+02:00",
-    "DomoticzSabNZBDPlugin": "2019-08-16T18:29:37.958Z",
-    "Domoticz-Shelly-Plugin": "2026-07-20T13:00:15Z",
-    "TWC": "2026-03-30T21:31:17Z",
-    "HomeWizard-Wifi-p1-plugin-Extended": "2026-03-30T13:25:21Z",
-    "domoticz-AirHumidifier": "2026-07-20T08:22:26Z",
-    "Zigbee2Tasmoticz": "2026-03-29T16:58:17Z",
-    "Domoticz-Husqvarna-Automower-plugin": "2026-03-28T17:58:23Z",
-    "Marstek-Venus-plugin": "2026-03-20T10:51:35Z",
-    "Domoticz_Marstek_Modbus": "2026-06-26T18:20:02Z",
-    "MarstekCT": "2025-08-03T17:11:36Z",
-    "Krakinou-FrisquetConnectDomoticz": "2026-03-18T22:09:07Z",
-    "SessyBattery": "2026-06-03T20:18:42Z",
-    "Domoticz-Huawei-Inverter": "2026-07-04T21:27:22Z",
-    "domoticz-github": "2026-05-06T17:52:10Z",
-    "Domoticz-TeslaFi-Plugin": "2026-03-07T19:31:21Z",
-    "Domoticz-OpenDTU-Plugin": "2026-03-07T19:15:56Z",
-    "Domoticz-Bluetti-Plugin": "2026-03-06T17:38:47Z",
-    "Domoticz-BMW-plugin": "2026-03-03T19:44:41Z",
-    "Domoticz-TinyTUYA-Local-Plugin": "2026-03-01T13:52:19Z",
-    "domoticz_reolink": "2026-03-14T09:48:58Z",
-    "SolarForecast": "2026-02-15T15:27:20Z",
-    "NEDsolarForecast": "2026-02-15T14:14:44Z",
-    "Domoticz-OpenMeteo-Plugin": "2026-02-13T18:46:01Z",
-    "XTEND-plugin": "2026-02-07T19:39:06Z",
-    "Domoticz-Synology-Plugin": "2026-02-02T15:13:22Z",
-    "domoticz-powerview-plugin": "2026-01-28T06:02:53Z",
-    "Domoticz-PiHole-Control": "2026-01-23T19:51:44Z",
-    "OpenEVSEPlugin": "2026-01-23T16:59:57Z",
-    "ThesslaGreen-modbus": "2026-06-29T01:12:07Z",
-    "domoticz-BSR": "2026-01-08T21:45:17Z",
-    "Domoticz-GPSLogger-Plugin": "2026-01-06T21:10:12Z",
-    "Domoticz_plugin_for_Smasung_Washer_Dryer": "2025-12-29T22:08:30Z",
-    "Domoticz-Enigma2": "2025-12-19T16:08:46Z",
-    "domoticz-cupra-plugin": "2025-12-18T07:43:58Z",
-    "Domoticz-Volumio-Plugin": "2026-06-24T19:02:52Z",
-    "Domoticz-Temperatur-nu": "2025-12-17T15:21:39Z",
-    "Domoticz-Brel-Home-Hub-03-integration": "2025-12-14T21:51:40Z",
-    "Domoticz-WazeTimeTravel-Plugin": "2025-12-14T14:25:59Z",
-    "OM310-Domoticz-plugin": "2025-12-10T09:36:29Z",
-    "goodwe_rs485_domoticz": "2026-06-20T11:24:21Z",
-    "DHT22-rpi": "2025-11-28T07:31:04Z",
-    "DomoticzNestPlugin": "2025-11-14T16:50:30Z",
-    "ShellyCloudPlugin2": "2025-11-05T15:54:51Z",
-    "domoticz-PowerWorld-heat-pump": "2025-11-01T13:14:18Z",
-    "domoticz-zigbee2mqtt-plugin": "2025-11-01T12:18:23Z",
-    "Domoticz-GPIO-Debian-13": "2025-10-29T12:46:59Z",
-    "Domoticz-N8N-Plugin": "2025-10-28T15:17:37Z",
-    "domoticz_zigbee2tasmota": "2025-10-25T18:34:29Z",
-    "Domoticz-plugin-for-samsung-washing-machine": "2025-10-23T22:46:29Z",
-    "Domoticz-MCP-Plugin": "2025-10-18T12:09:48Z",
-    "alphaESS-battery-plugin": "2025-10-09T13:47:33Z",
-    "domoticz-ir-climate-controller": "2025-10-09T13:25:06Z",
-    "sweden_energyprice": "2025-10-02T19:41:18Z",
-    "HomeWizard-Wifi-3F-plugin": "2025-09-29T13:56:51Z",
-    "PC321_TY_tuya_local": "2025-09-17T13:33:03Z",
-    "Domoticz-MG-Plugin": "2025-09-10T22:47:29Z",
-    "DDS238-7-modbus": "2025-08-29T18:13:54Z",
-    "Sofar-modbus": "2025-08-16T23:58:55Z",
-    "IMGW-Meteo": "2025-08-08T20:15:44Z",
-    "Domoticz-NEST-plugin": "2025-07-28T18:27:02Z",
-    "domoticz-mqtt-sync-plugin": "2025-07-14T15:36:06Z",
-    "domoticz-tuya-heatpump": "2025-07-13T17:31:16Z",
-    "Domoticz-ZonneDimmer-Plugin": "2026-06-02T14:21:43Z",
-    "domoticz-kpn-experia-v10": "2026-07-05T05:46:24Z",
-    "Domoticz-FranceFuelPrice-Plugin": "2026-05-31T12:48:06Z",
-    "domoticz-logmonitor-plugin": "2026-05-25T07:09:13Z",
-    "TVUHDOrange": "2026-06-10T22:11:50Z",
-    "domoticz-wifisensors-plugin": "2026-05-04T10:12:24Z",
-    "Domoticz-Aldes": "2026-04-15T09:53:06Z",
-    "WifiTIC": "2026-06-11T10:17:10Z",
-    "IntesisBox-Panasonic-Tcap-modbus": "2025-11-22T15:29:27Z",
-    "Easun-ISolarSPS-Domoticz": "2026-03-31T10:05:30Z",
-    "TeslaDomoticz": "2026-06-23T20:09:32Z",
-    "evcc_domoticz": "2025-12-02T14:01:03Z",
-    "LionTasmoticz": "2025-11-10T17:50:20Z",
-    "TeslaApiDomoticz": "2024-05-24T15:14:02Z",
-    "Domoticz-WThermostatBeca": "2024-01-18T09:57:04Z",
-    "Domoticz-Hewalex": "2024-01-10T12:07:34Z",
-    "test_domoticzex": "2023-09-19T12:53:35Z",
-    "Domoticz-Tasmota-Smartplug": "2022-02-15T15:29:32Z",
-    "IntesishomewithDomoticz": "2021-02-24T21:48:22Z",
-    "Dz_LinkyD2L": "2019-10-03T11:43:00Z",
-    "domoticz-verisure": "2018-12-02T14:23:45Z",
-    "domoticz-Niu-escooter": "2026-05-02T11:16:36Z",
-    "rpieasy": "2025-11-06T19:35:16Z",
-    "domoticz-plugins-manager": "2025-06-25T11:30:24Z",
-    "HomeWizard-Wifi-kWh-Meter": "2025-04-29T09:37:44Z",
-    "Domoticz-plugin-for-Tasmota-P1-Smart-Meter": "2025-01-19T22:06:44Z",
-    "Domoticz-Python-Plugin-Template": "2025-01-08T10:05:44Z",
-    "domoticz-Ouman-C203-Modbus-plugin": "2024-11-19T23:10:35Z",
-    "domoticz_panasonic_CZ-TACG1": "2024-11-08T17:33:24Z",
-    "HomeWizard-Wifi-p1-plugin": "2024-07-21T14:13:23Z",
-    "domoticz-watermeter": "2024-03-30T14:51:17Z",
-    "433Switches": "2024-02-29T22:02:05Z",
-    "domoticz-python-melcloud": "2024-02-03T13:40:36Z",
-    "SmartVirtualThermostat": "2024-01-21T13:57:44Z",
-    "Domoticz-Brel-Plugin": "2023-11-19T16:37:55Z",
-    "domoticz-snapcast": "2023-11-03T21:14:55Z",
-    "Domoticz-Omnik-Local-Web-Plugin": "2023-09-05T18:55:41Z",
-    "domoticz-tinycontrol": "2023-08-30T17:24:38Z",
-    "HomeWizard-Wifi-Energy-Socket": "2023-06-03T12:53:56Z",
-    "HomeWizard-Wifi-Watermeter": "2023-06-03T12:43:42Z",
-    "domoticz-P110Tapo-plugin": "2026-06-14T14:06:53Z",
-    "DomoticzD2LPlugin": "2023-02-22T19:51:32Z",
-    "Domoticz-WordClock": "2023-01-16T18:38:30Z",
-    "Domoticz-Palazzetti": "2022-12-28T14:51:32Z",
-    "Domoticz-Tuya-SmartPlug-Plugin": "2022-11-18T08:24:37Z",
-    "SolaxHTTP": "2022-11-10T07:42:22Z",
-    "domoticz-airly": "2022-10-04T21:59:09Z",
-    "Domoticz-Dingtian-Relay-Plugin": "2022-08-08T04:58:25Z",
-    "domoticz-wudirect": "2022-04-08T16:53:14Z",
-    "HomeWizard-Wifi-kWh-plugin": "2022-02-11T19:41:43Z",
-    "Domoticz-Xiaomi-Mi-Air-Purifier-MIoT-Plugin": "2021-12-26T14:12:18Z",
-    "domoticz-ewpe-smart-mqtt-plugin": "2021-09-04T19:21:15Z",
-    "domoticz_htu20d_python": "2021-08-19T09:22:03Z",
-    "Domoticz-LGTV-WebOS-Plugin": "2021-08-17T10:51:08Z",
-    "Domoticz-Zigpy": "2021-06-08T12:08:49Z",
-    "domoticz-nuki": "2021-05-16T18:54:26Z",
-    "domoticz-woonveilig-gate03": "2021-02-22T21:15:06Z",
-    "Domoticz-VirtualThermostat-PID": "2020-12-28T22:00:59Z",
-    "domoticz-onkyo-plugin": "2020-11-21T14:37:16Z",
-    "domoticz-plugin-sony-audio": "2020-07-25T15:51:07Z",
-    "domoticz-h801-tasmota-plugin": "2020-07-06T14:10:58Z",
-    "Domoticz-Unifi-Presence": "2025-10-15T09:05:26Z",
-    "domoticz-espnowserial-plugin": "2025-07-12T14:39:19Z",
-    "domoticz-airsend-plugin": "2025-07-12T14:32:59Z",
-    "domoticz-ff_smsserver-plugin": "2025-04-15T22:42:43Z",
-    "froniusHttp": "2023-10-09T07:29:53Z",
-    "domoticz-apc-ups-plugin": "2023-07-28T05:33:32Z",
-    "domoticz-fronius-inverter-plugin": "2023-03-22T18:16:08Z",
-    "slsys-domoticz": "2023-02-25T19:44:05Z",
-    "slide-domoticz": "2022-12-17T13:56:36Z",
-    "DomoticzMyHomeOpenWebNet": "2022-04-18T12:42:46Z",
-    "domoticz-plugin-hmip-swdm": "2021-01-26T08:40:27Z",
-    "baby_weather_plugin": "2020-07-03T06:00:04Z",
-    "AirburgEmoPlus": "2020-04-08T12:54:38Z",
-    "cometblue-domoticz": "2020-03-08T21:44:18Z",
-    "rest980-domoticz": "2020-03-08T20:57:05Z",
-    "domoticz-plugin-tinkerforge-lcd20x4": "2020-02-16T13:02:03Z",
-    "domoticz-plugin-tinkerforge-lcd20x4-lite": "2020-02-16T12:59:30Z",
-    "domoticz-plugin-tinkerforge-trafficlight": "2020-02-16T12:55:13Z",
-    "domoticz-plugin-tinkerforge-io4v2": "2020-02-16T12:53:58Z",
-    "domoticz-plugin-tinkerforge-ambientlightv2": "2020-02-16T12:53:02Z",
-    "domoticz-plugin-tinkerforge-rgbledv2": "2020-02-16T12:52:15Z",
-    "Xiaomi-MiJia-Philips-LED-Lamp": "2020-01-25T05:05:13Z",
-    "Domoticz-Pinger-Plugin": "2019-10-01T01:18:51Z",
-    "domoticz-routeros-plugin": "2019-07-09T20:16:07Z",
-    "domoticz-plugin-indoor-air-quality-monitor": "2019-06-12T13:48:47Z",
-    "domoticz-plugin-soil-moisture-monitor": "2019-06-11T07:51:30Z",
-    "DomoticzProscenicVacuum": "2019-03-16T12:35:13Z",
-    "Domoticz-Kodi-Plugin": "2019-02-12T10:34:47Z",
-    "domoticz-eSterownik_v3.5": "2018-10-31T11:42:02Z",
-    "Domoticz-GlobalCache-Plugin": "2018-10-07T05:30:24Z",
-    "fmi": "2018-09-09T15:59:33Z",
-    "Domoticz-DLinkSmartPlug-plugin": "2018-03-16T21:58:51Z",
-    "Domoticz-RAVEn-Plugin": "2018-01-22T10:05:42Z",
-    "domoticz-bt-presence": "2017-12-14T12:46:59Z",
-    "Dreame": "2026-07-19T17:26:28Z",
-    "Garbage": "2026-06-10T08:23:13Z",
-    "F1_race": "2026-07-19T17:26:30Z",
-    "FullyKiosk": "2026-07-19T17:26:32Z",
-    "Toon_Thermostat": "2026-07-19T17:26:37Z",
-    "Lyrion": "2026-07-19T17:26:36Z",
-    "HP_iLo": "2026-07-19T17:49:30Z",
-    "domoticz-HomeConnectDishwasher": "2026-06-08T12:06:48Z",
-    "solarFlow2400AC": "2026-06-25T14:17:35Z",
-    "Domoticz-GPSD-plugin": "2026-07-10T15:05:16Z",
-    "domoticz-wifitic": "2026-06-11T10:17:10Z",
-    "domoticz-zonneplan": "2026-06-07T08:27:35Z",
-    "Solaredge_modbustcp": "2026-07-19T17:26:39Z",
-    "easee-domoticz": "2026-07-16T20:40:27Z",
-    "Detect-Presence-at-Home---Domoticz-plugin": "2026-06-23T13:02:13Z",
-    "Domoticz-AnkerSolixX1-Plugin": "2026-06-17T17:42:16Z",
-    "Domoticz-Veolia": "2026-06-17T16:08:03Z",
-    "Domoticz-OpenWeatherMap": "2026-06-15T20:19:08Z",
-    "NUT_UPS": "2019-05-24T06:11:21Z",
-    "Domoticz-Gree-Ac": "2026-06-27T12:53:52Z",
-    "Domoticz-TPLinkRouter": "2026-07-09T09:18:37Z",
-    "Domoticz-Home-Connect-Plugin": "2022-01-11T13:10:18Z",
-    "domoticz-ewpe-smart-direct": "2026-06-30T20:35:03Z",
-    "Domoticz-Shelly-plugin": "2026-07-02T19:18:35+02:00",
-    "myenergi": "2026-07-06T16:40:16Z",
-    "Domoticz-Indevolt-plugin": "2026-07-16T18:22:22Z",
-    "Zonneplan-Domoticz-Plugin": "2026-05-20T17:02:22Z",
-    "WeatherInfo": "2026-07-19T17:12:59Z",
-    "domoticz-aqi-poland": "2026-07-20T08:22:28Z",
-    "BeemEnergy": "2026-07-15T11:18:26Z",
-    "Domoticz-Xiaomi-Purifier-4-Pro": "2026-07-13T10:50:06Z"
+  "schema_version": 2,
+  "updates": [
+    {
+      "package_id": "433Switches",
+      "updated_at": "2024-02-29T22:02:05Z"
+    },
+    {
+      "package_id": "AWTRIX3",
+      "updated_at": "2025-01-10T07:59:36Z"
+    },
+    {
+      "package_id": "AirburgEmoPlus",
+      "updated_at": "2020-04-08T12:54:38Z"
+    },
+    {
+      "package_id": "BatteryLevel",
+      "updated_at": "2026-04-06T16:05:31Z"
+    },
+    {
+      "package_id": "BboxPlugin",
+      "updated_at": "2026-04-10T16:19:20Z"
+    },
+    {
+      "package_id": "BeemEnergy",
+      "updated_at": "2026-07-15T11:18:26Z"
+    },
+    {
+      "package_id": "Broadlink-Domoticz-plugin",
+      "updated_at": "2025-11-03T16:37:49Z"
+    },
+    {
+      "package_id": "ChromecastPlugin",
+      "updated_at": "2023-12-04T13:13:46Z"
+    },
+    {
+      "package_id": "CreasolDomBus",
+      "updated_at": "2026-07-11T15:37:41Z"
+    },
+    {
+      "package_id": "DDS238-7-modbus",
+      "updated_at": "2025-08-29T18:13:54Z"
+    },
+    {
+      "package_id": "DHT22-rpi",
+      "updated_at": "2025-11-28T07:31:04Z"
+    },
+    {
+      "package_id": "Denon4306",
+      "updated_at": "2023-12-10T23:41:25Z"
+    },
+    {
+      "package_id": "Detect-Presence-at-Home---Domoticz-plugin",
+      "updated_at": "2026-06-23T13:02:13Z"
+    },
+    {
+      "package_id": "Domoticz---CEPT-plugin",
+      "updated_at": "2026-04-28T06:53:01Z"
+    },
+    {
+      "package_id": "Domoticz-Aldes",
+      "updated_at": "2026-04-15T09:53:06Z"
+    },
+    {
+      "package_id": "Domoticz-AnkerSolixX1-Plugin",
+      "updated_at": "2026-06-17T17:42:16Z"
+    },
+    {
+      "package_id": "Domoticz-BMW-plugin",
+      "updated_at": "2026-03-03T19:44:41Z"
+    },
+    {
+      "package_id": "Domoticz-Bluetti-Plugin",
+      "updated_at": "2026-03-06T17:38:47Z"
+    },
+    {
+      "package_id": "Domoticz-Brel-Home-Hub-03-integration",
+      "updated_at": "2025-12-14T21:51:40Z"
+    },
+    {
+      "package_id": "Domoticz-Brel-Plugin",
+      "updated_at": "2023-11-19T16:37:55Z"
+    },
+    {
+      "package_id": "Domoticz-DLinkSmartPlug-plugin",
+      "updated_at": "2018-03-16T21:58:51Z"
+    },
+    {
+      "package_id": "Domoticz-Dingtian-Relay-Plugin",
+      "updated_at": "2022-08-08T04:58:25Z"
+    },
+    {
+      "package_id": "Domoticz-EVCC-IO-Plugin",
+      "updated_at": "2026-03-18T19:53:22Z"
+    },
+    {
+      "package_id": "Domoticz-Enigma2",
+      "updated_at": "2025-12-19T16:08:46Z"
+    },
+    {
+      "package_id": "Domoticz-FranceFuelPrice-Plugin",
+      "updated_at": "2026-05-31T12:48:06Z"
+    },
+    {
+      "package_id": "Domoticz-GPIO-Debian-13",
+      "updated_at": "2025-10-29T12:46:59Z"
+    },
+    {
+      "package_id": "Domoticz-GPSD-plugin",
+      "updated_at": "2026-07-10T15:05:16Z"
+    },
+    {
+      "package_id": "Domoticz-GPSLogger-Plugin",
+      "updated_at": "2026-01-06T21:10:12Z"
+    },
+    {
+      "package_id": "Domoticz-GlobalCache-Plugin",
+      "updated_at": "2018-10-07T05:30:24Z"
+    },
+    {
+      "package_id": "Domoticz-Gree-Ac",
+      "updated_at": "2026-06-27T12:53:52Z"
+    },
+    {
+      "package_id": "Domoticz-Hewalex",
+      "updated_at": "2024-01-10T12:07:34Z"
+    },
+    {
+      "package_id": "Domoticz-Home-Connect-Plugin",
+      "updated_at": "2022-01-11T13:10:18Z"
+    },
+    {
+      "package_id": "Domoticz-Huawei-Inverter",
+      "updated_at": "2026-07-04T21:27:22Z"
+    },
+    {
+      "package_id": "Domoticz-Husqvarna-Automower-plugin",
+      "updated_at": "2026-03-28T17:58:23Z"
+    },
+    {
+      "package_id": "Domoticz-Indevolt-plugin",
+      "updated_at": "2026-07-16T18:22:22Z"
+    },
+    {
+      "package_id": "Domoticz-Kodi-Plugin",
+      "updated_at": "2019-02-12T10:34:47Z"
+    },
+    {
+      "package_id": "Domoticz-LGTV-WebOS-Plugin",
+      "updated_at": "2021-08-17T10:51:08Z"
+    },
+    {
+      "package_id": "Domoticz-MCP-Plugin",
+      "updated_at": "2025-10-18T12:09:48Z"
+    },
+    {
+      "package_id": "Domoticz-MG-Plugin",
+      "updated_at": "2025-09-10T22:47:29Z"
+    },
+    {
+      "package_id": "Domoticz-N8N-Plugin",
+      "updated_at": "2025-10-28T15:17:37Z"
+    },
+    {
+      "package_id": "Domoticz-NEST-plugin",
+      "updated_at": "2025-07-28T18:27:02Z"
+    },
+    {
+      "package_id": "Domoticz-Omnik-Local-Web-Plugin",
+      "updated_at": "2023-09-05T18:55:41Z"
+    },
+    {
+      "package_id": "Domoticz-OpenDTU-Plugin",
+      "updated_at": "2026-03-07T19:15:56Z"
+    },
+    {
+      "package_id": "Domoticz-OpenMeteo-Plugin",
+      "updated_at": "2026-02-13T18:46:01Z"
+    },
+    {
+      "package_id": "Domoticz-OpenWeatherMap",
+      "updated_at": "2026-06-15T20:19:08Z"
+    },
+    {
+      "package_id": "Domoticz-Palazzetti",
+      "updated_at": "2022-12-28T14:51:32Z"
+    },
+    {
+      "package_id": "Domoticz-PiHole-Control",
+      "updated_at": "2026-01-23T19:51:44Z"
+    },
+    {
+      "package_id": "Domoticz-Pinger-Plugin",
+      "updated_at": "2019-10-01T01:18:51Z"
+    },
+    {
+      "package_id": "Domoticz-Python-Plugin-Template",
+      "updated_at": "2025-01-08T10:05:44Z"
+    },
+    {
+      "package_id": "Domoticz-RAVEn-Plugin",
+      "updated_at": "2018-01-22T10:05:42Z"
+    },
+    {
+      "package_id": "Domoticz-SMA-Inverter",
+      "updated_at": "2025-12-16T20:09:30Z"
+    },
+    {
+      "package_id": "Domoticz-SMA-SunnyBoy",
+      "updated_at": "2021-05-26T16:00:26Z"
+    },
+    {
+      "package_id": "Domoticz-Shelly-Plugin",
+      "updated_at": "2026-07-20T13:00:15Z"
+    },
+    {
+      "package_id": "Domoticz-Solax-plugin",
+      "updated_at": "2025-01-11T18:37:09Z"
+    },
+    {
+      "package_id": "Domoticz-Stromer-plugin",
+      "updated_at": "2026-06-30T19:36:29Z"
+    },
+    {
+      "package_id": "Domoticz-Synology-Plugin",
+      "updated_at": "2026-02-02T15:13:22Z"
+    },
+    {
+      "package_id": "Domoticz-TPLinkRouter",
+      "updated_at": "2026-07-09T09:18:37Z"
+    },
+    {
+      "package_id": "Domoticz-Tasmota-Smartplug",
+      "updated_at": "2022-02-15T15:29:32Z"
+    },
+    {
+      "package_id": "Domoticz-Temperatur-nu",
+      "updated_at": "2025-12-17T15:21:39Z"
+    },
+    {
+      "package_id": "Domoticz-TeslaFi-Plugin",
+      "updated_at": "2026-03-07T19:31:21Z"
+    },
+    {
+      "package_id": "Domoticz-TinyTUYA-Local-Plugin",
+      "updated_at": "2026-03-01T13:52:19Z"
+    },
+    {
+      "package_id": "Domoticz-TinyTUYA-Plugin",
+      "updated_at": "2026-06-29T18:50:53Z"
+    },
+    {
+      "package_id": "Domoticz-Tuya-SmartPlug-Plugin",
+      "updated_at": "2022-11-18T08:24:37Z"
+    },
+    {
+      "package_id": "Domoticz-Unifi-Presence",
+      "updated_at": "2025-10-15T09:05:26Z"
+    },
+    {
+      "package_id": "Domoticz-Veolia",
+      "updated_at": "2026-06-17T16:08:03Z"
+    },
+    {
+      "package_id": "Domoticz-VirtualThermostat-PID",
+      "updated_at": "2020-12-28T22:00:59Z"
+    },
+    {
+      "package_id": "Domoticz-Volumio-Plugin",
+      "updated_at": "2026-06-24T19:02:52Z"
+    },
+    {
+      "package_id": "Domoticz-WThermostatBeca",
+      "updated_at": "2024-01-18T09:57:04Z"
+    },
+    {
+      "package_id": "Domoticz-WazeTimeTravel-Plugin",
+      "updated_at": "2025-12-14T14:25:59Z"
+    },
+    {
+      "package_id": "Domoticz-WordClock",
+      "updated_at": "2023-01-16T18:38:30Z"
+    },
+    {
+      "package_id": "Domoticz-Xiaomi-Mi-Air-Purifier-MIoT-Plugin",
+      "updated_at": "2021-12-26T14:12:18Z"
+    },
+    {
+      "package_id": "Domoticz-Xiaomi-Purifier-4-Pro",
+      "updated_at": "2026-07-13T10:50:06Z"
+    },
+    {
+      "package_id": "Domoticz-Zigpy",
+      "updated_at": "2021-06-08T12:08:49Z"
+    },
+    {
+      "package_id": "Domoticz-ZonneDimmer-Plugin",
+      "updated_at": "2026-06-02T14:21:43Z"
+    },
+    {
+      "package_id": "Domoticz-plugin-for-Tasmota-P1-Smart-Meter",
+      "updated_at": "2025-01-19T22:06:44Z"
+    },
+    {
+      "package_id": "Domoticz-plugin-for-samsung-washing-machine",
+      "updated_at": "2025-10-23T22:46:29Z"
+    },
+    {
+      "package_id": "DomoticzD2LPlugin",
+      "updated_at": "2023-02-22T19:51:32Z"
+    },
+    {
+      "package_id": "DomoticzMyHomeOpenWebNet",
+      "updated_at": "2022-04-18T12:42:46Z"
+    },
+    {
+      "package_id": "DomoticzNestPlugin",
+      "updated_at": "2025-11-14T16:50:30Z"
+    },
+    {
+      "package_id": "DomoticzProscenicVacuum",
+      "updated_at": "2019-03-16T12:35:13Z"
+    },
+    {
+      "package_id": "DomoticzSabNZBDPlugin",
+      "updated_at": "2019-08-16T18:29:37Z"
+    },
+    {
+      "package_id": "DomoticzTile",
+      "updated_at": "2025-10-22T15:19:55Z"
+    },
+    {
+      "package_id": "Domoticz_Marstek_Modbus",
+      "updated_at": "2026-06-26T18:20:02Z"
+    },
+    {
+      "package_id": "Domoticz_VolvoRecharge_Plugin",
+      "updated_at": "2026-06-15T13:48:32Z"
+    },
+    {
+      "package_id": "Domoticz_WT53R_Rain_Tank_Sensor",
+      "updated_at": "2026-04-23T15:08:16Z"
+    },
+    {
+      "package_id": "Domoticz_plugin_for_Smasung_Washer_Dryer",
+      "updated_at": "2025-12-29T22:08:30Z"
+    },
+    {
+      "package_id": "Dreame",
+      "updated_at": "2026-07-19T17:26:28Z"
+    },
+    {
+      "package_id": "DysonPureLink",
+      "updated_at": "2025-12-05T16:32:59Z"
+    },
+    {
+      "package_id": "Dz_LinkyD2L",
+      "updated_at": "2019-10-03T11:43:00Z"
+    },
+    {
+      "package_id": "E-Flux",
+      "updated_at": "2025-01-06T09:06:43Z"
+    },
+    {
+      "package_id": "Easun-ISolarSPS-Domoticz",
+      "updated_at": "2026-03-31T10:05:30Z"
+    },
+    {
+      "package_id": "F1_race",
+      "updated_at": "2026-07-19T17:26:30Z"
+    },
+    {
+      "package_id": "FoxESS-domoticz",
+      "updated_at": "2026-04-05T14:55:38Z"
+    },
+    {
+      "package_id": "FullyKiosk",
+      "updated_at": "2026-07-19T17:26:32Z"
+    },
+    {
+      "package_id": "Garbage",
+      "updated_at": "2026-06-10T08:23:13Z"
+    },
+    {
+      "package_id": "GoodWeAPI",
+      "updated_at": "2026-05-14T10:23:01Z"
+    },
+    {
+      "package_id": "GoveeDiscovery",
+      "updated_at": "2025-01-06T09:03:27Z"
+    },
+    {
+      "package_id": "HP_iLo",
+      "updated_at": "2026-07-19T17:49:30Z"
+    },
+    {
+      "package_id": "Hisense-AirCon-Domoticz",
+      "updated_at": "2024-10-04T13:43:11Z"
+    },
+    {
+      "package_id": "HomeWizard-Wifi-3F-plugin",
+      "updated_at": "2025-09-29T13:56:51Z"
+    },
+    {
+      "package_id": "HomeWizard-Wifi-Energy-Socket",
+      "updated_at": "2023-06-03T12:53:56Z"
+    },
+    {
+      "package_id": "HomeWizard-Wifi-Watermeter",
+      "updated_at": "2023-06-03T12:43:42Z"
+    },
+    {
+      "package_id": "HomeWizard-Wifi-kWh-Meter",
+      "updated_at": "2025-04-29T09:37:44Z"
+    },
+    {
+      "package_id": "HomeWizard-Wifi-kWh-plugin",
+      "updated_at": "2022-02-11T19:41:43Z"
+    },
+    {
+      "package_id": "HomeWizard-Wifi-p1-plugin",
+      "updated_at": "2024-07-21T14:13:23Z"
+    },
+    {
+      "package_id": "HomeWizard-Wifi-p1-plugin-Extended",
+      "updated_at": "2026-03-30T13:25:21Z"
+    },
+    {
+      "package_id": "Homewizard",
+      "updated_at": "2022-12-18T22:48:06Z"
+    },
+    {
+      "package_id": "Homewizard-Battery",
+      "updated_at": "2026-03-31T17:37:30Z"
+    },
+    {
+      "package_id": "HyundaiKiaConnect",
+      "updated_at": "2026-04-16T15:40:32Z"
+    },
+    {
+      "package_id": "IKEA-Tradfri",
+      "updated_at": "2021-05-31T22:06:39Z"
+    },
+    {
+      "package_id": "IMGW-Meteo",
+      "updated_at": "2025-08-08T20:15:44Z"
+    },
+    {
+      "package_id": "IntesisBox-Panasonic-Tcap-modbus",
+      "updated_at": "2025-11-22T15:29:27Z"
+    },
+    {
+      "package_id": "IntesishomewithDomoticz",
+      "updated_at": "2021-02-24T21:48:22Z"
+    },
+    {
+      "package_id": "IthoWifi",
+      "updated_at": "2025-01-06T09:08:03Z"
+    },
+    {
+      "package_id": "Krakinou-FrisquetConnectDomoticz",
+      "updated_at": "2026-03-18T22:09:07Z"
+    },
+    {
+      "package_id": "Link-Tap",
+      "updated_at": "2026-06-11T21:56:15Z"
+    },
+    {
+      "package_id": "Linky",
+      "updated_at": "2026-05-27T19:12:50Z"
+    },
+    {
+      "package_id": "LionTasmoticz",
+      "updated_at": "2025-11-10T17:50:20Z"
+    },
+    {
+      "package_id": "Lyrion",
+      "updated_at": "2026-07-19T17:26:36Z"
+    },
+    {
+      "package_id": "MQTTDiscovery",
+      "updated_at": "2023-05-09T18:48:35Z"
+    },
+    {
+      "package_id": "Marstek-Venus-plugin",
+      "updated_at": "2026-03-20T10:51:35Z"
+    },
+    {
+      "package_id": "MarstekCT",
+      "updated_at": "2025-08-03T17:11:36Z"
+    },
+    {
+      "package_id": "Mattericz",
+      "updated_at": "2026-04-18T14:28:48Z"
+    },
+    {
+      "package_id": "MeshCore",
+      "updated_at": "2026-05-23T08:42:35Z"
+    },
+    {
+      "package_id": "Mi_Flower_mate_plugin",
+      "updated_at": "2023-02-20T12:26:51Z"
+    },
+    {
+      "package_id": "NEDsolarForecast",
+      "updated_at": "2026-02-15T14:14:44Z"
+    },
+    {
+      "package_id": "NUT_UPS",
+      "updated_at": "2019-05-24T06:11:21Z"
+    },
+    {
+      "package_id": "OM310-Domoticz-plugin",
+      "updated_at": "2025-12-10T09:36:29Z"
+    },
+    {
+      "package_id": "OpenEVSEPlugin",
+      "updated_at": "2026-01-23T16:59:57Z"
+    },
+    {
+      "package_id": "PC321_TY_tuya_local",
+      "updated_at": "2025-09-17T13:33:03Z"
+    },
+    {
+      "package_id": "Quatt",
+      "updated_at": "2026-03-11T19:18:31Z"
+    },
+    {
+      "package_id": "Roomba",
+      "updated_at": "2026-04-29T11:07:17Z"
+    },
+    {
+      "package_id": "SessyBattery",
+      "updated_at": "2026-06-03T20:18:42Z"
+    },
+    {
+      "package_id": "ShellyCloudPlugin2",
+      "updated_at": "2025-11-05T15:54:51Z"
+    },
+    {
+      "package_id": "SmartVirtualThermostat",
+      "updated_at": "2024-01-21T13:57:44Z"
+    },
+    {
+      "package_id": "Sofar-modbus",
+      "updated_at": "2025-08-16T23:58:55Z"
+    },
+    {
+      "package_id": "SolarForecast",
+      "updated_at": "2026-02-15T15:27:20Z"
+    },
+    {
+      "package_id": "Solaredge_modbustcp",
+      "updated_at": "2026-07-19T17:26:39Z"
+    },
+    {
+      "package_id": "SolaxCloud",
+      "updated_at": "2025-06-24T07:22:04Z"
+    },
+    {
+      "package_id": "SolaxHTTP",
+      "updated_at": "2022-11-10T07:42:22Z"
+    },
+    {
+      "package_id": "Somfy",
+      "updated_at": "2026-07-12T19:28:20Z"
+    },
+    {
+      "package_id": "Synology SurveillanceStation",
+      "updated_at": "2023-02-17T21:00:45Z"
+    },
+    {
+      "package_id": "TVUHDOrange",
+      "updated_at": "2026-06-10T22:11:50Z"
+    },
+    {
+      "package_id": "TWC",
+      "updated_at": "2026-03-30T21:31:17Z"
+    },
+    {
+      "package_id": "TeslaApiDomoticz",
+      "updated_at": "2024-05-24T15:14:02Z"
+    },
+    {
+      "package_id": "TeslaDomoticz",
+      "updated_at": "2026-06-23T20:09:32Z"
+    },
+    {
+      "package_id": "ThesslaGreen-modbus",
+      "updated_at": "2026-06-29T01:12:07Z"
+    },
+    {
+      "package_id": "Toon_Thermostat",
+      "updated_at": "2026-07-19T17:26:37Z"
+    },
+    {
+      "package_id": "WAN-IP-CHECKER",
+      "updated_at": "2023-10-21T09:33:12Z"
+    },
+    {
+      "package_id": "WLANThermo",
+      "updated_at": "2025-01-06T09:08:06Z"
+    },
+    {
+      "package_id": "WLED",
+      "updated_at": "2022-01-05T14:42:29Z"
+    },
+    {
+      "package_id": "WeatherInfo",
+      "updated_at": "2026-07-19T17:12:59Z"
+    },
+    {
+      "package_id": "WifiTIC",
+      "updated_at": "2026-06-11T10:17:10Z"
+    },
+    {
+      "package_id": "XTEND-plugin",
+      "updated_at": "2026-02-07T19:39:06Z"
+    },
+    {
+      "package_id": "Xiaomi-MiJia-Philips-LED-Lamp",
+      "updated_at": "2020-01-25T05:05:13Z"
+    },
+    {
+      "package_id": "Zigate",
+      "updated_at": "2026-07-09T15:15:41Z"
+    },
+    {
+      "package_id": "Zigbee2Mqtt",
+      "updated_at": "2024-03-26T07:36:44Z"
+    },
+    {
+      "package_id": "Zigbee2Tasmoticz",
+      "updated_at": "2026-03-29T16:58:17Z"
+    },
+    {
+      "package_id": "Zonneplan-Domoticz-Plugin",
+      "updated_at": "2026-05-20T17:02:22Z"
+    },
+    {
+      "package_id": "alphaESS-battery-plugin",
+      "updated_at": "2025-10-09T13:47:33Z"
+    },
+    {
+      "package_id": "baby_weather_plugin",
+      "updated_at": "2020-07-03T06:00:04Z"
+    },
+    {
+      "package_id": "cometblue-domoticz",
+      "updated_at": "2020-03-08T21:44:18Z"
+    },
+    {
+      "package_id": "deCONZ",
+      "updated_at": "2026-03-29T14:23:47Z"
+    },
+    {
+      "package_id": "domoticz-AirHumidifier",
+      "updated_at": "2026-07-20T08:22:26Z"
+    },
+    {
+      "package_id": "domoticz-BSR",
+      "updated_at": "2026-01-08T21:45:17Z"
+    },
+    {
+      "package_id": "domoticz-HomeConnectDishwasher",
+      "updated_at": "2026-06-08T12:06:48Z"
+    },
+    {
+      "package_id": "domoticz-Niu-escooter",
+      "updated_at": "2026-05-02T11:16:36Z"
+    },
+    {
+      "package_id": "domoticz-Ouman-C203-Modbus-plugin",
+      "updated_at": "2024-11-19T23:10:35Z"
+    },
+    {
+      "package_id": "domoticz-P110Tapo-plugin",
+      "updated_at": "2026-06-14T14:06:53Z"
+    },
+    {
+      "package_id": "domoticz-PowerWorld-heat-pump",
+      "updated_at": "2025-11-01T13:14:18Z"
+    },
+    {
+      "package_id": "domoticz-airly",
+      "updated_at": "2022-10-04T21:59:09Z"
+    },
+    {
+      "package_id": "domoticz-airsend-plugin",
+      "updated_at": "2025-07-12T14:32:59Z"
+    },
+    {
+      "package_id": "domoticz-apc-ups-plugin",
+      "updated_at": "2023-07-28T05:33:32Z"
+    },
+    {
+      "package_id": "domoticz-aqi-poland",
+      "updated_at": "2026-07-20T08:22:28Z"
+    },
+    {
+      "package_id": "domoticz-bt-presence",
+      "updated_at": "2017-12-14T12:46:59Z"
+    },
+    {
+      "package_id": "domoticz-cupra-plugin",
+      "updated_at": "2025-12-18T07:43:58Z"
+    },
+    {
+      "package_id": "domoticz-dds238",
+      "updated_at": "2025-11-10T17:38:25Z"
+    },
+    {
+      "package_id": "domoticz-dts238",
+      "updated_at": "2025-11-10T17:38:49Z"
+    },
+    {
+      "package_id": "domoticz-eSterownik_v3.5",
+      "updated_at": "2018-10-31T11:42:02Z"
+    },
+    {
+      "package_id": "domoticz-emmeti-eq2021",
+      "updated_at": "2025-11-10T17:39:23Z"
+    },
+    {
+      "package_id": "domoticz-emmeti-mirai",
+      "updated_at": "2026-02-09T07:50:13Z"
+    },
+    {
+      "package_id": "domoticz-espnowserial-plugin",
+      "updated_at": "2025-07-12T14:39:19Z"
+    },
+    {
+      "package_id": "domoticz-ewpe-smart-direct",
+      "updated_at": "2026-06-30T20:35:03Z"
+    },
+    {
+      "package_id": "domoticz-ewpe-smart-mqtt-plugin",
+      "updated_at": "2021-09-04T19:21:15Z"
+    },
+    {
+      "package_id": "domoticz-ff_smsserver-plugin",
+      "updated_at": "2025-04-15T22:42:43Z"
+    },
+    {
+      "package_id": "domoticz-fronius-inverter-plugin",
+      "updated_at": "2023-03-22T18:16:08Z"
+    },
+    {
+      "package_id": "domoticz-github",
+      "updated_at": "2026-05-06T17:52:10Z"
+    },
+    {
+      "package_id": "domoticz-h801-tasmota-plugin",
+      "updated_at": "2020-07-06T14:10:58Z"
+    },
+    {
+      "package_id": "domoticz-ir-climate-controller",
+      "updated_at": "2025-10-09T13:25:06Z"
+    },
+    {
+      "package_id": "domoticz-kpn-experia-v10",
+      "updated_at": "2026-07-05T05:46:24Z"
+    },
+    {
+      "package_id": "domoticz-logmonitor-plugin",
+      "updated_at": "2026-05-25T07:09:13Z"
+    },
+    {
+      "package_id": "domoticz-mqtt-sync-plugin",
+      "updated_at": "2025-07-14T15:36:06Z"
+    },
+    {
+      "package_id": "domoticz-mqttmapper-plugin",
+      "updated_at": "2026-02-15T11:25:51Z"
+    },
+    {
+      "package_id": "domoticz-nuki",
+      "updated_at": "2021-05-16T18:54:26Z"
+    },
+    {
+      "package_id": "domoticz-onkyo-plugin",
+      "updated_at": "2020-11-21T14:37:16Z"
+    },
+    {
+      "package_id": "domoticz-peblar",
+      "updated_at": "2024-10-11T11:49:31Z"
+    },
+    {
+      "package_id": "domoticz-plugin-hmip-swdm",
+      "updated_at": "2021-01-26T08:40:27Z"
+    },
+    {
+      "package_id": "domoticz-plugin-indoor-air-quality-monitor",
+      "updated_at": "2019-06-12T13:48:47Z"
+    },
+    {
+      "package_id": "domoticz-plugin-soil-moisture-monitor",
+      "updated_at": "2019-06-11T07:51:30Z"
+    },
+    {
+      "package_id": "domoticz-plugin-sony-audio",
+      "updated_at": "2020-07-25T15:51:07Z"
+    },
+    {
+      "package_id": "domoticz-plugin-tinkerforge-ambientlightv2",
+      "updated_at": "2020-02-16T12:53:02Z"
+    },
+    {
+      "package_id": "domoticz-plugin-tinkerforge-io4v2",
+      "updated_at": "2020-02-16T12:53:58Z"
+    },
+    {
+      "package_id": "domoticz-plugin-tinkerforge-lcd20x4",
+      "updated_at": "2020-02-16T13:02:03Z"
+    },
+    {
+      "package_id": "domoticz-plugin-tinkerforge-lcd20x4-lite",
+      "updated_at": "2020-02-16T12:59:30Z"
+    },
+    {
+      "package_id": "domoticz-plugin-tinkerforge-rgbledv2",
+      "updated_at": "2020-02-16T12:52:15Z"
+    },
+    {
+      "package_id": "domoticz-plugin-tinkerforge-trafficlight",
+      "updated_at": "2020-02-16T12:55:13Z"
+    },
+    {
+      "package_id": "domoticz-plugins-manager",
+      "updated_at": "2025-06-25T11:30:24Z"
+    },
+    {
+      "package_id": "domoticz-powerview-plugin",
+      "updated_at": "2026-01-28T06:02:53Z"
+    },
+    {
+      "package_id": "domoticz-python-melcloud",
+      "updated_at": "2024-02-03T13:40:36Z"
+    },
+    {
+      "package_id": "domoticz-routeros-plugin",
+      "updated_at": "2019-07-09T20:16:07Z"
+    },
+    {
+      "package_id": "domoticz-snapcast",
+      "updated_at": "2023-11-03T21:14:55Z"
+    },
+    {
+      "package_id": "domoticz-solaredge-modbustcp-plugin",
+      "updated_at": "2025-12-23T17:17:13Z"
+    },
+    {
+      "package_id": "domoticz-tailscale-plugin",
+      "updated_at": "2026-02-16T14:45:59Z"
+    },
+    {
+      "package_id": "domoticz-theme-manager",
+      "updated_at": "2024-10-08T10:52:19Z"
+    },
+    {
+      "package_id": "domoticz-tinycontrol",
+      "updated_at": "2023-08-30T17:24:38Z"
+    },
+    {
+      "package_id": "domoticz-tuya-heatpump",
+      "updated_at": "2025-07-13T17:31:16Z"
+    },
+    {
+      "package_id": "domoticz-verisure",
+      "updated_at": "2018-12-02T14:23:45Z"
+    },
+    {
+      "package_id": "domoticz-watermeter",
+      "updated_at": "2024-03-30T14:51:17Z"
+    },
+    {
+      "package_id": "domoticz-wellbeing-plugin",
+      "updated_at": "2024-08-19T07:00:20Z"
+    },
+    {
+      "package_id": "domoticz-wifisensors-plugin",
+      "updated_at": "2026-05-04T10:12:24Z"
+    },
+    {
+      "package_id": "domoticz-wifitic",
+      "updated_at": "2026-06-11T10:17:10Z"
+    },
+    {
+      "package_id": "domoticz-woonveilig-gate03",
+      "updated_at": "2021-02-22T21:15:06Z"
+    },
+    {
+      "package_id": "domoticz-wudirect",
+      "updated_at": "2022-04-08T16:53:14Z"
+    },
+    {
+      "package_id": "domoticz-zigbee2mqtt-plugin",
+      "updated_at": "2025-11-01T12:18:23Z"
+    },
+    {
+      "package_id": "domoticz-zonneplan",
+      "updated_at": "2026-06-07T08:27:35Z"
+    },
+    {
+      "package_id": "domoticz_htu20d_python",
+      "updated_at": "2021-08-19T09:22:03Z"
+    },
+    {
+      "package_id": "domoticz_lg_thinq_plugin",
+      "updated_at": "2025-03-12T06:42:05Z"
+    },
+    {
+      "package_id": "domoticz_lg_thinqconnect_plugin",
+      "updated_at": "2026-05-31T13:55:41Z"
+    },
+    {
+      "package_id": "domoticz_panasonic_CZ-TACG1",
+      "updated_at": "2024-11-08T17:33:24Z"
+    },
+    {
+      "package_id": "domoticz_reolink",
+      "updated_at": "2026-03-14T09:48:58Z"
+    },
+    {
+      "package_id": "domoticz_zigbee2tasmota",
+      "updated_at": "2025-10-25T18:34:29Z"
+    },
+    {
+      "package_id": "ds238-modbus-tcp",
+      "updated_at": "2023-10-14T17:33:45Z"
+    },
+    {
+      "package_id": "easee-domoticz",
+      "updated_at": "2026-07-16T20:40:27Z"
+    },
+    {
+      "package_id": "ebusd",
+      "updated_at": "2026-05-27T19:15:06Z"
+    },
+    {
+      "package_id": "ems-gateway",
+      "updated_at": "2021-12-28T08:35:35Z"
+    },
+    {
+      "package_id": "evcc_domoticz",
+      "updated_at": "2025-12-02T14:01:03Z"
+    },
+    {
+      "package_id": "fmi",
+      "updated_at": "2018-09-09T15:59:33Z"
+    },
+    {
+      "package_id": "freeboxv6",
+      "updated_at": "2022-09-02T11:22:12Z"
+    },
+    {
+      "package_id": "froniusHttp",
+      "updated_at": "2023-10-09T07:29:53Z"
+    },
+    {
+      "package_id": "goodwe_rs485_domoticz",
+      "updated_at": "2026-06-20T11:24:21Z"
+    },
+    {
+      "package_id": "home-connect",
+      "updated_at": "2026-04-30T10:10:34Z"
+    },
+    {
+      "package_id": "hoog-domoticz-shelly-plugin",
+      "updated_at": "2026-07-02T17:18:35Z"
+    },
+    {
+      "package_id": "iDetect",
+      "updated_at": "2024-11-01T12:24:13Z"
+    },
+    {
+      "package_id": "luxtronikex",
+      "updated_at": "2026-07-06T07:09:50Z"
+    },
+    {
+      "package_id": "myenergi",
+      "updated_at": "2026-07-06T16:40:16Z"
+    },
+    {
+      "package_id": "pzem016",
+      "updated_at": "2025-11-10T17:40:45Z"
+    },
+    {
+      "package_id": "rest980-domoticz",
+      "updated_at": "2020-03-08T20:57:05Z"
+    },
+    {
+      "package_id": "slide-domoticz",
+      "updated_at": "2022-12-17T13:56:36Z"
+    },
+    {
+      "package_id": "slsys-domoticz",
+      "updated_at": "2023-02-25T19:44:05Z"
+    },
+    {
+      "package_id": "solarFlow2400AC",
+      "updated_at": "2026-06-25T14:17:35Z"
+    },
+    {
+      "package_id": "sonoff-domoticz-plugin",
+      "updated_at": "2025-10-07T07:11:19Z"
+    },
+    {
+      "package_id": "steam",
+      "updated_at": "2025-01-16T07:32:07Z"
+    },
+    {
+      "package_id": "sweden_energyprice",
+      "updated_at": "2025-10-02T19:41:18Z"
+    },
+    {
+      "package_id": "test_domoticzex",
+      "updated_at": "2023-09-19T12:53:35Z"
+    },
+    {
+      "package_id": "tuyaha",
+      "updated_at": "2024-07-07T17:45:34Z"
+    },
+    {
+      "package_id": "weheat-domoticz-plugin",
+      "updated_at": "2026-06-20T08:50:56Z"
+    },
+    {
+      "package_id": "xiaomi-mi-robot-vacuum",
+      "updated_at": "2021-01-09T10:50:57Z"
+    }
+  ]
 }

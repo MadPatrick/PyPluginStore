@@ -1,4 +1,6 @@
 import json
+import copy
+import urllib.parse
 import urllib.error
 from types import SimpleNamespace
 
@@ -8,9 +10,218 @@ from conftest import REPO_ROOT, load_module_from_path
 
 
 VALID_ENTRY = ["owner", "repo", "description", "main"]
+STABLE_TAG_PATTERN = r"^v?[0-9]+(?:\.[0-9]+){1,3}$"
+
+
+def registry_package(package_id, entry):
+    if isinstance(entry, list):
+        owner, repository, description, branch = entry[:4]
+        platforms = entry[5] if len(entry) > 5 else []
+        delivery = None
+        annotations = None
+    else:
+        owner = entry["owner"]
+        repository = entry["repository"]
+        description = entry["description"]
+        branch = entry["branch"]
+        platforms = entry.get("platforms", entry.get("platform", []))
+        delivery = copy.deepcopy(entry.get("delivery"))
+        annotations = {
+            key: copy.deepcopy(value)
+            for key, value in entry.items()
+            if key
+            not in {
+                "owner",
+                "repository",
+                "description",
+                "branch",
+                "updated_at",
+                "platforms",
+                "platform",
+                "delivery",
+            }
+        }
+    first, separator, remainder = owner.partition("/")
+    if first.lower() in {"github.com", "gitlab.com", "codeberg.org"} and separator:
+        repository_url = "https://" + owner + "/" + repository
+    elif owner.startswith("https://"):
+        repository_url = owner.rstrip("/") + "/" + repository
+    else:
+        repository_url = "https://github.com/" + owner + "/" + repository
+    host = urllib.parse.urlsplit(repository_url).hostname
+    provider = {
+        "github.com": "github",
+        "gitlab.com": "gitlab",
+        "codeberg.org": "codeberg",
+    }[host]
+    if delivery is None:
+        delivery = {
+            "preferred": "release_if_indexed",
+            "git_supported": True,
+            "release": {
+                "provider": provider,
+                "channel": "stable",
+                "tag_pattern": STABLE_TAG_PATTERN,
+                "artifact": "source_zip",
+                "source_path": ".",
+                "mutable_paths": [],
+            },
+        }
+    else:
+        delivery.pop("schema_version", None)
+        if delivery.get("release", {}).get("provider") == "forgejo":
+            delivery["release"]["provider"] = "codeberg"
+    package = {
+        "package_id": package_id,
+        "domoticz_key": package_id.upper(),
+        "description": description,
+        "repository": {"url": repository_url, "branch": branch},
+        "platforms": list(platforms or []),
+        "delivery": delivery,
+    }
+    if annotations:
+        package["annotations"] = annotations
+    return package
+
+
+def registry_v2(legacy_registry):
+    return {
+        "schema_version": 2,
+        "packages": [
+            registry_package(package_id, entry)
+            for package_id, entry in legacy_registry.items()
+            if package_id != "Idle"
+        ],
+    }
+
+
+def update_times_v2(update_times):
+    return {
+        "schema_version": 2,
+        "updates": [
+            {"package_id": package_id, "updated_at": updated_at.split(".")[0] + "Z" if "." in updated_at else updated_at}
+            for package_id, updated_at in update_times.items()
+        ],
+    }
+
+
+def platform_metadata_v2(metadata):
+    entries = metadata.get("entries", {})
+    return {
+        "schema_version": 2,
+        "detections": [
+            {"package_id": package_id, **entry}
+            for package_id, entry in entries.items()
+        ],
+    }
+
+
+def upgrade_fixture_files(registry_file, update_times_file, metadata_file):
+    if registry_file.exists():
+        registry = json.loads(registry_file.read_text())
+        if "schema_version" not in registry:
+            registry_file.write_text(json.dumps(registry_v2(registry)))
+    if update_times_file.exists():
+        updates = json.loads(update_times_file.read_text())
+        if "schema_version" not in updates:
+            update_times_file.write_text(json.dumps(update_times_v2(updates)))
+    if metadata_file.exists():
+        metadata = json.loads(metadata_file.read_text())
+        if "schema_version" not in metadata:
+            metadata_file.write_text(json.dumps(platform_metadata_v2(metadata)))
+
+
+def saved_packages(path):
+    return {
+        package["package_id"]: package
+        for package in json.loads(path.read_text())["packages"]
+    }
+
+
+def saved_update_times(path):
+    return {
+        update["package_id"]: update["updated_at"]
+        for update in json.loads(path.read_text())["updates"]
+    }
+
+
+def saved_platform_entries(path):
+    return {
+        detection["package_id"]: {
+            key: value
+            for key, value in detection.items()
+            if key != "package_id"
+        }
+        for detection in json.loads(path.read_text())["detections"]
+    }
+
+
+def mark_repo_certified(module, repo, domoticz_key="TEST"):
+    repo[module.ROOT_PLUGIN_CHECKED_FIELD] = True
+    repo[module.ROOT_PLUGIN_IDENTITY_FIELD] = {
+        "domoticz_key": domoticz_key,
+        "plugin_py_sha256": "a" * 64,
+    }
+
+
+def cleanup_release_index(active_repositories=(), tombstoned_repositories=()):
+    commit = "b" * 40
+    releases = []
+    for package_id, repository_identity in active_repositories:
+        releases.append({
+            "package_id": package_id,
+            "certified_identity": {
+                "domoticz_key": package_id.upper(),
+                "plugin_py_sha256": "c" * 64,
+            },
+            "revision": 1,
+            "release_id": f"github:{repository_identity}:v1.0.0",
+            "supersedes": [],
+            "provider": "github",
+            "repository_identity": repository_identity,
+            "version": "1.0.0",
+            "tag": "v1.0.0",
+            "released_at": "2026-07-01T00:00:00Z",
+            "commit": commit,
+            "artifact": {
+                "kind": "source_zip",
+                "provenance": "forge_source_archive",
+                "migration": {
+                    "mode": "automatic",
+                    "evidence": "commit_source_archive",
+                },
+                "url": "https://api.github.com/repos/owner/plugin/zipball/" + commit,
+                "sha256": "d" * 64,
+                "size": 1,
+                "tree_sha256": "e" * 64,
+                "root_prefix": "owner-plugin-bbbbbbb",
+                "source_path": ".",
+            },
+        })
+    tombstones = [
+        {
+            "package_id": package_id,
+            "repository_identity": repository_identity,
+            "last_revision": 1,
+            "release_id": f"github:{repository_identity}:v0.9.0",
+            "reason": "Previously removed.",
+            "removed_at": "2026-07-01T00:00:00Z",
+        }
+        for package_id, repository_identity in tombstoned_repositories
+    ]
+    return {
+        "schema_version": 2,
+        "sequence": 1,
+        "generated_at": "2026-07-01T00:00:00Z",
+        "expires_at": "2026-07-08T00:00:00Z",
+        "registry_sha256": "f" * 64,
+        "releases": releases,
+        "tombstones": tombstones,
+    }
 
 
 def patch_scanner_paths(scan_plugins_module, monkeypatch, registry_file, update_times_file, metadata_file):
+    upgrade_fixture_files(registry_file, update_times_file, metadata_file)
     monkeypatch.setattr(scan_plugins_module, "REGISTRY_FILE", str(registry_file))
     monkeypatch.setattr(scan_plugins_module, "UPDATE_TIMES_FILE", str(update_times_file))
     monkeypatch.setattr(scan_plugins_module, "PLATFORM_METADATA_FILE", str(metadata_file))
@@ -73,7 +284,7 @@ def test_validate_registry_entry_accepts_platform_metadata(validate_plugins_modu
 
 def test_validate_platform_metadata_accepts_matching_sidecar(validate_plugins_module, tmp_path, monkeypatch):
     metadata_file = tmp_path / "platform_detection.json"
-    metadata_file.write_text(json.dumps({
+    metadata_file.write_text(json.dumps(platform_metadata_v2({
         "version": 1,
         "entries": {
             "PlatformPlugin": {
@@ -88,7 +299,7 @@ def test_validate_platform_metadata_accepts_matching_sidecar(validate_plugins_mo
                 "reviewed": False,
             },
         },
-    }))
+    })))
     monkeypatch.setattr(validate_plugins_module, "PLATFORM_METADATA_FILE_PATH", str(metadata_file))
 
     validate_plugins_module.validate_platform_metadata({
@@ -99,7 +310,7 @@ def test_validate_platform_metadata_accepts_matching_sidecar(validate_plugins_mo
 
 def test_validate_platform_metadata_rejects_stale_or_mismatched_sidecar(validate_plugins_module, tmp_path, monkeypatch):
     metadata_file = tmp_path / "platform_detection.json"
-    metadata_file.write_text(json.dumps({
+    metadata_file.write_text(json.dumps(platform_metadata_v2({
         "version": 1,
         "entries": {
             "PlatformPlugin": {
@@ -115,7 +326,7 @@ def test_validate_platform_metadata_rejects_stale_or_mismatched_sidecar(validate
                 "reviewed": False,
             },
         },
-    }))
+    })))
     monkeypatch.setattr(validate_plugins_module, "PLATFORM_METADATA_FILE_PATH", str(metadata_file))
 
     with pytest.raises(ValueError):
@@ -126,10 +337,10 @@ def test_validate_platform_metadata_rejects_stale_or_mismatched_sidecar(validate
 
 def test_validate_update_times_rejects_stale_sidecar(validate_plugins_module, tmp_path, monkeypatch):
     update_times_file = tmp_path / "update_times.json"
-    update_times_file.write_text(json.dumps({
+    update_times_file.write_text(json.dumps(update_times_v2({
         "Plugin": "2026-06-14T15:10:03Z",
         "OldPlugin": "2026-04-20T17:51:05Z",
-    }))
+    })))
     monkeypatch.setattr(validate_plugins_module, "UPDATE_TIMES_FILE_PATH", str(update_times_file))
 
     with pytest.raises(ValueError, match="OldPlugin"):
@@ -256,7 +467,7 @@ def test_validate_root_plugin_py_accepts_present_file_on_supported_hosts(validat
             return False
 
         def read(self, size=-1):
-            return b"import Domoticz\n"
+            return b'"""<plugin key="STROMER" name="Stromer"></plugin>"""\n'
 
     def fake_urlopen(request, timeout=0):
         fetched_urls.append(request.full_url)
@@ -287,7 +498,7 @@ def test_validate_root_plugin_py_retries_transient_errors(validate_plugins_modul
             return False
 
         def read(self, size=-1):
-            return b'import Domoticz\n'
+            return b'"""<plugin key="RETRY" name="Retry"></plugin>"""\n'
 
     def fake_urlopen(request, timeout=0):
         attempts.append(request.full_url)
@@ -305,6 +516,29 @@ def test_validate_root_plugin_py_retries_transient_errors(validate_plugins_modul
     ) is True
     assert len(attempts) == 2
     assert delays == [validate_plugins_module.ROOT_PLUGIN_RETRY_DELAY_SECONDS]
+
+
+def test_validate_root_plugin_py_rejects_mismatched_domoticz_identity(
+    validate_plugins_module,
+):
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc_value, traceback):
+            return False
+
+        def read(self, size=-1):
+            return b'"""<plugin key="ACTUAL" name="Plugin"></plugin>"""\n'
+
+    assert validate_plugins_module.validate_root_plugin_py(
+        "PackageId",
+        "owner",
+        "repo",
+        "main",
+        domoticz_key="EXPECTED",
+        opener=lambda *_args, **_kwargs: FakeResponse(),
+    ) is False
 
 
 @pytest.mark.parametrize(
@@ -459,7 +693,9 @@ def test_scanner_filters_github_search_results_without_root_plugin_py(scan_plugi
             return FakeResponse(json.dumps({"items": [good_repo, bad_repo]}).encode())
         fetched_plugin_urls.append(url)
         if url.endswith("/good-plugin/main/plugin.py"):
-            return FakeResponse(b"import Domoticz\n")
+            return FakeResponse(
+                b'"""<plugin key="GOOD" name="Good"></plugin>"""\n'
+            )
         if url.endswith("/wiki/main/plugin.py"):
             raise urllib.error.HTTPError(url, 404, "Not Found", {}, None)
         raise AssertionError(f"Unexpected URL: {url}")
@@ -519,6 +755,9 @@ def test_cleanup_registry_dry_run_does_not_remove_entries(cleanup_registry_modul
     registry_file.write_text(json.dumps(registry))
     update_times_file.write_text(json.dumps(update_times))
     metadata_file.write_text(json.dumps(metadata))
+    upgrade_fixture_files(registry_file, update_times_file, metadata_file)
+    tombstone_requests_file = tmp_path / "tombstone-requests.json"
+    tombstone_requests_file.write_text("sentinel", encoding="utf-8")
 
     class FakeResponse:
         def __init__(self, content):
@@ -531,6 +770,10 @@ def test_cleanup_registry_dry_run_does_not_remove_entries(cleanup_registry_modul
             return False
 
         def read(self, size=-1):
+            if self.content.strip():
+                return (
+                    b'"""<plugin key="TEST" name="Test"></plugin>"""\n'
+                )
             return self.content
 
     def fake_urlopen(request, timeout=0):
@@ -552,6 +795,8 @@ def test_cleanup_registry_dry_run_does_not_remove_entries(cleanup_registry_modul
         apply_changes=False,
         sleep_seconds=0,
         opener=fake_urlopen,
+        release_index_file=str(tmp_path / "not-read-in-dry-run.json"),
+        tombstone_requests_output=str(tombstone_requests_file),
     )
 
     assert stats == {
@@ -561,9 +806,140 @@ def test_cleanup_registry_dry_run_does_not_remove_entries(cleanup_registry_modul
         "removed": 0,
         "errors": 1,
     }
-    assert json.loads(registry_file.read_text()) == registry
-    assert json.loads(update_times_file.read_text()) == update_times
-    assert json.loads(metadata_file.read_text()) == metadata
+    assert set(saved_packages(registry_file)) == {
+        "Good",
+        "Missing",
+        "Empty",
+        "ServerError",
+    }
+    assert saved_update_times(update_times_file) == update_times
+    assert set(saved_platform_entries(metadata_file)) == set(
+        metadata["entries"]
+    )
+    assert tombstone_requests_file.read_text(encoding="utf-8") == "sentinel"
+
+
+def test_cleanup_registry_requests_tombstones_only_for_active_removed_releases(
+    cleanup_registry_module,
+    tmp_path,
+):
+    registry_file = tmp_path / "registry.json"
+    update_times_file = tmp_path / "update_times.json"
+    metadata_file = tmp_path / "platform_detection.json"
+    release_index_file = tmp_path / "release_index.json"
+    tombstone_requests_file = tmp_path / "tombstone-requests.json"
+    package_repositories = {
+        "Good": "good",
+        "MissingActiveZ": "missing-active-z",
+        "MissingActiveA": "missing-active-a",
+        "MissingUnindexed": "missing-unindexed",
+        "EmptyTombstoned": "empty-tombstoned",
+    }
+    registry_file.write_text(json.dumps({
+        package_id: ["owner", repository, "description", "main"]
+        for package_id, repository in package_repositories.items()
+    }))
+    update_times_file.write_text(json.dumps({
+        package_id: "2026-06-14T15:10:03Z"
+        for package_id in package_repositories
+    }))
+    metadata_file.write_text(json.dumps({
+        "version": 1,
+        "entries": {
+            package_id: {"registry_platforms": ["linux"]}
+            for package_id in package_repositories
+        },
+    }))
+    upgrade_fixture_files(registry_file, update_times_file, metadata_file)
+    release_index_file.write_text(json.dumps(cleanup_release_index(
+        active_repositories=(
+            ("MissingActiveZ", "github.com/owner/missing-active-z"),
+            ("MissingActiveA", "github.com/owner/missing-active-a"),
+            ("RemovedBeforeCleanup", "github.com/owner/removed-before-cleanup"),
+        ),
+        tombstoned_repositories=(
+            ("EmptyTombstoned", "github.com/owner/empty-tombstoned"),
+        ),
+    )))
+
+    class FakeResponse:
+        def __init__(self, content):
+            self.content = content
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc_value, traceback):
+            return False
+
+        def read(self, size=-1):
+            return self.content
+
+    def fake_urlopen(request, timeout=0):
+        url = request.full_url
+        if "/good/" in url:
+            return FakeResponse(
+                b'"""<plugin key="GOOD" name="Good"></plugin>"""\n'
+            )
+        if "/empty-tombstoned/" in url:
+            return FakeResponse(b"")
+        if "/missing-" in url:
+            raise urllib.error.HTTPError(url, 404, "Not Found", {}, None)
+        raise AssertionError(f"Unexpected URL: {url}")
+
+    stats = cleanup_registry_module.cleanup_registry_files(
+        str(registry_file),
+        str(update_times_file),
+        str(metadata_file),
+        apply_changes=True,
+        sleep_seconds=0,
+        opener=fake_urlopen,
+        release_index_file=str(release_index_file),
+        tombstone_requests_output=str(tombstone_requests_file),
+    )
+
+    assert stats["removed"] == 4
+    requests = json.loads(tombstone_requests_file.read_text(encoding="utf-8"))
+    assert list(requests) == [
+        "MissingActiveA",
+        "MissingActiveZ",
+        "RemovedBeforeCleanup",
+    ]
+    assert requests == {
+        **{
+            package_id: {
+                "reason": (
+                    "Registry cleanup removed this package because its configured "
+                    "root plugin.py is missing (HTTP 404)."
+                )
+            }
+            for package_id in ("MissingActiveA", "MissingActiveZ")
+        },
+        "RemovedBeforeCleanup": {
+            "reason": (
+                "Weekly registry maintenance removed this package before "
+                "release-index generation."
+            )
+        },
+    }
+    assert tombstone_requests_file.read_bytes().endswith(b"\n")
+
+
+def test_cleanup_registry_rejects_non_v2_release_index(
+    cleanup_registry_module,
+    tmp_path,
+):
+    release_index_file = tmp_path / "release_index.json"
+    release_index_file.write_text(json.dumps({
+        "schema_version": 1,
+        "plugins": {},
+    }))
+
+    with pytest.raises(ValueError, match="v2"):
+        cleanup_registry_module.load_active_release_package_ids(
+            release_index_file,
+            {},
+        )
 
 
 def test_cleanup_registry_apply_removes_missing_entries_from_sidecars(cleanup_registry_module, tmp_path):
@@ -589,6 +965,7 @@ def test_cleanup_registry_apply_removes_missing_entries_from_sidecars(cleanup_re
             "ServerError": {"registry_platforms": ["linux"]},
         },
     }))
+    upgrade_fixture_files(registry_file, update_times_file, metadata_file)
 
     class FakeResponse:
         def __enter__(self):
@@ -598,7 +975,7 @@ def test_cleanup_registry_apply_removes_missing_entries_from_sidecars(cleanup_re
             return False
 
         def read(self, size=-1):
-            return b"import Domoticz\n"
+            return b'"""<plugin key="TEST" name="Test"></plugin>"""\n'
 
     def fake_urlopen(request, timeout=0):
         url = request.full_url
@@ -619,16 +996,16 @@ def test_cleanup_registry_apply_removes_missing_entries_from_sidecars(cleanup_re
         opener=fake_urlopen,
     )
 
-    registry = json.loads(registry_file.read_text())
-    update_times = json.loads(update_times_file.read_text())
-    metadata = json.loads(metadata_file.read_text())
+    registry = saved_packages(registry_file)
+    update_times = saved_update_times(update_times_file)
+    metadata = saved_platform_entries(metadata_file)
 
     assert stats["removed"] == 1
     assert "Good" in registry
     assert "Missing" not in registry
     assert "ServerError" in registry
     assert "Missing" not in update_times
-    assert "Missing" not in metadata["entries"]
+    assert "Missing" not in metadata
 
 
 def test_platform_detector_flags_linux_only_dependencies(platform_detector_module):
@@ -911,12 +1288,12 @@ def test_scanner_updates_existing_registry_platforms(scan_plugins_module, tmp_pa
 
     scan_plugins_module.main()
 
-    registry = json.loads(registry_file.read_text())
+    registry = saved_packages(registry_file)
 
-    assert registry["Plugin"] == ["owner", "repo", "description", "main", "", ["linux"]]
-    metadata = json.loads(metadata_file.read_text())
-    assert metadata["entries"]["Plugin"]["registry_platforms"] == ["linux"]
-    assert metadata["entries"]["Plugin"]["source"] == "detected"
+    assert registry["Plugin"]["platforms"] == ["linux"]
+    metadata = saved_platform_entries(metadata_file)
+    assert metadata["Plugin"]["registry_platforms"] == ["linux"]
+    assert metadata["Plugin"]["source"] == "detected"
 
 
 def test_scanner_never_updates_existing_registry_branch(scan_plugins_module, tmp_path, monkeypatch):
@@ -966,20 +1343,15 @@ def test_scanner_never_updates_existing_registry_branch(scan_plugins_module, tmp
 
     scan_plugins_module.main()
 
-    registry = json.loads(registry_file.read_text())
-    metadata = json.loads(metadata_file.read_text())
+    registry = saved_packages(registry_file)
+    metadata = saved_platform_entries(metadata_file)
 
     assert seen_branches == ["dist"]
-    assert registry["luxtronikex"] == [
-        "Rouzax",
-        "luxtronik-domoticz-plugin-v2",
-        "updated description",
-        "dist",
-        "",
-        ["linux", "windows"],
-    ]
-    assert metadata["entries"]["luxtronikex"]["branch"] == "dist"
-    assert metadata["entries"]["luxtronikex"]["identity"] == (
+    assert registry["luxtronikex"]["description"] == "updated description"
+    assert registry["luxtronikex"]["repository"]["branch"] == "dist"
+    assert registry["luxtronikex"]["platforms"] == ["linux", "windows"]
+    assert metadata["luxtronikex"]["branch"] == "dist"
+    assert metadata["luxtronikex"]["identity"] == (
         "github.com/rouzax/luxtronik-domoticz-plugin-v2@dist"
     )
 
@@ -1004,6 +1376,7 @@ def test_scanner_adds_platforms_for_new_plugins(scan_plugins_module, tmp_path, m
         "default_branch": "main",
         "pushed_at": "2026-06-14T15:10:03Z",
     }
+    mark_repo_certified(scan_plugins_module, repo_info, "REPO")
 
     patch_scanner_paths(scan_plugins_module, monkeypatch, registry_file, update_times_file, metadata_file)
     monkeypatch.setattr(scan_plugins_module, "search_github", lambda: [repo_info])
@@ -1019,15 +1392,15 @@ def test_scanner_adds_platforms_for_new_plugins(scan_plugins_module, tmp_path, m
 
     scan_plugins_module.main()
 
-    registry = json.loads(registry_file.read_text())
+    registry = saved_packages(registry_file)
 
-    assert registry["repo"] == {
-        "owner": "owner",
-        "repository": "repo",
-        "description": "description",
+    assert registry["repo"]["domoticz_key"] == "REPO"
+    assert registry["repo"]["repository"] == {
+        "url": "https://github.com/owner/repo",
         "branch": "main",
-        "platforms": ["windows"],
     }
+    assert registry["repo"]["platforms"] == ["windows"]
+    assert registry["repo"]["delivery"]["release"]["provider"] == "github"
 
 
 def test_scanner_keeps_low_confidence_new_plugin_platforms_unknown(scan_plugins_module, tmp_path, monkeypatch):
@@ -1050,6 +1423,7 @@ def test_scanner_keeps_low_confidence_new_plugin_platforms_unknown(scan_plugins_
         "default_branch": "main",
         "pushed_at": "2026-06-14T15:10:03Z",
     }
+    mark_repo_certified(scan_plugins_module, repo_info, "REPO")
 
     patch_scanner_paths(scan_plugins_module, monkeypatch, registry_file, update_times_file, metadata_file)
     monkeypatch.setattr(scan_plugins_module, "search_github", lambda: [repo_info])
@@ -1069,18 +1443,13 @@ def test_scanner_keeps_low_confidence_new_plugin_platforms_unknown(scan_plugins_
 
     scan_plugins_module.main()
 
-    registry = json.loads(registry_file.read_text())
-    metadata = json.loads(metadata_file.read_text())
+    registry = saved_packages(registry_file)
+    metadata = saved_platform_entries(metadata_file)
 
-    assert registry["repo"] == {
-        "owner": "owner",
-        "repository": "repo",
-        "description": "description",
-        "branch": "main",
-    }
-    assert metadata["entries"]["repo"]["registry_platforms"] == []
-    assert metadata["entries"]["repo"]["last_detection"]["platforms"] == ["linux", "windows"]
-    assert metadata["entries"]["repo"]["policy_action"] == "kept_low_confidence_new"
+    assert registry["repo"]["platforms"] == []
+    assert metadata["repo"]["registry_platforms"] == []
+    assert metadata["repo"]["last_detection"]["platforms"] == ["linux", "windows"]
+    assert metadata["repo"]["policy_action"] == "kept_low_confidence_new"
 
 
 def test_scanner_skips_new_candidates_without_root_plugin_py(scan_plugins_module, tmp_path, monkeypatch):
@@ -1118,8 +1487,8 @@ def test_scanner_skips_new_candidates_without_root_plugin_py(scan_plugins_module
 
     scan_plugins_module.main()
 
-    assert json.loads(registry_file.read_text()) == registry
-    assert json.loads(update_times_file.read_text()) == {}
+    assert saved_packages(registry_file) == {}
+    assert saved_update_times(update_times_file) == {}
     assert not metadata_file.exists()
 
 
@@ -1165,13 +1534,13 @@ def test_scanner_blocks_medium_confidence_existing_platform_downgrade(scan_plugi
 
     scan_plugins_module.main()
 
-    registry = json.loads(registry_file.read_text())
-    metadata = json.loads(metadata_file.read_text())
+    registry = saved_packages(registry_file)
+    metadata = saved_platform_entries(metadata_file)
 
-    assert registry["Plugin"] == ["owner", "repo", "description", "main", "", ["linux", "windows"]]
-    assert metadata["entries"]["Plugin"]["registry_platforms"] == ["linux", "windows"]
-    assert metadata["entries"]["Plugin"]["last_detection"]["platforms"] == ["linux"]
-    assert metadata["entries"]["Plugin"]["policy_action"] == "kept_existing_requires_high_confidence"
+    assert registry["Plugin"]["platforms"] == ["linux", "windows"]
+    assert metadata["Plugin"]["registry_platforms"] == ["linux", "windows"]
+    assert metadata["Plugin"]["last_detection"]["platforms"] == ["linux"]
+    assert metadata["Plugin"]["policy_action"] == "kept_existing_requires_high_confidence"
 
 
 def test_scanner_treats_existing_registry_entries_missing_from_sidecar_as_reviewed(scan_plugins_module, tmp_path, monkeypatch):
@@ -1220,14 +1589,14 @@ def test_scanner_treats_existing_registry_entries_missing_from_sidecar_as_review
 
     scan_plugins_module.main()
 
-    registry = json.loads(registry_file.read_text())
-    metadata = json.loads(metadata_file.read_text())
+    registry = saved_packages(registry_file)
+    metadata = saved_platform_entries(metadata_file)
 
-    assert registry["ManualPlugin"] == ["owner", "repo", "description", "main"]
-    assert metadata["entries"]["ManualPlugin"]["source"] == "reviewed"
-    assert metadata["entries"]["ManualPlugin"]["reviewed"] is True
-    assert metadata["entries"]["ManualPlugin"]["policy_action"] == "kept_reviewed"
-    assert metadata["entries"]["ManualPlugin"]["last_detection"]["platforms"] == ["linux"]
+    assert registry["ManualPlugin"]["description"] == "description"
+    assert metadata["ManualPlugin"]["source"] == "reviewed"
+    assert metadata["ManualPlugin"]["reviewed"] is True
+    assert metadata["ManualPlugin"]["policy_action"] == "kept_reviewed"
+    assert metadata["ManualPlugin"]["last_detection"]["platforms"] == ["linux"]
 
 
 def test_scanner_prunes_stale_update_times(scan_plugins_module, tmp_path, monkeypatch):
@@ -1265,7 +1634,7 @@ def test_scanner_prunes_stale_update_times(scan_plugins_module, tmp_path, monkey
 
     scan_plugins_module.main()
 
-    update_times = json.loads(update_times_file.read_text())
+    update_times = saved_update_times(update_times_file)
 
     assert update_times == {"Plugin": "2026-06-14T15:10:03Z"}
 
@@ -1303,6 +1672,8 @@ def test_scanner_adds_codeberg_and_gitlab_plugins(scan_plugins_module, tmp_path,
         "default_branch": "master",
         "pushed_at": "2019-08-16T18:29:37.958Z",
     }
+    mark_repo_certified(scan_plugins_module, codeberg_repo, "STROMER")
+    mark_repo_certified(scan_plugins_module, gitlab_repo, "SABNZBD")
 
     patch_scanner_paths(scan_plugins_module, monkeypatch, registry_file, update_times_file, metadata_file)
     monkeypatch.setattr(scan_plugins_module, "search_github", lambda: [])
@@ -1318,25 +1689,21 @@ def test_scanner_adds_codeberg_and_gitlab_plugins(scan_plugins_module, tmp_path,
 
     scan_plugins_module.main()
 
-    registry = json.loads(registry_file.read_text())
-    update_times = json.loads(update_times_file.read_text())
+    registry = saved_packages(registry_file)
+    update_times = saved_update_times(update_times_file)
 
-    assert registry["Domoticz-Stromer-plugin"] == {
-        "owner": "codeberg.org/Hoog",
-        "repository": "Domoticz-Stromer-plugin",
-        "description": "Domoticz plugin for integrating Stromer portal data.",
-        "branch": "main",
-        "platforms": ["linux", "windows"],
-    }
-    assert registry["DomoticzSabNZBDPlugin"] == {
-        "owner": "gitlab.com/r.boeters",
-        "repository": "DomoticzSabNZBDPlugin",
-        "description": "SabNZBD Python plugin for Domoticz Home Automation",
-        "branch": "master",
-        "platforms": ["linux", "windows"],
-    }
+    assert registry["Domoticz-Stromer-plugin"]["repository"]["url"] == (
+        "https://codeberg.org/Hoog/Domoticz-Stromer-plugin"
+    )
+    assert registry["Domoticz-Stromer-plugin"]["domoticz_key"] == "STROMER"
+    assert registry["Domoticz-Stromer-plugin"]["delivery"]["release"]["provider"] == "codeberg"
+    assert registry["DomoticzSabNZBDPlugin"]["repository"]["url"] == (
+        "https://gitlab.com/r.boeters/DomoticzSabNZBDPlugin"
+    )
+    assert registry["DomoticzSabNZBDPlugin"]["domoticz_key"] == "SABNZBD"
+    assert registry["DomoticzSabNZBDPlugin"]["delivery"]["release"]["provider"] == "gitlab"
     assert update_times["Domoticz-Stromer-plugin"] == "2026-06-30T19:36:29Z"
-    assert update_times["DomoticzSabNZBDPlugin"] == "2019-08-16T18:29:37.958Z"
+    assert update_times["DomoticzSabNZBDPlugin"] == "2019-08-16T18:29:37Z"
 
 
 def test_scanner_removes_empty_existing_repo_and_does_not_readd(scan_plugins_module, tmp_path, monkeypatch):
@@ -1377,8 +1744,8 @@ def test_scanner_removes_empty_existing_repo_and_does_not_readd(scan_plugins_mod
 
     scan_plugins_module.main()
 
-    registry = json.loads(registry_file.read_text())
-    update_times = json.loads(update_times_file.read_text())
+    registry = saved_packages(registry_file)
+    update_times = saved_update_times(update_times_file)
 
     assert "Domoticz_integration" not in registry
     assert "Domoticz_integration" not in update_times
@@ -1425,8 +1792,8 @@ def test_scanner_removes_blocklisted_existing_repo_and_does_not_readd(scan_plugi
 
     scan_plugins_module.main()
 
-    registry = json.loads(registry_file.read_text())
-    update_times = json.loads(update_times_file.read_text())
+    registry = saved_packages(registry_file)
+    update_times = saved_update_times(update_times_file)
 
     assert "domoticz" not in registry
     assert "domoticz" not in update_times

@@ -16,6 +16,7 @@ NOW = datetime(2026, 7, 18, 12, 0, 0, tzinfo=timezone.utc)
 VALIDITY_SECONDS = 7 * 24 * 60 * 60
 COMMIT_1 = "1" * 40
 COMMIT_2 = "2" * 40
+PLUGIN_PY = b'''"""<plugin key="EXAMPLE" name="Example"></plugin>"""\n'''
 
 
 @dataclass(frozen=True)
@@ -31,10 +32,12 @@ class Candidate:
     artifact_kind: str
     artifact_provenance: str
     artifact_url: str
+    source_archive_url: str
     artifact_size: object
     provider_sha256: str
     source_path: str
-    migration_eligible: bool
+    migration_mode: str
+    migration_evidence: str
 
 
 @dataclass(frozen=True)
@@ -165,6 +168,7 @@ def registry_entry(
     artifact="source_zip",
     allowed_origins=None,
     preferred="release_if_indexed",
+    domoticz_key=None,
 ):
     release = {
         "provider": provider,
@@ -183,19 +187,55 @@ def registry_entry(
     }
     if preferred != "git":
         delivery["release"] = release
-    return {
+    entry = {
         "owner": owner,
         "repository": repository,
         "description": "Example plugin",
         "branch": "main",
         "delivery": delivery,
     }
+    if domoticz_key is not None:
+        entry["domoticz_key"] = domoticz_key
+    return entry
 
 
 def registry_bytes(entries=None, *, indent=2):
     entries = entries or {"ExamplePlugin": registry_entry()}
     return (
         json.dumps(entries, indent=indent, sort_keys=False) + "\n"
+    ).encode("utf-8")
+
+
+def registry_v2_bytes(
+    *,
+    package_id="ExamplePlugin",
+    domoticz_key="EXAMPLE",
+    repository_url="https://github.com/owner/example-plugin",
+):
+    entry = registry_entry(domoticz_key=domoticz_key)
+    delivery = copy.deepcopy(entry["delivery"])
+    delivery.pop("schema_version", None)
+    return (
+        json.dumps(
+            {
+                "schema_version": 2,
+                "packages": [
+                    {
+                        "package_id": package_id,
+                        "domoticz_key": domoticz_key,
+                        "description": entry["description"],
+                        "repository": {
+                            "url": repository_url,
+                            "branch": entry["branch"],
+                        },
+                        "platforms": ["linux", "windows"],
+                        "delivery": delivery,
+                    }
+                ],
+            },
+            indent=2,
+        )
+        + "\n"
     ).encode("utf-8")
 
 
@@ -210,10 +250,13 @@ def candidate(
     artifact_kind="source_zip",
     artifact_provenance="forge_source_archive",
     artifact_url=None,
+    source_archive_url=None,
     artifact_size=None,
     provider_sha256="",
     source_path=".",
     migration_eligible=True,
+    migration_mode=None,
+    migration_evidence=None,
     source_revision=None,
 ):
     if artifact_url is None:
@@ -226,6 +269,20 @@ def candidate(
         )
     if source_revision is None:
         source_revision = commit
+    if source_archive_url is None:
+        source_archive_url = "" if provider == "generic" else artifact_url
+    if migration_mode is None:
+        migration_mode = "automatic" if migration_eligible else "manual"
+    if migration_evidence is None:
+        migration_evidence = (
+            "commit_source_archive"
+            if migration_mode == "automatic"
+            else (
+                "generic_manifest"
+                if provider == "generic"
+                else "unverified_asset"
+            )
+        )
     return Candidate(
         provider=provider,
         repository_identity=repository_identity,
@@ -238,10 +295,12 @@ def candidate(
         artifact_kind=artifact_kind,
         artifact_provenance=artifact_provenance,
         artifact_url=artifact_url,
+        source_archive_url=source_archive_url,
         artifact_size=artifact_size,
         provider_sha256=provider_sha256,
         source_path=source_path,
-        migration_eligible=migration_eligible,
+        migration_mode=migration_mode,
+        migration_evidence=migration_evidence,
     )
 
 
@@ -254,7 +313,7 @@ def zip_archive(
     reverse=False,
 ):
     files = files or {
-        "plugin.py": b"print('plugin')\n",
+        "plugin.py": PLUGIN_PY,
         "README.md": b"Example plugin\n",
     }
     items = list(files.items())
@@ -288,7 +347,7 @@ def raw_zip_archive(entries):
 
 def canonical_tree_sha256(files=None):
     files = files or {
-        "plugin.py": b"print('plugin')\n",
+        "plugin.py": PLUGIN_PY,
         "README.md": b"Example plugin\n",
     }
     records = []
@@ -313,13 +372,30 @@ def artifact_document(
     kind="source_zip",
     provenance="forge_source_archive",
     migration_eligible=True,
+    migration_mode=None,
+    migration_evidence=None,
     url=None,
     source_path=".",
 ):
+    if migration_mode is None:
+        migration_mode = "automatic" if migration_eligible else "manual"
+    if migration_evidence is None:
+        migration_evidence = (
+            "commit_source_archive"
+            if migration_mode == "automatic"
+            else (
+                "generic_manifest"
+                if provenance == "generic_manifest"
+                else "unverified_asset"
+            )
+        )
     return {
         "kind": kind,
         "provenance": provenance,
-        "migration_eligible": migration_eligible,
+        "migration": {
+            "mode": migration_mode,
+            "evidence": migration_evidence,
+        },
         "url": url
         or (
             "https://downloads.example.test/github.com-owner-example-plugin/"
@@ -358,6 +434,10 @@ def release_entry(
         "tag": tag,
         "released_at": "2026-07-18T10:00:00Z",
         "commit": commit,
+        "certified_identity": {
+            "domoticz_key": "EXAMPLE",
+            "plugin_py_sha256": hashlib.sha256(PLUGIN_PY).hexdigest(),
+        },
         "artifact": artifact or artifact_document(archive),
     }
     if source_revision:
@@ -373,14 +453,59 @@ def previous_index(
     tombstones=None,
 ):
     return {
+        "schema_version": 2,
+        "sequence": sequence,
+        "generated_at": "2026-07-17T12:00:00Z",
+        "expires_at": "2026-07-24T12:00:00Z",
+        "registry_sha256": hashlib.sha256(registry_contents).hexdigest(),
+        "releases": [
+            {"package_id": package_id, **copy.deepcopy(entry)}
+            for package_id, entry in sorted(plugins.items())
+        ],
+        "tombstones": [
+            {"package_id": package_id, **copy.deepcopy(entry)}
+            for package_id, entry in sorted((tombstones or {}).items())
+        ],
+    }
+
+
+def legacy_previous_index(
+    registry_contents,
+    plugins,
+    *,
+    sequence=4,
+    tombstones=None,
+):
+    legacy_plugins = copy.deepcopy(plugins)
+    for entry in legacy_plugins.values():
+        entry.pop("certified_identity", None)
+        migration = entry["artifact"].pop("migration")
+        entry["artifact"]["migration_eligible"] = (
+            migration["mode"] == "automatic"
+        )
+    return {
         "schema_version": 1,
         "sequence": sequence,
         "generated_at": "2026-07-17T12:00:00Z",
         "expires_at": "2026-07-24T12:00:00Z",
         "registry_sha256": hashlib.sha256(registry_contents).hexdigest(),
-        "plugins": copy.deepcopy(plugins),
+        "plugins": legacy_plugins,
         "tombstones": copy.deepcopy(tombstones or {}),
     }
+
+
+def release_map(document):
+    return {entry["package_id"]: entry for entry in document["releases"]}
+
+
+def release_payload(document, package_id):
+    entry = copy.deepcopy(release_map(document)[package_id])
+    entry.pop("package_id")
+    return entry
+
+
+def tombstone_map(document):
+    return {entry["package_id"]: entry for entry in document["tombstones"]}
 
 
 def make_generator(
@@ -438,7 +563,6 @@ def generate_single(
 
 def test_index_serialization_is_deterministic_sorted_and_bound_to_exact_registry_bytes(
     release_index_generation_module,
-    plugin_core_module,
 ):
     entries = {
         "ZuluPlugin": registry_entry(
@@ -487,14 +611,23 @@ def test_index_serialization_is_deterministic_sorted_and_bound_to_exact_registry
 
     assert first.index_bytes == second.index_bytes
     assert first.document == second.document
-    assert first.document["schema_version"] == 1
+    assert first.document["schema_version"] == 2
+    assert set(first.document) == {
+        "schema_version",
+        "sequence",
+        "generated_at",
+        "expires_at",
+        "registry_sha256",
+        "releases",
+        "tombstones",
+    }
     assert first.document["sequence"] == 1
     assert first.document["generated_at"] == "2026-07-18T12:00:00Z"
     assert first.document["expires_at"] == "2026-07-25T12:00:00Z"
     assert first.document["registry_sha256"] == hashlib.sha256(
         contents
     ).hexdigest()
-    assert list(first.document["plugins"]) == [
+    assert [entry["package_id"] for entry in first.document["releases"]] == [
         "AlphaPlugin",
         "ZuluPlugin",
     ]
@@ -507,13 +640,6 @@ def test_index_serialization_is_deterministic_sorted_and_bound_to_exact_registry
         )
         + "\n"
     ).encode("utf-8")
-    parsed = plugin_core_module.ReleaseIndex.from_document(
-        first.document,
-        registry_bytes=contents,
-        now=NOW,
-    )
-    assert list(parsed.plugins) == ["AlphaPlugin", "ZuluPlugin"]
-
     reformatted_contents = registry_bytes(entries, indent=4)
     reformatted = make_generator(
         release_index_generation_module,
@@ -551,8 +677,7 @@ def test_source_archive_certification_records_transport_and_canonical_tree_ident
         selected,
         archive,
     )
-
-    entry = result.document["plugins"]["ExamplePlugin"]
+    entry = release_map(result.document)["ExamplePlugin"]
     artifact = entry["artifact"]
     assert entry["revision"] == 1
     assert entry["supersedes"] == []
@@ -561,7 +686,10 @@ def test_source_archive_certification_records_transport_and_canonical_tree_ident
     assert artifact == {
         "kind": "source_zip",
         "provenance": "forge_source_archive",
-        "migration_eligible": True,
+        "migration": {
+            "mode": "automatic",
+            "evidence": "commit_source_archive",
+        },
         "url": selected.artifact_url,
         "sha256": hashlib.sha256(archive).hexdigest(),
         "size": len(archive),
@@ -569,6 +697,12 @@ def test_source_archive_certification_records_transport_and_canonical_tree_ident
         "root_prefix": "example-plugin-" + COMMIT_1,
         "source_path": ".",
     }
+    assert entry["certified_identity"] == {
+        "domoticz_key": "EXAMPLE",
+        "plugin_py_sha256": hashlib.sha256(PLUGIN_PY).hexdigest(),
+    }
+    assert "migration_eligible" not in json.dumps(result.document)
+    assert "plugin_key" not in json.dumps(result.document)
     assert http_client.calls == [
         {
             "url": selected.artifact_url,
@@ -584,11 +718,110 @@ def test_source_archive_certification_records_transport_and_canonical_tree_ident
     assert result.report["summary"] == {"certified_new": 1}
 
 
+def test_generator_consumes_strict_registry_v2_package_records(
+    release_index_generation_module,
+):
+    contents = registry_v2_bytes()
+    selected = candidate()
+    result, _provider, _http = generate_single(
+        release_index_generation_module,
+        selected,
+        zip_archive(),
+        registry_contents=contents,
+    )
+
+    assert status(result) == "certified_new"
+    assert result.document["registry_sha256"] == hashlib.sha256(
+        contents
+    ).hexdigest()
+    assert [
+        release["package_id"] for release in result.document["releases"]
+    ] == ["ExamplePlugin"]
+    release = result.document["releases"][0]
+    assert release["certified_identity"] == {
+        "domoticz_key": "EXAMPLE",
+        "plugin_py_sha256": hashlib.sha256(PLUGIN_PY).hexdigest(),
+    }
+
+
+def test_certification_rejects_domoticz_identity_mismatch(
+    release_index_generation_module,
+):
+    contents = registry_bytes(
+        {"ExamplePlugin": registry_entry(domoticz_key="SMA")}
+    )
+
+    result, _, _ = generate_single(
+        release_index_generation_module,
+        candidate(),
+        zip_archive(),
+        registry_contents=contents,
+    )
+
+    assert result.document["releases"] == []
+    assert status(result) == "certification_failed"
+    assert "Domoticz key" in result.report["plugins"]["ExamplePlugin"][
+        "detail"
+    ]
+
+
+def test_legacy_previous_index_is_read_only_and_preserves_lineage_in_v2(
+    release_index_generation_module,
+):
+    contents = registry_bytes()
+    old_archive = zip_archive()
+    old_entry = release_entry(old_archive, revision=7)
+    legacy = legacy_previous_index(
+        contents,
+        {"ExamplePlugin": old_entry},
+    )
+    original_legacy = copy.deepcopy(legacy)
+    selected = candidate(
+        release_id="github:owner/example-plugin:v2.0.0",
+        version="2.0.0",
+        tag="v2.0.0",
+        commit=COMMIT_2,
+        artifact_url="https://downloads.example.test/v2.zip",
+    )
+    new_archive = zip_archive(root_prefix="example-plugin-" + COMMIT_2)
+    provider = RecordingProvider(
+        {selected.repository_identity: [selected]}
+    )
+    http_client = RecordingHttpClient(
+        {
+            old_entry["artifact"]["url"]: [old_archive],
+            selected.artifact_url: [new_archive],
+        }
+    )
+
+    result = make_generator(
+        release_index_generation_module,
+        {"github": provider},
+        http_client,
+    ).generate(
+        registry_bytes=contents,
+        previous_index=legacy,
+        report_only=True,
+    )
+
+    current = release_map(result.document)["ExamplePlugin"]
+    assert legacy == original_legacy
+    assert result.document["schema_version"] == 2
+    assert current["revision"] == 8
+    assert current["supersedes"] == [old_entry["release_id"]]
+    assert current["certified_identity"]["domoticz_key"] == "EXAMPLE"
+    serialized = json.dumps(result.document)
+    assert "migration_eligible" not in serialized
+    assert '"plugins"' not in serialized
+    assert status(result) == "certified_update"
+    assert result.report["summary"] == {"certified_update": 1}
+
+
 def test_attached_asset_certification_supports_an_indexed_no_wrapper_layout(
     release_index_generation_module,
 ):
     files = {
-        "plugin.py": b"print('plugin')\n",
+        "plugin.py": PLUGIN_PY,
         "README.md": b"Attached release asset\n",
     }
     archive = raw_zip_archive(list(files.items()))
@@ -624,7 +857,7 @@ def test_scanner_rejects_paths_the_runtime_cannot_install(
     root = "example-plugin-" + COMMIT_1
     archive = raw_zip_archive(
         [
-            (root + "/plugin.py", b"print('plugin')\n"),
+            (root + "/plugin.py", PLUGIN_PY),
             (root + "/" + unsafe_path, b"unsafe\n"),
         ]
     )
@@ -644,7 +877,7 @@ def test_scanner_rejects_nul_in_the_original_member_name(
     replacement = (root + "/bad\x00suffix.txt").encode("utf-8")
     archive = raw_zip_archive(
         [
-            (root + "/plugin.py", b"print('plugin')\n"),
+            (root + "/plugin.py", PLUGIN_PY),
             (root + "/badXsuffix.txt", b"unsafe\n"),
         ]
     )
@@ -664,7 +897,7 @@ def test_scanner_rejects_component_only_casefold_collisions(
     root = "example-plugin-" + COMMIT_1
     archive = raw_zip_archive(
         [
-            (root + "/plugin.py", b"print('plugin')\n"),
+            (root + "/plugin.py", PLUGIN_PY),
             (root + "/Config/first.json", b"{}\n"),
             (root + "/config/second.json", b"{}\n"),
         ]
@@ -683,7 +916,7 @@ def test_scanner_rejects_an_extra_empty_root_outside_the_wrapper(
     root = "example-plugin-" + COMMIT_1
     archive = raw_zip_archive(
         [
-            (root + "/plugin.py", b"print('plugin')\n"),
+            (root + "/plugin.py", PLUGIN_PY),
             ("unexpected-root/", b"", 0o40755),
         ]
     )
@@ -701,7 +934,7 @@ def test_scanner_rejects_file_and_empty_directory_prefix_collisions(
     root = "example-plugin-" + COMMIT_1
     archive = raw_zip_archive(
         [
-            (root + "/plugin.py", b"print('plugin')\n"),
+            (root + "/plugin.py", PLUGIN_PY),
             (root + "/data", b"regular file\n"),
             (root + "/data/empty/", b"", 0o40755),
         ]
@@ -720,7 +953,7 @@ def test_scanner_rejects_directory_members_with_payload_bytes(
     root = "example-plugin-" + COMMIT_1
     archive = raw_zip_archive(
         [
-            (root + "/plugin.py", b"print('plugin')\n"),
+            (root + "/plugin.py", PLUGIN_PY),
             (root + "/config/", b"not empty", 0o40755),
         ]
     )
@@ -823,9 +1056,9 @@ def test_new_releases_get_monotonic_revision_and_complete_lineage(
         previous=second.document,
     )
 
-    first_entry = first.document["plugins"]["ExamplePlugin"]
-    second_entry = second.document["plugins"]["ExamplePlugin"]
-    third_entry = third.document["plugins"]["ExamplePlugin"]
+    first_entry = release_map(first.document)["ExamplePlugin"]
+    second_entry = release_map(second.document)["ExamplePlugin"]
+    third_entry = release_map(third.document)["ExamplePlugin"]
     assert (first_entry["revision"], first_entry["supersedes"]) == (1, [])
     assert (second_entry["revision"], second_entry["supersedes"]) == (
         2,
@@ -878,7 +1111,7 @@ def test_generated_source_recompression_refreshes_transport_without_new_revision
         previous=previous,
     )
 
-    current = result.document["plugins"]["ExamplePlugin"]
+    current = release_map(result.document)["ExamplePlugin"]
     assert current["revision"] == 7
     assert current["release_id"] == previous_entry["release_id"]
     assert current["supersedes"] == previous_entry["supersedes"]
@@ -915,7 +1148,7 @@ def test_identical_candidate_and_archive_report_unchanged(
         previous=previous,
     )
 
-    assert result.document["plugins"]["ExamplePlugin"] == previous_entry
+    assert release_payload(result.document, "ExamplePlugin") == previous_entry
     assert status(result) == "unchanged"
     assert result.report["summary"] == {"unchanged": 1}
 
@@ -926,7 +1159,7 @@ def test_changed_source_tree_at_same_commit_is_quarantined(
     contents = registry_bytes()
     original_archive = zip_archive()
     changed_files = {
-        "plugin.py": b"print('plugin')\n",
+        "plugin.py": PLUGIN_PY,
         "README.md": b"unexpected changed tree\n",
     }
     changed_archive = zip_archive(files=changed_files)
@@ -944,7 +1177,7 @@ def test_changed_source_tree_at_same_commit_is_quarantined(
         previous=previous,
     )
 
-    assert result.document["plugins"]["ExamplePlugin"] == previous_entry
+    assert release_payload(result.document, "ExamplePlugin") == previous_entry
     assert status(result) == "quarantined_mutation"
     report = result.report["plugins"]["ExamplePlugin"]
     assert report["reason"] == "source_tree_changed"
@@ -954,7 +1187,7 @@ def test_changed_source_tree_at_same_commit_is_quarantined(
     assert report["accepted_tree_sha256"] == previous_entry["artifact"][
         "tree_sha256"
     ]
-    assert result.document["tombstones"] == {}
+    assert result.document["tombstones"] == []
 
 
 @pytest.mark.parametrize(
@@ -1063,12 +1296,83 @@ def test_attached_and_generic_recompression_is_quarantined_as_mutation(
         previous=previous,
     )
 
-    assert result.document["plugins"]["ExamplePlugin"] == previous_entry
+    assert release_payload(result.document, "ExamplePlugin") == previous_entry
     assert status(result) == "quarantined_mutation"
     assert result.report["plugins"]["ExamplePlugin"]["reason"] == (
         "artifact_bytes_changed"
     )
-    assert result.document["tombstones"] == {}
+
+
+@pytest.mark.parametrize(
+    ("source_files", "expected_eligible"),
+    [
+        pytest.param(None, True, id="equivalent-tree"),
+        pytest.param(
+            {
+                "plugin.py": PLUGIN_PY,
+                "README.md": b"different source tree\n",
+            },
+            False,
+            id="different-tree",
+        ),
+    ],
+)
+def test_attached_asset_migration_uses_exact_commit_tree_evidence(
+    release_index_generation_module,
+    source_files,
+    expected_eligible,
+):
+    contents = registry_bytes(
+        {
+            "ExamplePlugin": registry_entry(artifact="asset_zip"),
+        }
+    )
+    artifact_url = "https://downloads.example.test/plugin.zip"
+    source_url = "https://api.github.com/repos/owner/example-plugin/zipball/" + COMMIT_1
+    asset_archive = zip_archive(root_prefix="release-asset")
+    source_archive = zip_archive(
+        files=source_files,
+        root_prefix="example-plugin-" + COMMIT_1,
+    )
+    selected = candidate(
+        artifact_kind="asset_zip",
+        artifact_provenance="attached_asset",
+        artifact_url=artifact_url,
+        source_archive_url=source_url,
+        artifact_size=len(asset_archive),
+        provider_sha256=hashlib.sha256(asset_archive).hexdigest(),
+        migration_eligible=False,
+    )
+    provider = RecordingProvider(
+        {selected.repository_identity: [selected]}
+    )
+    http_client = RecordingHttpClient(
+        {
+            artifact_url: [asset_archive],
+            source_url: [source_archive],
+        }
+    )
+
+    result = make_generator(
+        release_index_generation_module,
+        {"github": provider},
+        http_client,
+    ).generate(registry_bytes=contents, report_only=True)
+
+    migration = release_map(result.document)["ExamplePlugin"]["artifact"][
+        "migration"
+    ]
+    assert migration["mode"] == (
+        "automatic" if expected_eligible else "manual"
+    )
+    assert migration["evidence"] == (
+        "source_equivalent_asset" if expected_eligible else "unverified_asset"
+    )
+    assert [call["url"] for call in http_client.calls] == [
+        artifact_url,
+        source_url,
+    ]
+    assert result.document["tombstones"] == []
 
 
 def test_same_release_identity_with_changed_commit_is_quarantined(
@@ -1097,7 +1401,7 @@ def test_same_release_identity_with_changed_commit_is_quarantined(
         previous=previous,
     )
 
-    assert result.document["plugins"]["ExamplePlugin"] == previous_entry
+    assert release_payload(result.document, "ExamplePlugin") == previous_entry
     assert status(result) == "quarantined_mutation"
     assert result.report["plugins"]["ExamplePlugin"]["reason"] == (
         "release_identity_changed_commit"
@@ -1141,7 +1445,7 @@ def test_provider_release_regression_retains_complete_current_lineage(
         previous=previous,
     )
 
-    assert result.document["plugins"]["ExamplePlugin"] == previous_entry
+    assert release_payload(result.document, "ExamplePlugin") == previous_entry
     assert status(result) == "quarantined_mutation"
     assert result.report["plugins"]["ExamplePlugin"]["reason"] == (
         "release_lineage_regression"
@@ -1269,8 +1573,8 @@ def test_transient_provider_failure_retains_previous_entry_and_reports_it(
     )
 
     assert result.document["sequence"] == previous["sequence"] + 1
-    assert result.document["plugins"]["ExamplePlugin"] == previous_entry
-    assert result.document["tombstones"] == {}
+    assert release_payload(result.document, "ExamplePlugin") == previous_entry
+    assert result.document["tombstones"] == []
     assert status(result) == "retained_provider_failure"
     assert result.report["plugins"]["ExamplePlugin"]["transient"] is True
     assert "rate limit" in result.report["plugins"]["ExamplePlugin"][
@@ -1414,8 +1718,8 @@ def test_missing_candidate_retains_previous_entry_without_silent_tombstone(
         report_only=True,
     )
 
-    assert result.document["plugins"]["ExamplePlugin"] == previous_entry
-    assert result.document["tombstones"] == {}
+    assert release_payload(result.document, "ExamplePlugin") == previous_entry
+    assert result.document["tombstones"] == []
     assert status(result) == "retained_no_candidate"
 
 
@@ -1437,10 +1741,42 @@ def test_missing_candidate_without_prior_certification_reports_no_release(
         report_only=True,
     )
 
-    assert result.document["plugins"] == {}
-    assert result.document["tombstones"] == {}
+    assert result.document["releases"] == []
+    assert result.document["tombstones"] == []
     assert status(result) == "no_release"
     assert result.report["summary"] == {"no_release": 1}
+
+
+def test_release_if_indexed_discovers_a_release_after_git_only_operation(
+    release_index_generation_module,
+):
+    contents = registry_bytes()
+    repository_identity = "github.com/owner/example-plugin"
+    first = make_generator(
+        release_index_generation_module,
+        {
+            "github": RecordingProvider(
+                {repository_identity: [None]}
+            )
+        },
+        RecordingHttpClient({}),
+    ).generate(registry_bytes=contents, report_only=True)
+    selected = candidate()
+
+    second, provider, http_client = generate_single(
+        release_index_generation_module,
+        selected,
+        zip_archive(),
+        registry_contents=contents,
+        previous=first.document,
+    )
+
+    assert first.document["releases"] == []
+    assert status(first) == "no_release"
+    assert release_map(second.document)["ExamplePlugin"]["revision"] == 1
+    assert status(second) == "certified_new"
+    assert len(provider.calls) == 1
+    assert len(http_client.calls) == 1
 
 
 def test_policy_disable_does_not_silently_remove_previously_accepted_release(
@@ -1469,8 +1805,8 @@ def test_policy_disable_does_not_silently_remove_previously_accepted_release(
         report_only=True,
     )
 
-    assert result.document["plugins"]["ExamplePlugin"] == previous_entry
-    assert result.document["tombstones"] == {}
+    assert release_payload(result.document, "ExamplePlugin") == previous_entry
+    assert result.document["tombstones"] == []
     assert status(result) == "retained_policy_disabled"
 
 
@@ -1502,9 +1838,10 @@ def test_explicit_tombstone_request_decertifies_prior_release_with_reason(
         report_only=True,
     )
 
-    assert result.document["plugins"] == {}
-    assert result.document["tombstones"] == {
+    assert result.document["releases"] == []
+    assert tombstone_map(result.document) == {
         "ExamplePlugin": {
+            "package_id": "ExamplePlugin",
             "repository_identity": previous_entry["repository_identity"],
             "last_revision": previous_entry["revision"],
             "release_id": previous_entry["release_id"],
@@ -1515,6 +1852,170 @@ def test_explicit_tombstone_request_decertifies_prior_release_with_reason(
     assert status(result) == "tombstoned"
     assert result.report["summary"] == {"tombstoned": 1}
     assert provider.calls == []
+
+
+def test_legacy_release_can_be_tombstoned_after_registry_package_removal(
+    release_index_generation_module,
+):
+    old_registry = registry_bytes()
+    previous_entry = release_entry(zip_archive(), revision=7)
+    previous = legacy_previous_index(
+        old_registry,
+        {"ExamplePlugin": previous_entry},
+    )
+    current_registry = (
+        json.dumps({"schema_version": 2, "packages": []}, indent=2)
+        + "\n"
+    ).encode("utf-8")
+    generator = make_generator(
+        release_index_generation_module,
+        {"github": ExplodingProvider()},
+        ExplodingHttpClient(),
+    )
+
+    result = generator.generate(
+        registry_bytes=current_registry,
+        previous_index=previous,
+        tombstone_requests={
+            "ExamplePlugin": {
+                "reason": "The registry record was not a Domoticz plugin."
+            }
+        },
+        report_only=True,
+    )
+
+    assert result.document["releases"] == []
+    assert tombstone_map(result.document)["ExamplePlugin"] == {
+        "package_id": "ExamplePlugin",
+        "repository_identity": previous_entry["repository_identity"],
+        "last_revision": 7,
+        "release_id": previous_entry["release_id"],
+        "reason": "The registry record was not a Domoticz plugin.",
+        "removed_at": "2026-07-18T12:00:00Z",
+    }
+    assert status(result) == "tombstoned"
+
+
+def test_v2_tombstone_survives_package_removal_from_registry(
+    release_index_generation_module,
+):
+    old_registry = registry_bytes()
+    tombstone = {
+        "repository_identity": "github.com/owner/example-plugin",
+        "last_revision": 7,
+        "release_id": "github:owner/example-plugin:v1.0.0",
+        "reason": "The registry record was not a Domoticz plugin.",
+        "removed_at": "2026-07-17T12:00:00Z",
+    }
+    previous = previous_index(
+        old_registry,
+        {},
+        tombstones={"ExamplePlugin": tombstone},
+    )
+    current_registry = (
+        json.dumps({"schema_version": 2, "packages": []}, indent=2)
+        + "\n"
+    ).encode("utf-8")
+    generator = make_generator(
+        release_index_generation_module,
+        {"github": ExplodingProvider()},
+        ExplodingHttpClient(),
+    )
+
+    result = generator.generate(
+        registry_bytes=current_registry,
+        previous_index=previous,
+        report_only=True,
+    )
+
+    assert result.document["releases"] == []
+    assert tombstone_map(result.document) == {
+        "ExamplePlugin": {"package_id": "ExamplePlugin", **tombstone}
+    }
+
+
+def test_tombstoned_release_is_not_reaccepted_as_a_new_candidate(
+    release_index_generation_module,
+):
+    contents = registry_bytes()
+    selected = candidate()
+    tombstone = {
+        "repository_identity": selected.repository_identity,
+        "last_revision": 7,
+        "release_id": selected.release_id,
+        "reason": "The release failed package identity certification.",
+        "removed_at": "2026-07-17T12:00:00Z",
+    }
+    previous = previous_index(
+        contents,
+        {},
+        tombstones={"ExamplePlugin": tombstone},
+    )
+    provider = RecordingProvider(
+        {selected.repository_identity: [selected]}
+    )
+    generator = make_generator(
+        release_index_generation_module,
+        {"github": provider},
+        ExplodingHttpClient(),
+    )
+
+    result = generator.generate(
+        registry_bytes=contents,
+        previous_index=previous,
+        report_only=True,
+    )
+
+    assert result.document["releases"] == []
+    assert tombstone_map(result.document) == {
+        "ExamplePlugin": {"package_id": "ExamplePlugin", **tombstone}
+    }
+    assert status(result) == "retained_tombstone"
+    assert result.report["plugins"]["ExamplePlugin"]["cache_hit"] is False
+    assert len(provider.calls) == 1
+
+
+def test_new_certified_release_reactivates_a_tombstoned_package(
+    release_index_generation_module,
+):
+    contents = registry_bytes()
+    previous_release_id = "github:owner/example-plugin:v1.0.0"
+    tombstone = {
+        "repository_identity": "github.com/owner/example-plugin",
+        "last_revision": 7,
+        "release_id": previous_release_id,
+        "reason": "The release failed package identity certification.",
+        "removed_at": "2026-07-17T12:00:00Z",
+    }
+    previous = previous_index(
+        contents,
+        {},
+        tombstones={"ExamplePlugin": tombstone},
+    )
+    selected = candidate(
+        release_id="github:owner/example-plugin:v2.0.0",
+        version="2.0.0",
+        tag="v2.0.0",
+        commit=COMMIT_2,
+        artifact_url="https://downloads.example.test/v2.zip",
+    )
+    archive = zip_archive(root_prefix="example-plugin-" + COMMIT_2)
+
+    result, _provider, _http = generate_single(
+        release_index_generation_module,
+        selected,
+        archive,
+        registry_contents=contents,
+        previous=previous,
+    )
+
+    current = release_map(result.document)["ExamplePlugin"]
+    assert result.document["tombstones"] == []
+    assert current["revision"] == 8
+    assert current["release_id"] == selected.release_id
+    assert current["supersedes"] == [previous_release_id]
+    assert status(result) == "reactivated"
+    assert result.report["summary"] == {"reactivated": 1}
 
 
 @pytest.mark.parametrize(
@@ -1593,12 +2094,12 @@ def test_certification_failure_retains_previous_entry_and_reports_failure(
         report_only=True,
     )
 
-    assert result.document["plugins"]["ExamplePlugin"] == previous_entry
+    assert release_payload(result.document, "ExamplePlugin") == previous_entry
     assert status(result) == "certification_failed"
     assert "archive rejected" in result.report["plugins"][
         "ExamplePlugin"
     ]["detail"]
-    assert result.document["tombstones"] == {}
+    assert result.document["tombstones"] == []
 
 
 def test_report_only_file_run_never_changes_registry_or_tracked_index(

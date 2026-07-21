@@ -70,7 +70,8 @@ def release_descriptor(
     artifact_size=1000,
     root_prefix="example-plugin-v1.4.0",
     provenance="forge_source_archive",
-    migration_eligible=True,
+    migration_mode="automatic",
+    migration_evidence="commit_source_archive",
 ):
     kind = "source_zip" if provenance == "forge_source_archive" else "asset_zip"
     return plugin_core_module.ReleaseDescriptor.from_document(
@@ -87,7 +88,10 @@ def release_descriptor(
             "artifact": {
                 "kind": kind,
                 "provenance": provenance,
-                "migration_eligible": migration_eligible,
+                "migration": {
+                    "mode": migration_mode,
+                    "evidence": migration_evidence,
+                },
                 "url": (
                     "https://downloads.example.test/"
                     + artifact_sha256
@@ -578,13 +582,15 @@ def test_equal_revision_attached_asset_digest_change_is_a_mutation(
     current = release_descriptor(
         plugin_core_module,
         provenance="attached_asset",
-        migration_eligible=False,
+        migration_mode="manual",
+        migration_evidence="unverified_asset",
     )
     installed = installed_release_state(current)
     changed = release_descriptor(
         plugin_core_module,
         provenance="attached_asset",
-        migration_eligible=False,
+        migration_mode="manual",
+        migration_evidence="unverified_asset",
         artifact_sha256=ARTIFACT_2,
     )
 
@@ -676,40 +682,97 @@ def test_git_channel_status_remains_available_through_coordinator(
     assert decision.status == expected_status
 
 
-def test_git_install_routes_to_release_migration_only_for_eligible_artifact(
+@pytest.mark.parametrize(
+    (
+        "migration_mode",
+        "migration_evidence",
+        "trigger",
+        "expected_route",
+        "expected_reason",
+    ),
+    [
+        (
+            "automatic",
+            "commit_source_archive",
+            "automatic",
+            "release_migration",
+            "",
+        ),
+        (
+            "automatic",
+            "commit_source_archive",
+            "manual",
+            "release_migration",
+            "",
+        ),
+        (
+            "manual",
+            "unverified_asset",
+            "manual",
+            "release_migration",
+            "",
+        ),
+        (
+            "manual",
+            "unverified_asset",
+            "automatic",
+            "blocked",
+            "release_requires_manual_migration",
+        ),
+        (
+            "blocked",
+            "unverified_asset",
+            "manual",
+            "blocked",
+            "release_not_migration_eligible",
+        ),
+        (
+            "blocked",
+            "unverified_asset",
+            "automatic",
+            "blocked",
+            "release_not_migration_eligible",
+        ),
+    ],
+)
+def test_git_install_uses_release_migration_routing_matrix(
     plugin_core_module,
+    migration_mode,
+    migration_evidence,
+    trigger,
+    expected_route,
+    expected_reason,
 ):
     coordinator, _, _ = make_coordinator(plugin_core_module)
     entry = registry_entry(plugin_core_module)
-    eligible = release_descriptor(plugin_core_module)
-    ineligible = release_descriptor(
+    release = release_descriptor(
         plugin_core_module,
-        provenance="attached_asset",
-        migration_eligible=False,
+        provenance=(
+            "forge_source_archive"
+            if migration_evidence == "commit_source_archive"
+            else "attached_asset"
+        ),
+        migration_mode=migration_mode,
+        migration_evidence=migration_evidence,
     )
 
-    migration = decide(
+    decision = decide(
         coordinator,
         entry,
         operation="update",
         installed_mode="git",
-        release=eligible,
+        release=release,
         git_status="available",
-    )
-    waiting = decide(
-        coordinator,
-        entry,
-        operation="update",
-        installed_mode="git",
-        release=ineligible,
-        git_status="available",
+        trigger=trigger,
     )
 
-    assert migration.route == "release_migration"
-    assert migration.status == "migration_available"
-    assert waiting.route == "blocked"
-    assert waiting.status == "migration_waiting_for_release"
-    assert waiting.reason == "release_not_migration_eligible"
+    assert decision.route == expected_route
+    assert decision.reason == expected_reason
+    assert decision.status == (
+        "migration_available"
+        if expected_route == "release_migration"
+        else "migration_waiting_for_release"
+    )
 
 
 @pytest.mark.parametrize("trigger", ["manual", "automatic"])

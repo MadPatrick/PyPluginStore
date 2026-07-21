@@ -8,6 +8,13 @@ from types import SimpleNamespace
 import pytest
 
 from conftest import REPO_ROOT, load_module_from_path
+from test_registry_scripts import (
+    platform_metadata_v2,
+    saved_packages,
+    saved_platform_entries,
+    update_times_v2,
+    upgrade_fixture_files,
+)
 
 
 def release_policy(
@@ -560,6 +567,7 @@ def patch_scanner_paths(
     update_times_file,
     metadata_file,
 ):
+    upgrade_fixture_files(registry_file, update_times_file, metadata_file)
     monkeypatch.setattr(module, "REGISTRY_FILE", str(registry_file))
     monkeypatch.setattr(module, "UPDATE_TIMES_FILE", str(update_times_file))
     monkeypatch.setattr(module, "PLATFORM_METADATA_FILE", str(metadata_file))
@@ -629,21 +637,25 @@ def test_scanner_updates_object_description_and_platforms_without_losing_deliver
 
     scan_plugins_module.main()
 
-    saved = json.loads(registry_file.read_text(encoding="utf-8"))[
-        "ExamplePlugin"
-    ]
-    assert saved["owner"] == original_entry["owner"]
-    assert saved["repository"] == original_entry["repository"]
-    assert saved["branch"] == "main"
+    saved = saved_packages(registry_file)["ExamplePlugin"]
+    assert saved["repository"]["url"] == (
+        "https://github.com/owner/example-plugin"
+    )
+    assert saved["repository"]["branch"] == "main"
     assert saved["description"] == "Updated description"
     assert saved["platforms"] == ["windows"]
-    assert saved["delivery"] == original_entry["delivery"]
-    assert saved["review"] == original_entry["review"]
-    assert saved["x-curator"] == original_entry["x-curator"]
+    expected_delivery = copy.deepcopy(original_entry["delivery"])
+    expected_delivery.pop("schema_version")
+    assert saved["delivery"] == expected_delivery
+    assert saved["annotations"]["review"] == original_entry["review"]
+    assert saved["annotations"]["x-curator"] == original_entry["x-curator"]
 
 
 class FakeTextResponse:
-    def __init__(self, body=b"# plugin.py\n"):
+    def __init__(
+        self,
+        body=b'"""<plugin key="EXAMPLE" name="Example"></plugin>"""\n',
+    ):
         self.body = body
 
     def __enter__(self):
@@ -673,6 +685,7 @@ def test_cleanup_accepts_object_entry_and_uses_canonical_raw_url(
         encoding="utf-8",
     )
     update_times_file.write_text("{}", encoding="utf-8")
+    upgrade_fixture_files(registry_file, update_times_file, metadata_file)
     requests = []
 
     def opener(request, timeout):
@@ -702,9 +715,7 @@ def test_cleanup_accepts_object_entry_and_uses_canonical_raw_url(
             15,
         )
     ]
-    assert json.loads(registry_file.read_text(encoding="utf-8")) == {
-        "ExamplePlugin": entry
-    }
+    assert set(saved_packages(registry_file)) == {"ExamplePlugin"}
 
 
 def test_validator_accepts_object_entry_and_matching_platform_sidecar(
@@ -716,7 +727,7 @@ def test_validator_accepts_object_entry_and_matching_platform_sidecar(
     metadata_file = tmp_path / "platform_detection.json"
     metadata_file.write_text(
         json.dumps(
-            {
+            platform_metadata_v2({
                 "version": 1,
                 "entries": {
                     "ExamplePlugin": {
@@ -726,7 +737,7 @@ def test_validator_accepts_object_entry_and_matching_platform_sidecar(
                         "reviewed": True,
                     }
                 },
-            }
+            })
         ),
         encoding="utf-8",
     )
@@ -750,7 +761,28 @@ def test_validator_load_registry_normalizes_object_entry_for_existing_checks(
     entry = object_entry()
     registry_file = tmp_path / "registry.json"
     registry_file.write_text(
-        json.dumps({"ExamplePlugin": entry}),
+        json.dumps(
+            {
+                "schema_version": 2,
+                "packages": [
+                    {
+                        "package_id": "ExamplePlugin",
+                        "domoticz_key": "EXAMPLE",
+                        "description": "Example plugin",
+                        "repository": {
+                            "url": "https://github.com/owner/example-plugin",
+                            "branch": "main",
+                        },
+                        "platforms": ["linux"],
+                        "delivery": {
+                            "preferred": "release_if_indexed",
+                            "git_supported": True,
+                            "release": release_policy("github"),
+                        },
+                    }
+                ],
+            }
+        ),
         encoding="utf-8",
     )
     monkeypatch.setattr(
@@ -778,6 +810,7 @@ def test_validator_load_registry_normalizes_object_entry_for_existing_checks(
             "repository": "example-plugin",
             "description": "Example plugin",
             "branch": "main",
+            "domoticz_key": "EXAMPLE",
         }
     }
 
@@ -859,6 +892,9 @@ def test_weekly_workflow_generates_report_and_index_after_registry_mutation():
     assert scanner_position <= final_mutation_position < report_position
     assert report_position < update_position < pull_request_position
     assert "release_index.json" in workflow[pull_request_position:]
+    assert "certified Domoticz runtime key" in workflow
+    assert "provider-neutral repository URL" in workflow
+    assert "Existing positional records remain unchanged" not in workflow
 
 
 def test_weekly_workflow_uses_only_required_permissions_and_no_persisted_credentials():

@@ -1,27 +1,72 @@
-To add your plugin, please make a pull request with your lines added.
+To add a plugin, open a pull request with one complete registry-v2 package
+record and its certified Domoticz identity.
 
 ## Registry maintenance
 
-Public registry entries live in `registry.json`. Private plugins, local forks, and test branches should use `registry_local.json` instead; see [docs/registry_local.md](docs/registry_local.md).
+Public registry entries live in `registry.json`. Private plugins, local forks,
+and test branches should use `registry_local.json`; see
+[docs/registry_local.md](docs/registry_local.md).
 
-New public entries use named object fields:
+The public document has `schema_version: 2` and a `packages` array. Package IDs
+are explicit values, not JSON object keys:
 
 ```json
 {
-    "ExamplePlugin": {
-        "owner": "example-owner",
-        "repository": "domoticz-example-plugin",
-        "description": "Example plugin for Domoticz",
-        "branch": "main",
-        "platforms": [
-            "linux",
-            "windows"
-        ]
+  "schema_version": 2,
+  "packages": [
+    {
+      "package_id": "ExamplePlugin",
+      "domoticz_key": "EXAMPLE",
+      "description": "Example plugin for Domoticz",
+      "repository": {
+        "url": "https://github.com/example-owner/domoticz-example-plugin",
+        "branch": "main"
+      },
+      "platforms": ["linux", "windows"],
+      "delivery": {
+        "preferred": "release_if_indexed",
+        "git_supported": true,
+        "release": {
+          "provider": "github",
+          "channel": "stable",
+          "tag_pattern": "^v?[0-9]+(?:\\.[0-9]+){1,3}$",
+          "artifact": "source_zip",
+          "source_path": ".",
+          "mutable_paths": []
+        }
+      }
     }
+  ]
 }
 ```
 
-Use `gitlab.com/group/subgroup` or `codeberg.org/owner` for non-GitHub owners, and omit `platforms` when support is unknown. The optional `delivery` object is reserved for reviewed release-policy overrides. Without it, GitHub, GitLab, and Codeberg entries use the inferred stable-release policy with Git still supported; other providers require a complete reviewed policy. Legacy positional arrays remain readable for compatibility, while the weekly scanner writes newly discovered plugins as objects. Object records require PyPluginStore v2.10.0 or newer, and GitLab/Codeberg Git management requires v2.15.0 or newer.
+`package_id` is the stable PyPluginStore identity. `domoticz_key` is the exact
+root `plugin.py` `<plugin key="...">` and may differ from it. A Domoticz key
+change is a compatibility change and needs explicit review. Repository identity
+uses one canonical, credential-free HTTPS web URL; use an empty `platforms`
+array when support is unknown.
+
+All delivery policies are explicit. GitHub, GitLab, and Codeberg packages
+normally use `release_if_indexed`, a stable-tag source-archive policy, and
+`git_supported: true`. Self-hosted Forgejo/Gitea records also require reviewed
+API and web bases. Generic HTTPS records require a strict versioned manifest
+URL and allowed origins. Unknown hosts stay Git-only until a provider policy is
+reviewed. See [Release and Git Management](docs/release_management.md).
+
+Do not add keyed package objects, positional arrays, `owner`/`repo` aliases, or
+`plugin_key` to new public metadata. Those shapes exist only at explicit host
+upgrade boundaries and are never emitted as schema v2.
+
+To audit identities before a registry migration or broad metadata change:
+
+```bash
+python .github/scripts/certify_package_identities.py \
+  --output /tmp/pypluginstore-package-identities.json
+```
+
+The certifier reads the selected root `plugin.py` and records its exact
+Domoticz key and SHA-256. Missing or ambiguous keyed plugin tags block release
+authorization.
 
 Maintainers can infer and add platform metadata with:
 
@@ -36,13 +81,32 @@ python .github/scripts/cleanup_registry.py
 python .github/scripts/cleanup_registry.py --apply
 ```
 
-The cleanup script supports GitHub, Codeberg, and GitLab entries. Dry-run is the default; `--apply` removes missing entries from `registry.json`, `update_times.json`, and `.github/platform_detection.json`.
+The cleanup script supports GitHub, Codeberg, and GitLab entries. Dry-run is the
+default; `--apply` removes missing entries from `registry.json`,
+`update_times.json`, and `.github/platform_detection.json`.
 
 ## Release index maintenance
 
-Stable release discovery is provider-neutral at runtime. The scanner has separate adapters and contract fixtures for GitHub, GitLab, Codeberg/Forgejo, Gitea, and generic HTTPS manifests, then emits one reviewed `release_index.json` bound to the exact `registry.json` bytes. Provider support does not mean that a suitable registered release currently exists on every provider.
+Stable release discovery is provider-neutral at runtime. Separate GitHub,
+GitLab, Codeberg/Forgejo, Gitea, and generic HTTPS adapters emit one reviewed
+`release_index.json` bound to the exact `registry.json` bytes.
 
-Use a staged report-only and pilot workflow:
+Release-index schema v2 likewise uses `releases` and `tombstones` arrays whose
+records contain `package_id`; it does not serialize package IDs as object keys
+or emit the legacy `plugin_key` identity field.
+
+The weekly workflow checks every package whose explicit delivery policy is
+release-eligible, including packages with no previously indexed release. A
+maintainer can therefore publish releases after years of Git-only development:
+the next successful scan can certify and propose the release without changing
+`package_id` or editing the registry again.
+
+Tombstoned releases remain blocked by release ID. A newer fully certified
+release may reactivate the package only with an incremented revision and an
+explicit `supersedes` link to the tombstone; that transition is reviewed in the
+same weekly pull request.
+
+Use report-only mode to inspect the same full scan without changing the index:
 
 1. Inspect candidates without changing the tracked index. A cache avoids repeating provider and archive requests, and an output file keeps the provider-specific coverage and exclusion report for review:
 
@@ -53,11 +117,10 @@ python .github/scripts/generate_release_index.py \
   --report-output /tmp/pypluginstore-release-report.json
 ```
 
-2. Review repository identity, tag policy, immutable source revision, archive layout, canonical tree, mutable paths, migration eligibility, predecessor lineage, provider failures, and explicit no-release results. Release participation is per plugin; do not activate a provider or the whole registry as a flag-day change.
-
-3. Pilot suitable registered GitHub and GitLab releases. Codeberg/Forgejo, Gitea, and generic manifest behavior remains covered by provider-contract fixtures and live endpoint responses until a registered plugin publishes a release suitable for certification. Do not claim live release coverage from fixtures alone.
-
-4. Update the index only for candidates that passed review, then validate the exact registry/index pair:
+Review repository and Domoticz identities, tag policy, immutable source commit,
+archive layout and hashes, mutable paths, migration evidence, predecessor
+lineage, provider failures, and explicit no-release results. Then generate and
+validate the exact registry/index pair:
 
 ```bash
 python .github/scripts/generate_release_index.py \
@@ -66,9 +129,29 @@ python .github/scripts/generate_release_index.py \
 python .github/scripts/validate_plugins.py
 ```
 
-5. Review the generated diff through a pull request. The weekly workflow performs the report-only preview before generation and proposes index changes; scanner automation must not push target metadata directly. Keep per-entry Git opt-outs and provider/source-path overrides available as coverage expands.
+Review the generated diff through a pull request. Weekly automation performs
+the preview and generation, but does not publish runtime metadata without that
+review and merge.
 
-Do not hand a forge API response directly to the runtime or silently fall back to Git after a release failure. A higher per-plugin revision must name the accepted predecessor lineage; changed bytes or trees require a new reviewed revision. An existing release-managed installation with unavailable metadata must remain blocked, while a plugin that has never activated Release may continue on Git.
+Commit-addressed source archives provide automatic Git-migration evidence. For
+an attached ZIP, compare its canonical selected tree with the source archive at
+the same commit; exact equivalence can authorize automatic migration. A
+different or unverifiable asset remains manual. Generic manifest artifacts are
+manual unless a stronger reviewed source-continuity contract authorizes them.
+
+Do not hand forge API responses directly to the runtime or silently fall back
+to Git after a release failure. A release-managed installation with unavailable
+metadata remains blocked; a `release_if_indexed` package that has never
+activated Release continues on Git. Keep-Git preferences, notify-only mode,
+dirty or diverged checkouts, repository mismatches, and insufficient migration
+evidence must all prevent automatic channel changes.
+
+For the v2 deployment cutover, first release a manager that reads both legacy
+and strict v2 metadata while public metadata remains on the old shape. Publish
+v2-only metadata after the upgrade window; never publish a hybrid registry.
+Lagging installations retain their last trusted metadata pair and upgrade the
+manager through its independent Git self-update path. PyPluginStore self-update
+stays Git-based and is intentionally outside the release index.
 
 ## Generated plugin.py
 

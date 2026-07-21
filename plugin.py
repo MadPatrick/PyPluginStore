@@ -42,11 +42,13 @@
 
 
 import base64
+import copy
 from collections.abc import Mapping
 from contextlib import contextmanager
 import hashlib
 import html
 import http.client
+import importlib.util
 import ipaddress
 import io
 import json
@@ -73,6 +75,73 @@ from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta, timezone
 
 import Domoticz
+
+
+def _load_package_registry_module():
+    """Import sibling package contracts from normal or path-based loads."""
+    try:
+        import package_registry as registry_module
+
+        return registry_module
+    except ModuleNotFoundError as error:
+        if error.name != "package_registry":
+            raise
+
+    module_path = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), "package_registry.py"
+    )
+    specification = importlib.util.spec_from_file_location(
+        "package_registry", module_path
+    )
+    if specification is None or specification.loader is None:
+        raise ImportError("Could not load the package registry contract.")
+    module = importlib.util.module_from_spec(specification)
+    sys.modules["package_registry"] = module
+    try:
+        specification.loader.exec_module(module)
+    except Exception:
+        if sys.modules.get("package_registry") is module:
+            del sys.modules["package_registry"]
+        raise
+    return module
+
+
+_package_registry_module = _load_package_registry_module()
+PackageRegistry = _package_registry_module.PackageRegistry
+UpdateTimesDocument = _package_registry_module.UpdateTimesDocument
+
+
+def _load_package_identity_module():
+    """Import the sibling non-executing identity certifier."""
+    try:
+        import package_identity as identity_module
+
+        return identity_module
+    except ModuleNotFoundError as error:
+        if error.name != "package_identity":
+            raise
+
+    module_path = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), "package_identity.py"
+    )
+    specification = importlib.util.spec_from_file_location(
+        "package_identity", module_path
+    )
+    if specification is None or specification.loader is None:
+        raise ImportError("Could not load the package identity certifier.")
+    module = importlib.util.module_from_spec(specification)
+    sys.modules["package_identity"] = module
+    try:
+        specification.loader.exec_module(module)
+    except Exception:
+        if sys.modules.get("package_identity") is module:
+            del sys.modules["package_identity"]
+        raise
+    return module
+
+
+_package_identity_module = _load_package_identity_module()
+certify_plugin_py = _package_identity_module.certify_plugin_py
 
 
 API_PAYLOAD_MAX_LENGTH = 2000
@@ -743,7 +812,14 @@ else:
         return result, ""
 
     def validate_self_update_candidate(self, plugin_dir, target_ref):
-        required_paths = ("plugin.py", "plugin_core.py", "pypluginstore.html", "registry.json")
+        required_paths = (
+            "plugin.py",
+            "plugin_core.py",
+            "package_registry.py",
+            "package_identity.py",
+            "pypluginstore.html",
+            "registry.json",
+        )
         for candidate_path in required_paths:
             _, message = self.require_git_success(
                 plugin_dir,
@@ -753,7 +829,12 @@ else:
             if message:
                 return False, message
 
-        for python_path in ("plugin.py", "plugin_core.py"):
+        for python_path in (
+            "plugin.py",
+            "plugin_core.py",
+            "package_registry.py",
+            "package_identity.py",
+        ):
             result, message = self.require_git_success(
                 plugin_dir,
                 ["git", "show", f"{target_ref}:{python_path}"],
@@ -1497,7 +1578,9 @@ def make_host_runtime(parameters):
     return LinuxHostRuntime(parameters)
 
 
-RELEASE_INDEX_SCHEMA_VERSION = 1
+RELEASE_INDEX_SCHEMA_VERSION = 2
+LEGACY_RELEASE_INDEX_SCHEMA_VERSION = 1
+RELEASE_METADATA_STATE_SCHEMA_VERSION = 1
 DELIVERY_POLICY_SCHEMA_VERSION = 1
 RELEASE_PROVIDERS = {
     "codeberg",
@@ -1519,6 +1602,17 @@ RELEASE_ARTIFACT_PROVENANCE = {
     "forge_source_archive",
     "generic_manifest",
     "release_asset",
+}
+RELEASE_MIGRATION_MODES = {"automatic", "blocked", "manual"}
+RELEASE_MIGRATION_EVIDENCE = {
+    "commit_source_archive",
+    "generic_manifest",
+    "source_equivalent_asset",
+    "unverified_asset",
+}
+AUTOMATIC_RELEASE_MIGRATION_EVIDENCE = {
+    "commit_source_archive",
+    "source_equivalent_asset",
 }
 RELEASE_PREFERRED_MODES = {"git", "release", "release_if_indexed"}
 LOWER_SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
@@ -1805,14 +1899,14 @@ class ReleasePolicy:
             raise ValueError("delivery.release.provider is not supported.")
 
         identity_host = str(repository_identity or "").split("/", 1)[0]
-        expected_provider = {
-            "github.com": "github",
-            "gitlab.com": "gitlab",
-            "codeberg.org": "forgejo",
+        expected_providers = {
+            "github.com": {"github"},
+            "gitlab.com": {"gitlab"},
+            "codeberg.org": {"codeberg", "forgejo"},
         }.get(identity_host)
         if (
-            expected_provider
-            and provider not in (expected_provider, "generic")
+            expected_providers
+            and provider not in expected_providers | {"generic"}
         ):
             raise ValueError("Release provider does not match registry host.")
         if (
@@ -1894,13 +1988,14 @@ class ReleasePolicy:
                 "delivery.release.release_page_size must be between 1 and 100."
             )
 
-        if provider in ("forgejo", "gitea"):
+        if provider in ("codeberg", "forgejo", "gitea"):
             if not identity_host:
                 raise ValueError(
                     "Forgejo and Gitea policies require a valid repository identity."
                 )
             codeberg_defaults = (
-                provider == "forgejo" and identity_host == "codeberg.org"
+                provider in ("codeberg", "forgejo")
+                and identity_host == "codeberg.org"
             )
             if not codeberg_defaults and (
                 not api_base or not web_base or not page_size_present
@@ -2064,7 +2159,8 @@ class ReleaseArtifact:
 
     kind: str
     provenance: str
-    migration_eligible: bool
+    migration_mode: str
+    migration_evidence: str
     url: str
     sha256: str
     size: int
@@ -2074,10 +2170,35 @@ class ReleaseArtifact:
 
     @classmethod
     def from_document(cls, document):
-        """Parse a normalized release artifact descriptor."""
+        """Parse a strict schema-v2 release artifact descriptor."""
         document = _require_document(
             document,
             "release artifact",
+            (
+                "kind",
+                "provenance",
+                "migration",
+                "url",
+                "sha256",
+                "size",
+                "tree_sha256",
+                "root_prefix",
+                "source_path",
+            ),
+        )
+        migration = _require_document(
+            document["migration"],
+            "artifact.migration",
+            ("mode", "evidence"),
+        )
+        return cls._from_document(document, migration)
+
+    @classmethod
+    def from_legacy_document(cls, document):
+        """Normalize one explicit schema-v1 migration eligibility flag."""
+        document = _require_document(
+            document,
+            "legacy release artifact",
             (
                 "kind",
                 "provenance",
@@ -2090,6 +2211,29 @@ class ReleaseArtifact:
                 "source_path",
             ),
         )
+        eligible = _require_boolean(
+            document["migration_eligible"],
+            "artifact.migration_eligible",
+        )
+        evidence = (
+            "commit_source_archive"
+            if eligible
+            else (
+                "generic_manifest"
+                if document.get("provenance") == "generic_manifest"
+                else "unverified_asset"
+            )
+        )
+        return cls._from_document(
+            document,
+            {
+                "mode": "automatic" if eligible else "manual",
+                "evidence": evidence,
+            },
+        )
+
+    @classmethod
+    def _from_document(cls, document, migration):
         kind = _require_nonempty_string(document["kind"], "artifact.kind")
         if kind not in RELEASE_ARTIFACT_KINDS:
             raise ValueError("artifact.kind is not supported.")
@@ -2098,6 +2242,24 @@ class ReleaseArtifact:
         )
         if provenance not in RELEASE_ARTIFACT_PROVENANCE:
             raise ValueError("artifact.provenance is not supported.")
+
+        migration_mode = _require_nonempty_string(
+            migration["mode"], "artifact.migration.mode"
+        )
+        migration_evidence = _require_nonempty_string(
+            migration["evidence"], "artifact.migration.evidence"
+        )
+        if migration_mode not in RELEASE_MIGRATION_MODES:
+            raise ValueError("artifact.migration.mode is not supported.")
+        if migration_evidence not in RELEASE_MIGRATION_EVIDENCE:
+            raise ValueError("artifact.migration.evidence is not supported.")
+        automatic_evidence = (
+            migration_evidence in AUTOMATIC_RELEASE_MIGRATION_EVIDENCE
+        )
+        if migration_mode == "automatic" and not automatic_evidence:
+            raise ValueError("Automatic migration evidence is insufficient.")
+        if migration_mode == "manual" and automatic_evidence:
+            raise ValueError("Manual migration evidence is contradictory.")
 
         root_prefix = _require_nonempty_string(
             document["root_prefix"], "artifact.root_prefix"
@@ -2114,9 +2276,8 @@ class ReleaseArtifact:
         return cls(
             kind=kind,
             provenance=provenance,
-            migration_eligible=_require_boolean(
-                document["migration_eligible"], "artifact.migration_eligible"
-            ),
+            migration_mode=migration_mode,
+            migration_evidence=migration_evidence,
             url=_require_https_url(document["url"], "artifact.url"),
             sha256=_require_sha256(document["sha256"], "artifact.sha256"),
             size=_require_positive_integer(document["size"], "artifact.size"),
@@ -2126,6 +2287,43 @@ class ReleaseArtifact:
             root_prefix=root_prefix,
             source_path=_normalize_relative_metadata_path(
                 document["source_path"], "artifact.source_path"
+            ),
+        )
+
+    @property
+    def migration_eligible(self):
+        """Compatibility view for callers that mean automatic migration."""
+        return self.migration_mode == "automatic"
+
+    @property
+    def migration(self):
+        return {
+            "mode": self.migration_mode,
+            "evidence": self.migration_evidence,
+        }
+
+
+@dataclass(frozen=True)
+class CertifiedReleaseIdentity:
+    """Identity observed from the exact plugin.py certified by CI."""
+
+    domoticz_key: str
+    plugin_py_sha256: str
+
+    @classmethod
+    def from_document(cls, document):
+        document = _require_document(
+            document,
+            "certified identity",
+            ("domoticz_key", "plugin_py_sha256"),
+        )
+        return cls(
+            domoticz_key=_require_nonempty_string(
+                document["domoticz_key"], "certified_identity.domoticz_key"
+            ),
+            plugin_py_sha256=_require_sha256(
+                document["plugin_py_sha256"],
+                "certified_identity.plugin_py_sha256",
             ),
         )
 
@@ -2145,10 +2343,24 @@ class ReleaseDescriptor:
     commit: str
     artifact: ReleaseArtifact
     source_revision: str = ""
+    package_id: str = ""
+    certified_identity: object = None
 
     @classmethod
     def from_document(cls, document):
-        """Parse a normalized release descriptor."""
+        """Parse a strict schema-v2 release descriptor."""
+        return cls._from_document(document, ReleaseArtifact.from_document)
+
+    @classmethod
+    def from_legacy_document(cls, document):
+        """Normalize one explicit schema-v1 release descriptor."""
+        return cls._from_document(
+            document,
+            ReleaseArtifact.from_legacy_document,
+        )
+
+    @classmethod
+    def _from_document(cls, document, artifact_parser):
         document = _require_document(
             document,
             "release descriptor",
@@ -2204,8 +2416,8 @@ class ReleaseDescriptor:
             "release.commit",
             required=provider != "generic",
         )
-        artifact = ReleaseArtifact.from_document(document["artifact"])
-        if not commit and artifact.migration_eligible:
+        artifact = artifact_parser(document["artifact"])
+        if not commit and artifact.migration_mode == "automatic":
             raise ValueError("A release without a commit cannot be migration eligible.")
 
         released_at = _require_nonempty_string(
@@ -2230,6 +2442,49 @@ class ReleaseDescriptor:
             source_revision=source_revision,
         )
 
+    @classmethod
+    def from_release_record(cls, document):
+        """Parse one strict schema-v2 release array record."""
+        document = _require_document(
+            document,
+            "release record",
+            (
+                "package_id",
+                "certified_identity",
+                "revision",
+                "release_id",
+                "supersedes",
+                "provider",
+                "repository_identity",
+                "version",
+                "tag",
+                "released_at",
+                "artifact",
+            ),
+            ("commit", "source_revision"),
+        )
+        descriptor_document = dict(document)
+        package_id = _require_nonempty_string(
+            descriptor_document.pop("package_id"), "release.package_id"
+        )
+        certified_identity = CertifiedReleaseIdentity.from_document(
+            descriptor_document.pop("certified_identity")
+        )
+        descriptor = cls.from_document(descriptor_document)
+        descriptor.package_id = package_id
+        descriptor.certified_identity = certified_identity
+        return descriptor
+
+    @property
+    def domoticz_key(self):
+        identity = self.certified_identity
+        return identity.domoticz_key if identity is not None else ""
+
+    @property
+    def plugin_py_sha256(self):
+        identity = self.certified_identity
+        return identity.plugin_py_sha256 if identity is not None else ""
+
     def same_accepted_target(self, other):
         """Return whether an equal revision still names the accepted source."""
         if not isinstance(other, ReleaseDescriptor):
@@ -2247,10 +2502,17 @@ class ReleaseDescriptor:
             and self.source_revision == other.source_revision
             and self.artifact.kind == other.artifact.kind
             and self.artifact.provenance == other.artifact.provenance
-            and self.artifact.migration_eligible
-            == other.artifact.migration_eligible
+            and self.artifact.migration_mode
+            == other.artifact.migration_mode
+            and self.artifact.migration_evidence
+            == other.artifact.migration_evidence
             and self.artifact.tree_sha256 == other.artifact.tree_sha256
             and self.artifact.source_path == other.artifact.source_path
+            and (not other.package_id or self.package_id == other.package_id)
+            and (
+                other.certified_identity is None
+                or self.certified_identity == other.certified_identity
+            )
         )
         if not common_fields_match:
             return False
@@ -2273,6 +2535,7 @@ class ReleaseTombstone:
     release_id: str
     reason: str
     removed_at: str
+    package_id: str = ""
 
     @classmethod
     def from_document(cls, document):
@@ -2309,6 +2572,29 @@ class ReleaseTombstone:
             removed_at=removed_at,
         )
 
+    @classmethod
+    def from_tombstone_record(cls, document):
+        """Parse one strict schema-v2 tombstone array record."""
+        document = _require_document(
+            document,
+            "release tombstone record",
+            (
+                "package_id",
+                "repository_identity",
+                "last_revision",
+                "release_id",
+                "reason",
+                "removed_at",
+            ),
+        )
+        tombstone_document = dict(document)
+        package_id = _require_nonempty_string(
+            tombstone_document.pop("package_id"), "tombstone.package_id"
+        )
+        tombstone = cls.from_document(tombstone_document)
+        tombstone.package_id = package_id
+        return tombstone
+
 
 @dataclass
 class ReleaseIndex:
@@ -2322,27 +2608,31 @@ class ReleaseIndex:
     plugins: dict
     tombstones: dict
 
+    @property
+    def releases(self):
+        """Return the normalized release map used by runtime consumers."""
+        return self.plugins
+
+    @staticmethod
+    def _package_map(registry):
+        packages = getattr(registry, "packages", None)
+        if isinstance(packages, dict):
+            return packages
+        by_package_id = getattr(registry, "by_package_id", None)
+        if isinstance(by_package_id, dict):
+            return by_package_id
+        if isinstance(packages, (list, tuple)):
+            return {package.package_id: package for package in packages}
+        raise ValueError("registry packages are invalid.")
+
     @classmethod
-    def from_document(cls, document, registry_bytes, now=None, previous=None):
-        """Validate and normalize a release index document."""
-        document = _require_document(
-            document,
-            "release index",
-            (
-                "schema_version",
-                "sequence",
-                "generated_at",
-                "expires_at",
-                "registry_sha256",
-                "plugins",
-            ),
-            ("tombstones",),
-        )
-        if (
-            type(document["schema_version"]) is not int
-            or document["schema_version"] != RELEASE_INDEX_SCHEMA_VERSION
-        ):
-            raise ValueError("release_index.schema_version is not supported.")
+    def _validated_common(
+        cls,
+        document,
+        registry_bytes,
+        now,
+        previous,
+    ):
         sequence = _require_positive_integer(
             document["sequence"], "release_index.sequence"
         )
@@ -2361,69 +2651,213 @@ class ReleaseIndex:
         generated_time = _parse_utc_timestamp(
             generated_at, "release_index.generated_at"
         )
-        expiry_time = _parse_utc_timestamp(expires_at, "release_index.expires_at")
+        expiry_time = _parse_utc_timestamp(
+            expires_at, "release_index.expires_at"
+        )
         if expiry_time <= generated_time:
             raise ValueError("release index validity window is invalid.")
         if now is None:
             now = datetime.now(timezone.utc)
         if not isinstance(now, datetime) or now.tzinfo is None:
-            raise ValueError("release index validation time must be timezone-aware.")
+            raise ValueError(
+                "release index validation time must be timezone-aware."
+            )
         if expiry_time <= now.astimezone(timezone.utc):
             raise ValueError("release index is expired.")
 
-        registry = _load_json_object(registry_bytes, "registry")
         expected_registry_sha256 = _require_sha256(
             document["registry_sha256"], "release_index.registry_sha256"
         )
         actual_registry_sha256 = hashlib.sha256(bytes(registry_bytes)).hexdigest()
         if expected_registry_sha256 != actual_registry_sha256:
             raise ValueError("release index does not match registry bytes.")
+        return (
+            sequence,
+            generated_at,
+            expires_at,
+            expected_registry_sha256,
+        )
 
-        plugins_document = document["plugins"]
-        tombstones_document = document.get("tombstones", {})
-        if not isinstance(plugins_document, dict):
-            raise ValueError("release_index.plugins must be an object.")
-        if not isinstance(tombstones_document, dict):
-            raise ValueError("release_index.tombstones must be an object.")
-        if set(plugins_document) & set(tombstones_document):
-            raise ValueError("A plugin cannot be active and de-certified together.")
-
-        plugins = {}
-        active_release_ids = set()
-        for plugin_key, entry_document in plugins_document.items():
-            if plugin_key not in registry:
-                raise ValueError("Release index contains an unknown plugin.")
-            descriptor = ReleaseDescriptor.from_document(entry_document)
-            registry_identity = _registry_entry_identity(registry[plugin_key])
-            if not registry_identity or descriptor.repository_identity != registry_identity:
-                raise ValueError("Release repository does not match the registry.")
-            if descriptor.release_id in active_release_ids:
-                raise ValueError("Release index contains a duplicate release identity.")
-            active_release_ids.add(descriptor.release_id)
-            plugins[plugin_key] = descriptor
-
-        tombstones = {}
-        for plugin_key, tombstone_document in tombstones_document.items():
-            if plugin_key not in registry:
-                raise ValueError("Release index contains an unknown tombstone plugin.")
-            tombstone = ReleaseTombstone.from_document(tombstone_document)
-            registry_identity = _registry_entry_identity(registry[plugin_key])
-            if not registry_identity or tombstone.repository_identity != registry_identity:
-                raise ValueError("Tombstone repository does not match the registry.")
-            tombstones[plugin_key] = tombstone
-
+    @classmethod
+    def _result(
+        cls,
+        *,
+        common,
+        releases,
+        tombstones,
+        previous,
+    ):
+        sequence, generated_at, expires_at, registry_sha256 = common
         result = cls(
             schema_version=RELEASE_INDEX_SCHEMA_VERSION,
             sequence=sequence,
             generated_at=generated_at,
             expires_at=expires_at,
-            registry_sha256=expected_registry_sha256,
-            plugins=plugins,
+            registry_sha256=registry_sha256,
+            plugins=releases,
             tombstones=tombstones,
         )
         if previous is not None:
             result._validate_lineage(previous)
         return result
+
+    @classmethod
+    def from_document(cls, document, registry_bytes, now=None, previous=None):
+        """Validate and normalize one strict schema-v2 release index."""
+        document = _require_document(
+            document,
+            "release index",
+            (
+                "schema_version",
+                "sequence",
+                "generated_at",
+                "expires_at",
+                "registry_sha256",
+                "releases",
+                "tombstones",
+            ),
+        )
+        if (
+            type(document["schema_version"]) is not int
+            or document["schema_version"] != RELEASE_INDEX_SCHEMA_VERSION
+        ):
+            raise ValueError("release_index.schema_version is not supported.")
+        common = cls._validated_common(
+            document, registry_bytes, now, previous
+        )
+        registry_document = _load_json_object(registry_bytes, "registry")
+        registry = PackageRegistry.from_document(registry_document)
+        packages = cls._package_map(registry)
+        releases_document = document["releases"]
+        tombstones_document = document["tombstones"]
+        if not isinstance(releases_document, list):
+            raise ValueError("release_index.releases must be an array.")
+        if not isinstance(tombstones_document, list):
+            raise ValueError("release_index.tombstones must be an array.")
+
+        releases = {}
+        release_ids = set()
+        active_release_ids = set()
+        for entry_document in releases_document:
+            descriptor = ReleaseDescriptor.from_release_record(entry_document)
+            package_id = descriptor.package_id
+            collision_id = package_id.casefold()
+            if collision_id in release_ids:
+                raise ValueError("Release index contains a duplicate package ID.")
+            release_ids.add(collision_id)
+            package = packages.get(package_id)
+            if package is None:
+                raise ValueError("Release index contains an unknown package.")
+            if descriptor.repository_identity != package.repository_identity:
+                raise ValueError("Release repository does not match the registry.")
+            if descriptor.domoticz_key != package.domoticz_key:
+                raise ValueError("Release Domoticz identity does not match the registry.")
+            if descriptor.release_id in active_release_ids:
+                raise ValueError("Release index contains a duplicate release identity.")
+            active_release_ids.add(descriptor.release_id)
+            releases[package_id] = descriptor
+
+        tombstones = {}
+        tombstone_ids = set()
+        for tombstone_document in tombstones_document:
+            tombstone = ReleaseTombstone.from_tombstone_record(
+                tombstone_document
+            )
+            package_id = tombstone.package_id
+            collision_id = package_id.casefold()
+            if collision_id in tombstone_ids:
+                raise ValueError("Release index contains a duplicate package ID.")
+            if collision_id in release_ids:
+                raise ValueError(
+                    "A package cannot be active and de-certified together."
+                )
+            tombstone_ids.add(collision_id)
+            package = packages.get(package_id)
+            if (
+                package is not None
+                and tombstone.repository_identity
+                != package.repository_identity
+            ):
+                raise ValueError("Tombstone repository does not match the registry.")
+            tombstones[package_id] = tombstone
+
+        return cls._result(
+            common=common,
+            releases=releases,
+            tombstones=tombstones,
+            previous=previous,
+        )
+
+    @classmethod
+    def from_legacy_document(
+        cls, document, registry_bytes, now=None, previous=None
+    ):
+        """Normalize schema-v1 keyed metadata at an explicit read boundary."""
+        document = _require_document(
+            document,
+            "legacy release index",
+            (
+                "schema_version",
+                "sequence",
+                "generated_at",
+                "expires_at",
+                "registry_sha256",
+                "plugins",
+            ),
+            ("tombstones",),
+        )
+        if (
+            type(document["schema_version"]) is not int
+            or document["schema_version"] != LEGACY_RELEASE_INDEX_SCHEMA_VERSION
+        ):
+            raise ValueError("legacy release_index.schema_version is not supported.")
+        common = cls._validated_common(
+            document, registry_bytes, now, previous
+        )
+        registry_document = _load_json_object(registry_bytes, "legacy registry")
+        registry = PackageRegistry.from_legacy_document(registry_document)
+        packages = cls._package_map(registry)
+        plugins_document = document["plugins"]
+        tombstones_document = document.get("tombstones", {})
+        if not isinstance(plugins_document, dict):
+            raise ValueError("legacy release_index.plugins must be an object.")
+        if not isinstance(tombstones_document, dict):
+            raise ValueError("legacy release_index.tombstones must be an object.")
+        if set(plugins_document) & set(tombstones_document):
+            raise ValueError("A package cannot be active and de-certified together.")
+
+        releases = {}
+        active_release_ids = set()
+        for package_id, entry_document in plugins_document.items():
+            package = packages.get(package_id)
+            if package is None:
+                raise ValueError("Release index contains an unknown package.")
+            descriptor = ReleaseDescriptor.from_legacy_document(entry_document)
+            descriptor.package_id = package_id
+            if descriptor.repository_identity != package.repository_identity:
+                raise ValueError("Release repository does not match the registry.")
+            if descriptor.release_id in active_release_ids:
+                raise ValueError("Release index contains a duplicate release identity.")
+            active_release_ids.add(descriptor.release_id)
+            releases[package_id] = descriptor
+
+        tombstones = {}
+        for package_id, tombstone_document in tombstones_document.items():
+            package = packages.get(package_id)
+            if package is None:
+                raise ValueError("Release index contains an unknown package tombstone.")
+            tombstone = ReleaseTombstone.from_document(tombstone_document)
+            tombstone.package_id = package_id
+            if tombstone.repository_identity != package.repository_identity:
+                raise ValueError("Tombstone repository does not match the registry.")
+            tombstones[package_id] = tombstone
+
+        return cls._result(
+            common=common,
+            releases=releases,
+            tombstones=tombstones,
+            previous=previous,
+        )
 
     def _validate_lineage(self, previous):
         """Reject revision regressions, gaps, mutations, and silent removals."""
@@ -2462,7 +2896,22 @@ class ReleaseIndex:
         for plugin_key, previous_tombstone in previous.tombstones.items():
             current_tombstone = self.tombstones.get(plugin_key)
             if current_tombstone is None:
-                raise ValueError("A de-certified release was reactivated without review.")
+                current_release = self.plugins.get(plugin_key)
+                if (
+                    current_release is None
+                    or current_release.repository_identity
+                    != previous_tombstone.repository_identity
+                    or current_release.revision
+                    <= previous_tombstone.last_revision
+                    or current_release.release_id
+                    == previous_tombstone.release_id
+                    or previous_tombstone.release_id
+                    not in current_release.supersedes
+                ):
+                    raise ValueError(
+                        "A de-certified release was reactivated without review."
+                    )
+                continue
             if (
                 current_tombstone.repository_identity
                 != previous_tombstone.repository_identity
@@ -2587,7 +3036,7 @@ class ReleaseMetadataStore:
         self._write_atomic_state(
             self.watermark_path,
             {
-                "schema_version": RELEASE_INDEX_SCHEMA_VERSION,
+                "schema_version": RELEASE_METADATA_STATE_SCHEMA_VERSION,
                 "highest_sequence": sequence,
             },
             "watermark_written",
@@ -2601,7 +3050,7 @@ class ReleaseMetadataStore:
         self._write_atomic_state(
             self.pointer_path,
             {
-                "schema_version": RELEASE_INDEX_SCHEMA_VERSION,
+                "schema_version": RELEASE_METADATA_STATE_SCHEMA_VERSION,
                 "sequence": sequence,
             },
             "pointer_written",
@@ -2622,7 +3071,8 @@ class ReleaseMetadataStore:
                 raise ValueError("State document has unexpected fields.")
             if "schema_version" in document and (
                 type(document["schema_version"]) is not int
-                or document["schema_version"] != RELEASE_INDEX_SCHEMA_VERSION
+                or document["schema_version"]
+                != RELEASE_METADATA_STATE_SCHEMA_VERSION
             ):
                 raise ValueError("State document schema is unsupported.")
             sequence = _require_positive_integer(document[field], field)
@@ -2636,10 +3086,25 @@ class ReleaseMetadataStore:
         generated_at = _parse_utc_timestamp(
             document.get("generated_at"), "release_index.generated_at"
         )
-        return ReleaseIndex.from_document(
+        return self._parse_index(
+            document,
+            registry_bytes,
+            now=generated_at,
+        )
+
+    def _parse_index(self, document, registry_bytes, *, now, previous=None):
+        """Normalize legacy v1 only at the metadata-store read boundary."""
+        parser = (
+            ReleaseIndex.from_legacy_document
+            if document.get("schema_version")
+            == LEGACY_RELEASE_INDEX_SCHEMA_VERSION
+            else ReleaseIndex.from_document
+        )
+        return parser(
             document,
             registry_bytes=registry_bytes,
-            now=generated_at,
+            now=now,
+            previous=previous,
         )
 
     def _generation_from_directory(self, generation_path):
@@ -2920,9 +3385,9 @@ class ReleaseMetadataStore:
 
         prior_generation, watermark, _ = self._trusted_generation(repair=True)
         document = _load_json_object(index_bytes, "release_index.json")
-        release_index = ReleaseIndex.from_document(
+        release_index = self._parse_index(
             document,
-            registry_bytes=registry_bytes,
+            registry_bytes,
             now=self.clock(),
             previous=(
                 prior_generation.release_index
@@ -3003,7 +3468,8 @@ class ReleaseMetadataStore:
         return self._selection(generation)
 
 
-INSTALL_METADATA_SCHEMA_VERSION = 1
+INSTALL_METADATA_SCHEMA_VERSION = 2
+LEGACY_INSTALL_METADATA_SCHEMA_VERSION = 1
 WINDOWS_RESERVED_PATH_NAMES = {
     "aux",
     "con",
@@ -4788,6 +5254,7 @@ class ReleaseArtifactValidationService:
 
     def _compile_python(self, selected_files):
         plugin_metadata = None
+        certified_identity = None
         for installed_path, file_record in selected_files:
             if not installed_path.casefold().endswith(".py"):
                 continue
@@ -4811,8 +5278,15 @@ class ReleaseArtifactValidationService:
                     "Python source failed compilation: " + installed_path,
                 ) from error
             if installed_path == "plugin.py":
+                try:
+                    certified_identity = certify_plugin_py(contents)
+                except ValueError as error:
+                    raise self._error(
+                        "identity_mismatch",
+                        "The staged plugin identity could not be certified.",
+                    ) from error
                 plugin_metadata = self._parse_plugin_metadata(contents)
-        return plugin_metadata
+        return plugin_metadata, certified_identity
 
     def _parse_plugin_metadata(self, contents):
         try:
@@ -4830,25 +5304,33 @@ class ReleaseArtifactValidationService:
             source_code,
             re.IGNORECASE | re.DOTALL,
         )
-        if len(plugin_tags) != 1:
+        keyed_metadata = []
+        for plugin_tag in plugin_tags:
+            metadata = {}
+            for match in re.finditer(
+                r"([A-Za-z_][\w:.-]*)\s*=\s*(\"([^\"]*)\"|'([^']*)')",
+                plugin_tag,
+            ):
+                key = match.group(1).lower()
+                if key in metadata:
+                    raise self._error(
+                        "identity_ambiguous",
+                        "The staged plugin metadata contains duplicate attributes.",
+                    )
+                value = (
+                    match.group(3)
+                    if match.group(3) is not None
+                    else match.group(4)
+                )
+                metadata[key] = html.unescape(value or "")
+            if "key" in metadata:
+                keyed_metadata.append(metadata)
+        if len(keyed_metadata) != 1:
             raise self._error(
                 "identity_mismatch",
-                "The staged plugin must contain one Domoticz plugin tag.",
+                "The staged plugin must contain one keyed Domoticz plugin tag.",
             )
-        metadata = {}
-        for match in re.finditer(
-            r"([A-Za-z_][\w:.-]*)\s*=\s*(\"([^\"]*)\"|'([^']*)')",
-            plugin_tags[0],
-        ):
-            key = match.group(1).lower()
-            if key in metadata:
-                raise self._error(
-                    "identity_ambiguous",
-                    "The staged plugin metadata contains duplicate attributes.",
-                )
-            value = match.group(3) if match.group(3) is not None else match.group(4)
-            metadata[key] = html.unescape(value or "")
-        return metadata
+        return keyed_metadata[0]
 
     def _repository_lookup(self):
         lookup = {}
@@ -4895,7 +5377,10 @@ class ReleaseArtifactValidationService:
         source_root,
         plugin_key,
         metadata,
+        certified_identity,
         repository_identity,
+        expected_domoticz_key,
+        expected_plugin_py_sha256,
     ):
         entry = self.plugin.get_registry_entry(plugin_key)
         if entry is None:
@@ -4924,6 +5409,40 @@ class ReleaseArtifactValidationService:
                     "identity_mismatch",
                     "The release repository identity differs from the registry.",
                 )
+
+        registered_domoticz_key = str(
+            getattr(entry, "domoticz_key", "") or ""
+        )
+        if expected_domoticz_key:
+            if (
+                registered_domoticz_key
+                and expected_domoticz_key != registered_domoticz_key
+            ):
+                raise self._error(
+                    "identity_mismatch",
+                    "The release Domoticz identity differs from the registry.",
+                )
+            registered_domoticz_key = expected_domoticz_key
+        if registered_domoticz_key:
+            if (
+                certified_identity is None
+                or certified_identity.domoticz_key
+                != registered_domoticz_key
+            ):
+                raise self._error(
+                    "identity_mismatch",
+                    "The staged Domoticz identity differs from the requested package.",
+                )
+            if (
+                expected_plugin_py_sha256
+                and certified_identity.plugin_py_sha256
+                != expected_plugin_py_sha256
+            ):
+                raise self._error(
+                    "identity_mismatch",
+                    "The staged plugin.py differs from the certified release.",
+                )
+            return "certified plugin.py identity"
 
         try:
             lookups = self.plugin.build_installed_plugin_lookup()
@@ -5026,6 +5545,8 @@ class ReleaseArtifactValidationService:
         plugin_key,
         expected_tree_sha256=None,
         repository_identity=None,
+        expected_domoticz_key=None,
+        expected_plugin_py_sha256=None,
     ):
         """Return canonical identity only after every runtime check succeeds."""
         try:
@@ -5045,6 +5566,26 @@ class ReleaseArtifactValidationService:
                 raise self._error(
                     "tree_mismatch",
                     "The expected artifact tree digest is invalid.",
+                ) from error
+        if bool(expected_domoticz_key) != bool(expected_plugin_py_sha256):
+            raise self._error(
+                "identity_mismatch",
+                "The certified release identity is incomplete.",
+            )
+        if expected_domoticz_key:
+            try:
+                expected_domoticz_key = _require_nonempty_string(
+                    expected_domoticz_key,
+                    "expected_domoticz_key",
+                )
+                expected_plugin_py_sha256 = _require_sha256(
+                    expected_plugin_py_sha256,
+                    "expected_plugin_py_sha256",
+                )
+            except ValueError as error:
+                raise self._error(
+                    "identity_mismatch",
+                    "The certified release identity is invalid.",
                 ) from error
 
         root_path = self._root_layout(extraction_dir, root_prefix)
@@ -5071,8 +5612,8 @@ class ReleaseArtifactValidationService:
                 "plugin_missing",
                 "The selected source tree requires a non-empty root plugin.py.",
             )
-        metadata = self._compile_python(selected_files)
-        if metadata is None:
+        metadata, certified_identity = self._compile_python(selected_files)
+        if metadata is None or certified_identity is None:
             raise self._error(
                 "identity_mismatch",
                 "The staged plugin metadata could not be read.",
@@ -5081,7 +5622,10 @@ class ReleaseArtifactValidationService:
             source_root,
             plugin_key,
             metadata,
+            certified_identity,
             repository_identity,
+            expected_domoticz_key,
+            expected_plugin_py_sha256,
         )
         revalidated_files, _revalidated_directories = self._scan_tree(root_path)
         if self._tree_fingerprint(revalidated_files) != self._tree_fingerprint(
@@ -5134,13 +5678,30 @@ class InstallMetadata:
 
     @classmethod
     def from_document(cls, document):
-        """Parse strict release-managed install metadata."""
+        """Parse strict schema-v2 release-managed install metadata."""
+        return cls._from_document(
+            document,
+            schema_version=INSTALL_METADATA_SCHEMA_VERSION,
+            identity_field="package_id",
+        )
+
+    @classmethod
+    def from_legacy_document(cls, document):
+        """Normalize one explicit schema-v1 install metadata document."""
+        return cls._from_document(
+            document,
+            schema_version=LEGACY_INSTALL_METADATA_SCHEMA_VERSION,
+            identity_field="plugin_key",
+        )
+
+    @classmethod
+    def _from_document(cls, document, *, schema_version, identity_field):
         document = _require_document(
             document,
             "install metadata",
             (
                 "schema",
-                "plugin_key",
+                identity_field,
                 "management_mode",
                 "repository_identity",
                 "version",
@@ -5165,7 +5726,7 @@ class InstallMetadata:
         )
         if (
             type(document["schema"]) is not int
-            or document["schema"] != INSTALL_METADATA_SCHEMA_VERSION
+            or document["schema"] != schema_version
         ):
             raise ValueError("Install metadata schema is unsupported.")
 
@@ -5286,7 +5847,9 @@ class InstallMetadata:
 
         return cls(
             schema=INSTALL_METADATA_SCHEMA_VERSION,
-            plugin_key=_require_plugin_key(document["plugin_key"]),
+            plugin_key=_require_plugin_key(
+                document[identity_field], identity_field
+            ),
             management_mode=management_mode,
             repository_identity=repository_identity,
             version=_require_nonempty_string(document["version"], "version"),
@@ -5320,8 +5883,8 @@ class InstallMetadata:
     def to_document(self):
         """Return the canonical JSON-compatible install audit document."""
         document = {
-            "schema": self.schema,
-            "plugin_key": self.plugin_key,
+            "schema": INSTALL_METADATA_SCHEMA_VERSION,
+            "package_id": self.plugin_key,
             "management_mode": self.management_mode,
             "repository_identity": self.repository_identity,
             "version": self.version,
@@ -5351,6 +5914,11 @@ class InstallMetadata:
                 self.migration_inventory_sha256
             )
         return document
+
+    @property
+    def package_id(self):
+        """Expose the durable package identity without breaking callers."""
+        return self.plugin_key
 
 
 class InstallMetadataService:
@@ -5411,7 +5979,20 @@ class InstallMetadataService:
                 )
         except OSError as error:
             raise ValueError("Could not read install metadata: " + str(error)) from error
-        return InstallMetadata.from_document(document)
+        is_legacy = (
+            type(document.get("schema")) is int
+            and document.get("schema")
+            == LEGACY_INSTALL_METADATA_SCHEMA_VERSION
+        )
+        parser = (
+            InstallMetadata.from_legacy_document
+            if is_legacy
+            else InstallMetadata.from_document
+        )
+        metadata = parser(document)
+        if is_legacy:
+            self.write(plugin_dir, metadata)
+        return metadata
 
     def write(self, plugin_dir, metadata):
         """Fsync and atomically replace committed install metadata."""
@@ -6725,8 +7306,10 @@ class ChannelPreferenceService:
         )
 
 
-RELEASE_TRANSACTION_SCHEMA_VERSION = 1
-RELEASE_PENDING_TRANSACTIONS_SCHEMA_VERSION = 1
+RELEASE_TRANSACTION_SCHEMA_VERSION = 2
+LEGACY_RELEASE_TRANSACTION_SCHEMA_VERSION = 1
+RELEASE_PENDING_TRANSACTIONS_SCHEMA_VERSION = 2
+LEGACY_RELEASE_PENDING_TRANSACTIONS_SCHEMA_VERSION = 1
 RELEASE_TRANSACTION_OPERATIONS = {
     "release_install",
     "release_update",
@@ -6738,6 +7321,13 @@ RELEASE_TRANSACTION_FINAL_PHASES = {
     "restart_pending",
     "rolled_back",
     "stale_target",
+}
+RELEASE_TRANSACTION_PREACTIVATION_PHASES = {
+    "created",
+    "staged_verified",
+    "dependency_confirmation_required",
+    "dependencies_staged",
+    "dependency_blocked",
 }
 RELEASE_TRANSACTION_PHASES = RELEASE_TRANSACTION_FINAL_PHASES | {
     "created",
@@ -7017,7 +7607,7 @@ class ReleaseTransaction:
         return {
             "schema_version": RELEASE_TRANSACTION_SCHEMA_VERSION,
             "operation_id": self.operation_id,
-            "plugin_key": self.plugin_key,
+            "package_id": self.plugin_key,
             "operation": self.operation,
             "phase": self.phase,
             "expected_current": _transaction_json_copy(
@@ -7046,13 +7636,40 @@ class ReleaseTransaction:
 
     @classmethod
     def from_document(cls, document, expected_paths):
+        """Parse one strict schema-v2 transaction journal."""
+        return cls._from_document(
+            document,
+            expected_paths,
+            schema_version=RELEASE_TRANSACTION_SCHEMA_VERSION,
+            identity_field="package_id",
+        )
+
+    @classmethod
+    def from_legacy_document(cls, document, expected_paths):
+        """Normalize one explicit schema-v1 transaction journal."""
+        return cls._from_document(
+            document,
+            expected_paths,
+            schema_version=LEGACY_RELEASE_TRANSACTION_SCHEMA_VERSION,
+            identity_field="plugin_key",
+        )
+
+    @classmethod
+    def _from_document(
+        cls,
+        document,
+        expected_paths,
+        *,
+        schema_version,
+        identity_field,
+    ):
         document = _require_document(
             document,
             "release transaction",
             (
                 "schema_version",
                 "operation_id",
-                "plugin_key",
+                identity_field,
                 "operation",
                 "phase",
                 "expected_current",
@@ -7069,15 +7686,16 @@ class ReleaseTransaction:
         )
         if (
             type(document["schema_version"]) is not int
-            or document["schema_version"]
-            != RELEASE_TRANSACTION_SCHEMA_VERSION
+            or document["schema_version"] != schema_version
         ):
             raise ValueError("Release transaction schema is unsupported.")
         operation_id = _require_plugin_key(
             document["operation_id"],
             "operation_id",
         )
-        plugin_key = _require_plugin_key(document["plugin_key"])
+        plugin_key = _require_plugin_key(
+            document[identity_field], identity_field
+        )
         operation = _require_nonempty_string(
             document["operation"],
             "operation",
@@ -7151,6 +7769,11 @@ class ReleaseTransaction:
             error=error,
             rollback_from=rollback_from,
         )
+
+    @property
+    def package_id(self):
+        """Expose the durable package identity without breaking callers."""
+        return self.plugin_key
 
 
 class ReleaseTransactionManager:
@@ -7381,8 +8004,9 @@ class ReleaseTransactionManager:
                 os.close(descriptor)
             process_lock.release()
 
-    def _write_transaction(self, transaction):
-        transaction.updated_at = self.plugin.get_host().utc_timestamp()
+    def _write_transaction(self, transaction, update_timestamp=True):
+        if update_timestamp:
+            transaction.updated_at = self.plugin.get_host().utc_timestamp()
         document = transaction.to_document()
         expected_paths = self._paths(
             transaction.plugin_key,
@@ -7419,7 +8043,7 @@ class ReleaseTransactionManager:
     def _pending_transaction_identity(self, transaction):
         return {
             "operation_id": transaction.operation_id,
-            "plugin_key": transaction.plugin_key,
+            "package_id": transaction.plugin_key,
             "operation": transaction.operation,
             "expected_current": transaction.expected_current,
             "target": transaction.target,
@@ -7448,14 +8072,24 @@ class ReleaseTransactionManager:
             "pending release transactions",
             ("schema_version", "operations"),
         )
-        if (
-            type(document["schema_version"]) is not int
-            or document["schema_version"]
-            != RELEASE_PENDING_TRANSACTIONS_SCHEMA_VERSION
-        ):
+        schema_version = document["schema_version"]
+        if type(schema_version) is not int or schema_version not in {
+            RELEASE_PENDING_TRANSACTIONS_SCHEMA_VERSION,
+            LEGACY_RELEASE_PENDING_TRANSACTIONS_SCHEMA_VERSION,
+        }:
             raise ValueError(
                 "Pending release transactions schema is unsupported."
             )
+        is_legacy = (
+            schema_version
+            == LEGACY_RELEASE_PENDING_TRANSACTIONS_SCHEMA_VERSION
+        )
+        identity_field = "plugin_key" if is_legacy else "package_id"
+        transaction_parser = (
+            ReleaseTransaction.from_legacy_document
+            if is_legacy
+            else ReleaseTransaction.from_document
+        )
         raw_operations = document["operations"]
         if not isinstance(raw_operations, list):
             raise ValueError(
@@ -7476,9 +8110,9 @@ class ReleaseTransactionManager:
                 raise ValueError(
                     "Pending release transactions contain a duplicate operation."
                 )
-            plugin_key = raw_operation.get("plugin_key", "")
+            plugin_key = raw_operation.get(identity_field, "")
             expected_paths = self._paths(plugin_key, operation_id)
-            transaction = ReleaseTransaction.from_document(
+            transaction = transaction_parser(
                 raw_operation,
                 expected_paths,
             )
@@ -7501,6 +8135,8 @@ class ReleaseTransactionManager:
                 )
             operation_ids.add(operation_id)
             operations.append(transaction)
+        if is_legacy:
+            self._write_pending_transactions_locked(operations)
         return operations
 
     def _write_pending_transactions_locked(self, transactions):
@@ -7573,9 +8209,20 @@ class ReleaseTransactionManager:
                 journal_file.read(),
                 "release transaction journal",
             )
-        plugin_key = document.get("plugin_key", "")
+        is_legacy = (
+            type(document.get("schema_version")) is int
+            and document.get("schema_version")
+            == LEGACY_RELEASE_TRANSACTION_SCHEMA_VERSION
+        )
+        identity_field = "plugin_key" if is_legacy else "package_id"
+        plugin_key = document.get(identity_field, "")
         expected_paths = self._paths(plugin_key, operation_id)
-        transaction = ReleaseTransaction.from_document(
+        parser = (
+            ReleaseTransaction.from_legacy_document
+            if is_legacy
+            else ReleaseTransaction.from_document
+        )
+        transaction = parser(
             document,
             expected_paths,
         )
@@ -7586,6 +8233,8 @@ class ReleaseTransactionManager:
         )
         transaction.expected_current = expected_current
         transaction.target = target
+        if is_legacy:
+            self._write_transaction(transaction, update_timestamp=False)
         return transaction
 
     def load_transaction(self, operation_id):
@@ -8011,9 +8660,19 @@ class ReleaseTransactionManager:
             "bytes": total_bytes,
         }
 
-    def _install_metadata_digest(self, metadata):
+    def _install_metadata_digest(
+        self,
+        metadata,
+        schema_version=INSTALL_METADATA_SCHEMA_VERSION,
+    ):
+        document = metadata.to_document()
+        if schema_version == LEGACY_INSTALL_METADATA_SCHEMA_VERSION:
+            document["schema"] = LEGACY_INSTALL_METADATA_SCHEMA_VERSION
+            document["plugin_key"] = document.pop("package_id")
+        elif schema_version != INSTALL_METADATA_SCHEMA_VERSION:
+            raise ValueError("Install metadata digest schema is unsupported.")
         contents = json.dumps(
-            metadata.to_document(),
+            document,
             ensure_ascii=False,
             allow_nan=False,
             sort_keys=True,
@@ -8052,9 +8711,16 @@ class ReleaseTransactionManager:
                 return False
             if staged_snapshot is not None:
                 staged_snapshot = _validated_staged_snapshot(staged_snapshot)
+                accepted_metadata_digests = {
+                    self._install_metadata_digest(metadata),
+                    self._install_metadata_digest(
+                        metadata,
+                        schema_version=LEGACY_INSTALL_METADATA_SCHEMA_VERSION,
+                    ),
+                }
                 if (
-                    self._install_metadata_digest(metadata)
-                    != staged_snapshot["install_metadata_sha256"]
+                    staged_snapshot["install_metadata_sha256"]
+                    not in accepted_metadata_digests
                     or metadata.artifact_files
                     != staged_snapshot["artifact_files"]
                     or metadata.preserved_files
@@ -8442,6 +9108,15 @@ class ReleaseTransactionManager:
             os.unlink(path)
         self._fsync_directory(os.path.dirname(path))
 
+    def _remove_transaction_leaves(self, transaction):
+        for transaction_path in (
+            transaction.paths.staged_code,
+            transaction.paths.staged_dependencies,
+            transaction.paths.backup_code,
+            transaction.paths.backup_dependencies,
+        ):
+            self._remove_transaction_path(transaction_path)
+
     def _restore_component(
         self,
         live,
@@ -8601,14 +9276,11 @@ class ReleaseTransactionManager:
                 error=(error or transaction.error) + " " + rollback_error,
             )
             raise RuntimeError(rollback_error)
-        if transaction.operation == "release_install":
-            for path in (
-                transaction.paths.staged_code,
-                transaction.paths.staged_dependencies,
-                transaction.paths.backup_code,
-                transaction.paths.backup_dependencies,
-            ):
-                self._remove_transaction_path(path)
+        if (
+            transaction.operation == "release_install"
+            or original_phase in RELEASE_TRANSACTION_PREACTIVATION_PHASES
+        ):
+            self._remove_transaction_leaves(transaction)
         return self._set_phase(
             transaction,
             "rolled_back",
@@ -8756,24 +9428,26 @@ class ReleaseTransactionManager:
         error = str(error or "Release operation was aborted.")
         with self.operation_lock():
             transaction = self._load_transaction(operation_id)
-            if transaction.phase in {
-                "code_backup_pending",
-                "code_backed_up",
-                "dependencies_backup_pending",
-                "dependencies_backed_up",
-                "dependencies_activation_pending",
-                "dependencies_activated",
-                "code_activation_pending",
-                "release_activated",
-                "restart_pending",
-                "release_managed",
-                "queued_locked",
-                "rollback_pending",
-            }:
+            resuming_abort = bool(
+                transaction.phase == "rollback_pending"
+                and transaction.rollback_from
+                in RELEASE_TRANSACTION_PREACTIVATION_PHASES
+            )
+            if (
+                transaction.phase
+                not in RELEASE_TRANSACTION_PREACTIVATION_PHASES
+                and not resuming_abort
+                and transaction.phase != "rolled_back"
+            ):
                 raise RuntimeError(
                     "An activation that may have changed live state must be rolled back."
                 )
             if transaction.phase == "rolled_back":
+                if (
+                    transaction.rollback_from
+                    in RELEASE_TRANSACTION_PREACTIVATION_PHASES
+                ):
+                    self._remove_transaction_leaves(transaction)
                 return transaction
             if not self._metadata_matches(transaction) or not self._dependency_tree_matches(
                 transaction.paths.live_dependencies,
@@ -8785,8 +9459,10 @@ class ReleaseTransactionManager:
                     "stale_target",
                     error="Installed state changed before the release operation aborted.",
                 )
-            staging_parent = os.path.dirname(transaction.paths.staged_code)
-            self._remove_transaction_path(staging_parent)
+            if not resuming_abort:
+                transaction.rollback_from = transaction.phase
+                self._set_phase(transaction, "rollback_pending", error=error)
+            self._remove_transaction_leaves(transaction)
             return self._set_phase(
                 transaction,
                 "rolled_back",
@@ -9639,8 +10315,10 @@ class RegistryEntry:
         updated_at_slot_present=False,
         local=False,
         delivery=None,
+        domoticz_key="",
     ):
-        self.key = str(key or "")
+        self.package_id = str(key or "")
+        self.key = self.package_id
         self.author = str(author or "")
         self.repository = str(repository or "")
         self.description = str(description or "")
@@ -9650,6 +10328,7 @@ class RegistryEntry:
         self.updated_at_slot_present = bool(updated_at_slot_present or self.updated_at)
         self.local = bool(local)
         self.delivery = delivery or DeliveryPolicy.implicit()
+        self.domoticz_key = str(domoticz_key or "")
 
     def to_legacy_list(self):
         entry = [self.author, self.repository, self.description, self.branch]
@@ -9669,6 +10348,7 @@ class RegistryEntry:
             self.updated_at_slot_present,
             self.local,
             self.delivery,
+            self.domoticz_key,
         )
 
 
@@ -9679,19 +10359,43 @@ class RegistryService:
     def normalize_entry(self, key, data, local=False, default_platforms=None):
         platforms = ["unknown"]
         if isinstance(data, dict):
-            author = data.get("author", data.get("owner", ""))
-            repository = data.get("repository", data.get("repo", ""))
+            explicit_repository = data.get("repository")
+            if "package_id" in data and isinstance(
+                explicit_repository, dict
+            ):
+                if data.get("package_id") != key:
+                    Domoticz.Error(
+                        "Plugin '" + str(key) + "' package_id does not match its record."
+                    )
+                    return None, ["unknown"]
+                author = explicit_repository.get("url", "")
+                repository = ""
+                branch = explicit_repository.get("branch", "master")
+                domoticz_key = data.get("domoticz_key", "")
+            else:
+                author = data.get("author", data.get("owner", ""))
+                repository = data.get("repository", data.get("repo", ""))
+                branch = data.get("branch", "master")
+                domoticz_key = data.get("domoticz_key", "")
             description = data.get("description", "")
-            branch = data.get("branch", "master")
             updated_at = "" if local else data.get("updated_at", "")
             platforms = self.plugin.normalize_platforms(data.get("platforms", data.get("platform", None)))
             try:
                 if local:
                     delivery = DeliveryPolicy.git_only()
                 else:
+                    delivery_document = data.get("delivery")
+                    if (
+                        isinstance(delivery_document, dict)
+                        and "schema_version" not in delivery_document
+                    ):
+                        delivery_document = {
+                            "schema_version": DELIVERY_POLICY_SCHEMA_VERSION,
+                            **delivery_document,
+                        }
                     delivery = (
                         DeliveryPolicy.from_document(
-                            data["delivery"],
+                            delivery_document,
                             normalize_repository_identity(author, repository),
                         )
                         if "delivery" in data
@@ -9714,6 +10418,7 @@ class RegistryService:
                 bool(updated_at),
                 local,
                 delivery,
+                domoticz_key,
             )
         elif isinstance(data, list):
             raw_entry = list(data[:5])
@@ -9743,7 +10448,19 @@ class RegistryService:
 
         return entry, platforms
 
+    def records_from_document(self, registry):
+        if not isinstance(registry, dict):
+            raise ValueError("Registry must be an object.")
+        if "schema_version" in registry:
+            parsed = PackageRegistry.from_document(registry)
+            return {
+                package.package_id: package.to_document()
+                for package in parsed.packages
+            }
+        return dict(registry)
+
     def normalize_registry(self, registry, local_keys=None):
+        registry = self.records_from_document(registry)
         local_keys = set(local_keys or [])
         normalized_registry = {}
         plugin_platforms = {}
@@ -9780,6 +10497,9 @@ class LocalRegistryDocument:
     writable: bool
     error_code: str = ""
     message: str = ""
+    schema_version: int = 2
+    backup_path: str = ""
+    migrated: bool = False
 
 
 class LocalRegistryError(Exception):
@@ -9804,7 +10524,18 @@ class LocalRegistryError(Exception):
 class LocalRegistryService:
     """Read, validate, and atomically mutate registry_local.json."""
 
-    MISSING_REVISION_BYTES = b"PyPluginStore:missing-local-registry:v1"
+    SCHEMA_VERSION = 2
+    BACKUP_FILE_NAME = "registry_local.v1.backup.json"
+    MISSING_REVISION_BYTES = b"PyPluginStore:missing-local-registry:v2"
+    DOCUMENT_FIELDS = {"schema_version", "packages"}
+    PACKAGE_FIELDS = {
+        "package_id",
+        "domoticz_key",
+        "description",
+        "repository",
+        "platforms",
+    }
+    REPOSITORY_FIELDS = {"url", "branch"}
     FIELD_LIMITS = {
         "key": 128,
         "repository_source": 1000,
@@ -9820,9 +10551,334 @@ class LocalRegistryService:
         """Return a stable SHA-256 revision for exact file bytes."""
         return "sha256:" + hashlib.sha256(contents).hexdigest()
 
+    def backup_path(self):
+        return os.path.join(
+            os.path.dirname(self.plugin.get_local_registry_file()),
+            self.BACKUP_FILE_NAME,
+        )
+
+    def parse_json_object(self, contents, label):
+        """Decode strict JSON while rejecting duplicate object fields."""
+        def reject_duplicate_keys(pairs):
+            result = {}
+            for key, value in pairs:
+                if key in result:
+                    raise ValueError(
+                        label + " contains duplicate JSON key " + str(key) + "."
+                    )
+                result[key] = value
+            return result
+
+        try:
+            document = json.loads(
+                contents.decode("utf-8"),
+                object_pairs_hook=reject_duplicate_keys,
+            )
+        except json.JSONDecodeError as error:
+            raise ValueError(
+                "{} at line {} column {}.".format(
+                    error.msg,
+                    error.lineno,
+                    error.colno,
+                )
+            ) from error
+        except UnicodeDecodeError as error:
+            raise ValueError(str(error)) from error
+        if not isinstance(document, dict):
+            raise ValueError(label + " must contain a JSON object.")
+        return document
+
+    def require_exact_fields(self, document, allowed, label):
+        if not isinstance(document, dict):
+            raise ValueError(label + " must be an object.")
+        missing = sorted(set(allowed) - set(document))
+        unknown = sorted(set(document) - set(allowed))
+        if missing:
+            raise ValueError(label + " is missing " + missing[0] + ".")
+        if unknown:
+            raise ValueError(
+                label + " contains unknown field " + unknown[0] + "."
+            )
+
+    def canonical_identity(self, value, label, allow_empty=False):
+        if not isinstance(value, str):
+            raise ValueError(label + " must be text.")
+        if value != value.strip() or unicodedata.normalize("NFC", value) != value:
+            raise ValueError(label + " must be canonical text.")
+        if not value:
+            if allow_empty:
+                return ""
+            raise ValueError(label + " must not be empty.")
+        if self.has_control_characters(value):
+            raise ValueError(label + " contains control characters.")
+        return value
+
+    def validate_package_id(self, value):
+        value = self.canonical_identity(value, "Local package_id")
+        if len(value) > self.FIELD_LIMITS["key"]:
+            raise ValueError("Local package_id is too long.")
+        value = self.plugin.get_host().validate_plugin_key(value)
+        if value.casefold() == "idle":
+            raise ValueError("Local package_id cannot be Idle.")
+        return value
+
+    def validate_domoticz_key(self, value, allow_empty=False):
+        value = self.canonical_identity(
+            value,
+            "Local domoticz_key",
+            allow_empty=allow_empty,
+        )
+        if value and any(character in value for character in "<>"):
+            raise ValueError("Local domoticz_key contains unsafe characters.")
+        return value
+
+    def folded_package_id(self, package_id):
+        return unicodedata.normalize("NFC", package_id).casefold()
+
+    def normalize_persisted_platforms(self, platforms):
+        if not isinstance(platforms, list):
+            raise ValueError("Local registry platforms must be a list.")
+        normalized = []
+        for platform_name in platforms:
+            if not isinstance(platform_name, str):
+                raise ValueError("Local registry platform must be text.")
+            platform_name = platform_name.strip().lower()
+            if platform_name not in ("linux", "windows"):
+                raise ValueError("Local registry platform is unsupported.")
+            if platform_name not in normalized:
+                normalized.append(platform_name)
+        return [
+            platform_name
+            for platform_name in ("linux", "windows")
+            if platform_name in normalized
+        ]
+
+    def validate_persisted_record(self, record):
+        self.require_exact_fields(record, self.PACKAGE_FIELDS, "Local package")
+        package_id = self.validate_package_id(record["package_id"])
+        domoticz_key = self.validate_domoticz_key(
+            record["domoticz_key"],
+            allow_empty=True,
+        )
+
+        description = record["description"]
+        if not isinstance(description, str):
+            raise ValueError("Local package description must be text.")
+        if self.has_control_characters(description):
+            raise ValueError("Local package description contains control characters.")
+        if len(description) > self.FIELD_LIMITS["description"]:
+            raise ValueError("Local package description is too long.")
+
+        repository = record["repository"]
+        self.require_exact_fields(
+            repository,
+            self.REPOSITORY_FIELDS,
+            "Local package repository",
+        )
+        repository_url = repository["url"]
+        branch = repository["branch"]
+        if (
+            not isinstance(repository_url, str)
+            or repository_url != repository_url.strip()
+            or not self.repository_source_is_valid(repository_url)
+        ):
+            raise ValueError("Local package repository URL is invalid.")
+        if len(repository_url) > self.FIELD_LIMITS["repository_source"]:
+            raise ValueError("Local package repository URL is too long.")
+        if (
+            not isinstance(branch, str)
+            or not branch
+            or branch != branch.strip()
+            or self.has_control_characters(branch)
+        ):
+            raise ValueError("Local package repository branch is invalid.")
+        if len(branch) > self.FIELD_LIMITS["branch"]:
+            raise ValueError("Local package repository branch is too long.")
+
+        return {
+            "package_id": package_id,
+            "domoticz_key": domoticz_key,
+            "description": description,
+            "repository": {
+                "url": repository_url,
+                "branch": branch,
+            },
+            "platforms": self.normalize_persisted_platforms(
+                record["platforms"]
+            ),
+        }
+
+    def parse_v2_document(self, document):
+        self.require_exact_fields(
+            document,
+            self.DOCUMENT_FIELDS,
+            "Local registry",
+        )
+        if document["schema_version"] != self.SCHEMA_VERSION:
+            raise ValueError("Local registry schema is unsupported.")
+        packages = document["packages"]
+        if not isinstance(packages, list):
+            raise ValueError("Local registry packages must be an array.")
+
+        entries = {}
+        folded_ids = set()
+        for raw_record in packages:
+            record = self.validate_persisted_record(raw_record)
+            folded_id = self.folded_package_id(record["package_id"])
+            if folded_id in folded_ids:
+                raise ValueError(
+                    "Local registry contains colliding package IDs."
+                )
+            folded_ids.add(folded_id)
+            entries[record["package_id"]] = record
+        return entries
+
+    def serialize_entries(self, entries):
+        records = []
+        folded_ids = set()
+        for package_id, raw_record in entries.items():
+            if not isinstance(raw_record, dict):
+                raise ValueError("Local registry entry must be an object.")
+            candidate = copy.deepcopy(raw_record)
+            if candidate.get("package_id") != package_id:
+                raise ValueError("Local registry package_id does not match its entry.")
+            record = self.validate_persisted_record(candidate)
+            folded_id = self.folded_package_id(package_id)
+            if folded_id in folded_ids:
+                raise ValueError(
+                    "Local registry contains colliding package IDs."
+                )
+            folded_ids.add(folded_id)
+            records.append(record)
+        records.sort(
+            key=lambda record: (
+                record["package_id"].casefold(),
+                record["package_id"],
+            )
+        )
+        return (
+            json.dumps(
+                {
+                    "schema_version": self.SCHEMA_VERSION,
+                    "packages": records,
+                },
+                indent=2,
+                ensure_ascii=False,
+            )
+            + "\n"
+        ).encode("utf-8")
+
+    def atomic_write_bytes(self, path, contents):
+        directory = os.path.dirname(path)
+        os.makedirs(directory, exist_ok=True)
+        descriptor, temporary_path = tempfile.mkstemp(
+            prefix="." + os.path.basename(path) + ".",
+            suffix=".tmp",
+            dir=directory,
+        )
+        try:
+            with os.fdopen(descriptor, "wb") as output:
+                output.write(contents)
+                output.flush()
+                os.fsync(output.fileno())
+            os.replace(temporary_path, path)
+            temporary_path = ""
+        finally:
+            if temporary_path and os.path.exists(temporary_path):
+                os.unlink(temporary_path)
+
+    def preserve_legacy_backup(self, contents):
+        path = self.backup_path()
+        if os.path.lexists(path):
+            if os.path.islink(path) or not os.path.isfile(path):
+                raise ValueError("Local registry backup path is unsafe.")
+            with open(path, "rb") as backup_file:
+                if backup_file.read() != contents:
+                    raise ValueError(
+                        "Local registry backup already contains different bytes."
+                    )
+            return path
+        self.atomic_write_bytes(path, contents)
+        return path
+
+    def derive_installed_domoticz_key(self, package_id):
+        """Read identity only from the exact, real package folder."""
+        try:
+            package_id = self.plugin.get_host().validate_plugin_key(package_id)
+            plugin_dir = os.path.join(
+                self.plugin.get_host().plugins_dir(), package_id
+            )
+            if os.path.islink(plugin_dir) or not os.path.isdir(plugin_dir):
+                return ""
+            plugin_file = os.path.join(plugin_dir, "plugin.py")
+            if os.path.islink(plugin_file) or not os.path.isfile(plugin_file):
+                return ""
+            metadata = self.plugin.parse_domoticz_plugin_metadata(plugin_dir)
+            domoticz_key = (metadata or {}).get("key") or ""
+            if not domoticz_key:
+                return ""
+            return self.validate_domoticz_key(domoticz_key)
+        except (OSError, ValueError):
+            return ""
+
+    def normalize_legacy_platforms(self, platforms):
+        normalized = self.plugin.normalize_platforms(platforms)
+        return [] if normalized == ["unknown"] else normalized
+
+    def legacy_entry_to_record(self, package_id, entry):
+        package_id = self.validate_package_id(package_id)
+        platforms = []
+        if isinstance(entry, list):
+            if len(entry) < 4:
+                raise ValueError("Legacy local registry entry is incomplete.")
+            owner, repository, description, branch = entry[:4]
+            if len(entry) > 5:
+                platforms = entry[5]
+        elif isinstance(entry, dict):
+            if "package_id" in entry or isinstance(entry.get("repository"), dict):
+                raise ValueError("Local registry mixes legacy and v2 entries.")
+            owner = entry.get("owner", entry.get("author", ""))
+            repository = entry.get("repository", entry.get("repo", ""))
+            description = entry.get("description", "")
+            branch = entry.get("branch", "master")
+            platforms = entry.get("platforms", entry.get("platform", []))
+        else:
+            raise ValueError("Legacy local registry entry is invalid.")
+
+        if not isinstance(description, str) or not isinstance(branch, str):
+            raise ValueError("Legacy local registry text fields are invalid.")
+        source = self.plugin.build_git_clone_url(owner, repository)
+        return self.validate_persisted_record({
+            "package_id": package_id,
+            "domoticz_key": self.derive_installed_domoticz_key(package_id),
+            "description": description,
+            "repository": {
+                "url": source,
+                "branch": branch or "master",
+            },
+            "platforms": self.normalize_legacy_platforms(platforms),
+        })
+
+    def migrate_legacy_document(self, document):
+        entries = {}
+        folded_ids = set()
+        for package_id, legacy_entry in document.items():
+            if not isinstance(package_id, str):
+                raise ValueError("Legacy local package ID must be text.")
+            folded_id = self.folded_package_id(package_id)
+            if folded_id in folded_ids:
+                raise ValueError(
+                    "Legacy local registry contains colliding package IDs."
+                )
+            folded_ids.add(folded_id)
+            record = self.legacy_entry_to_record(package_id, legacy_entry)
+            entries[record["package_id"]] = record
+        return entries
+
     def read_document(self):
-        """Read the local registry without treating malformed data as empty."""
+        """Read v2, or durably migrate one valid legacy document to v2."""
         path = self.plugin.get_local_registry_file()
+        backup_path = self.backup_path()
         try:
             with open(path, "rb") as registry_file:
                 contents = registry_file.read()
@@ -9833,6 +10889,7 @@ class LocalRegistryService:
                 path=path,
                 exists=False,
                 writable=True,
+                backup_path=backup_path,
             )
         except Exception as error:
             return LocalRegistryDocument(
@@ -9843,29 +10900,24 @@ class LocalRegistryService:
                 writable=False,
                 error_code="registry_read_failed",
                 message=str(error),
+                backup_path=backup_path,
             )
 
         revision = self.revision_for_bytes(contents)
         try:
-            entries = json.loads(contents.decode("utf-8"))
-            if not isinstance(entries, dict):
-                raise ValueError("Local registry must contain a JSON object.")
-        except json.JSONDecodeError as error:
-            message = "{} at line {} column {}.".format(
-                error.msg,
-                error.lineno,
-                error.colno,
-            )
-            return LocalRegistryDocument(
-                entries={},
-                revision=revision,
-                path=path,
-                exists=True,
-                writable=False,
-                error_code="invalid_local_registry",
-                message=message,
-            )
-        except (UnicodeDecodeError, ValueError) as error:
+            parsed = self.parse_json_object(contents, "Local registry")
+            migrated = False
+            if type(parsed.get("schema_version")) is int:
+                entries = self.parse_v2_document(parsed)
+            else:
+                entries = self.migrate_legacy_document(parsed)
+                migrated_contents = self.serialize_entries(entries)
+                self.preserve_legacy_backup(contents)
+                self.atomic_write_bytes(path, migrated_contents)
+                contents = migrated_contents
+                revision = self.revision_for_bytes(contents)
+                migrated = True
+        except (OSError, ValueError) as error:
             return LocalRegistryDocument(
                 entries={},
                 revision=revision,
@@ -9874,6 +10926,7 @@ class LocalRegistryService:
                 writable=False,
                 error_code="invalid_local_registry",
                 message=str(error),
+                backup_path=backup_path,
             )
 
         return LocalRegistryDocument(
@@ -9882,6 +10935,8 @@ class LocalRegistryService:
             path=path,
             exists=True,
             writable=True,
+            backup_path=backup_path,
+            migrated=migrated,
         )
 
     def require_current_document(self, expected_revision):
@@ -9940,7 +10995,7 @@ class LocalRegistryService:
         field_errors = {}
 
         try:
-            self.plugin.get_host().validate_plugin_key(values["key"])
+            self.validate_package_id(values["key"])
         except ValueError:
             field_errors["key"] = "Enter a valid plugin key."
 
@@ -9967,10 +11022,10 @@ class LocalRegistryService:
 
     def write_entries(self, entries):
         try:
-            self.plugin.get_host().write_json_atomic(
+            contents = self.serialize_entries(entries)
+            self.atomic_write_bytes(
                 self.plugin.get_local_registry_file(),
-                entries,
-                sort_keys=False,
+                contents,
             )
         except Exception as error:
             raise LocalRegistryError(
@@ -9997,18 +11052,34 @@ class LocalRegistryService:
                     "Local registry entry was not found.",
                     reload_required=True,
                 )
-        elif values["key"] in document.entries:
-            raise LocalRegistryError(
-                "local_registry_entry_exists",
-                "A local registry entry with this key already exists.",
-                field_errors={"key": "This plugin key already exists locally."},
-            )
+        else:
+            requested_id = self.folded_package_id(values["key"])
+            if any(
+                self.folded_package_id(package_id) == requested_id
+                for package_id in document.entries
+            ):
+                raise LocalRegistryError(
+                    "local_registry_entry_exists",
+                    "A local registry entry with this key already exists.",
+                    field_errors={
+                        "key": "This plugin key already exists locally."
+                    },
+                )
 
         next_entries = dict(document.entries)
+        previous = next_entries.get(original_key, {}) if original_key else {}
         next_entries[values["key"]] = {
-            "owner": values["repository_source"],
+            "package_id": values["key"],
+            "domoticz_key": (
+                previous.get("domoticz_key", "")
+                or self.derive_installed_domoticz_key(values["key"])
+            ),
             "description": values["description"],
-            "branch": values["branch"],
+            "repository": {
+                "url": values["repository_source"],
+                "branch": values["branch"],
+            },
+            "platforms": list(previous.get("platforms", [])),
         }
         return self.write_entries(next_entries)
 
@@ -10036,23 +11107,19 @@ class LocalRegistryService:
 
     def entry_for_api(self, key, data, public_keys, installed_keys):
         errors = {}
-        if isinstance(data, dict):
-            author = data.get("author", data.get("owner", ""))
-            repository = data.get("repository", data.get("repo", ""))
+        if (
+            isinstance(data, dict)
+            and data.get("package_id") == key
+            and isinstance(data.get("repository"), dict)
+        ):
+            source = data["repository"].get("url", "")
             description = data.get("description", "")
-            branch = data.get("branch", "master")
-        elif isinstance(data, list) and len(data) >= 4:
-            author, repository, description, branch = data[:4]
+            branch = data["repository"].get("branch", "master")
         else:
-            author = ""
-            repository = ""
+            source = ""
             description = ""
             branch = "master"
-            errors["entry"] = "Entry must use a supported object or list format."
-
-        source = ""
-        if author or repository:
-            source = self.plugin.build_git_clone_url(author, repository)
+            errors["entry"] = "Entry must use the local registry v2 format."
 
         entry = {
             "key": str(key),
@@ -10355,7 +11422,7 @@ class GitInstallUpdateStrategy:
 
 @dataclass(frozen=True)
 class GitMigrationPreflightResult:
-    """Auditable outcome of a strictly read-only Git migration check."""
+    """Auditable outcome of a working-tree-preserving Git migration check."""
 
     allowed: bool = False
     status: str = "unknown"
@@ -10381,7 +11448,7 @@ class GitMigrationPreflightResult:
 
 
 class GitMigrationPreflight:
-    """Inspect a local checkout without fetching or changing Git state."""
+    """Inspect a checkout, fetching only a verified release commit if needed."""
 
     TRIGGERS = {"automatic", "manual"}
     OPERATION_MARKERS = (
@@ -10453,17 +11520,52 @@ class GitMigrationPreflight:
         for remote_name in remote_names:
             result = self._run(
                 plugin_dir,
-                "remote",
-                "get-url",
-                "--all",
-                remote_name,
+                "config",
+                "--get-all",
+                "remote." + remote_name + ".url",
             )
             if result is None or result.returncode != 0:
                 continue
             urls = [line.strip() for line in result.stdout.splitlines() if line.strip()]
             if urls:
-                return urls[0]
-        return ""
+                return remote_name, urls[0]
+        return "", ""
+
+    def _fetch_release_commit(self, plugin_dir, remote_name, release_commit):
+        """Fetch one SHA from a previously verified configured remote."""
+        if (
+            not remote_name
+            or remote_name == "."
+            or remote_name.startswith("-")
+            or not re.fullmatch(r"[A-Za-z0-9._/-]+", remote_name)
+        ):
+            return False
+        result = self.plugin.get_host().run_git(
+            [
+                "git",
+                "-c",
+                "gc.auto=0",
+                "-c",
+                "protocol.ext.allow=never",
+                "fetch",
+                "--quiet",
+                "--no-tags",
+                "--no-recurse-submodules",
+                remote_name,
+                release_commit,
+            ],
+            plugin_dir,
+            timeout=60,
+        )
+        if result is None or result.returncode != 0:
+            return False
+        available = self._run(
+            plugin_dir,
+            "cat-file",
+            "-e",
+            release_commit + "^{commit}",
+        )
+        return available is not None and available.returncode == 0
 
     def _index(self, plugin_dir):
         result = self._run(plugin_dir, "ls-files", "--stage", "-z", "--")
@@ -10556,7 +11658,7 @@ class GitMigrationPreflight:
         trigger,
         mutable_paths,
     ):
-        """Return a migration decision using local Git objects only."""
+        """Return a migration decision without changing HEAD, index, or files."""
         if trigger not in self.TRIGGERS:
             raise ValueError("Migration trigger must be manual or automatic.")
         plugin_key = _require_plugin_key(plugin_key)
@@ -10658,7 +11760,7 @@ class GitMigrationPreflight:
             ).lower()
             == "true"
         )
-        installed_remote = self._authoritative_remote(plugin_dir)
+        remote_name, installed_remote = self._authoritative_remote(plugin_dir)
         installed_identity = normalize_repository_identity(installed_remote)
         identified = {
             "installed_commit": installed_commit,
@@ -10733,11 +11835,21 @@ class GitMigrationPreflight:
                 "-e",
                 release_commit + "^{commit}",
             )
-            if available is None or available.returncode != 0:
+            if (
+                available is None
+                or available.returncode != 0
+            ) and not self._fetch_release_commit(
+                plugin_dir,
+                remote_name,
+                release_commit,
+            ):
                 return self._result(
                     status="migration_waiting_for_release",
                     reason="ancestry_unavailable",
-                    message="Release ancestry is unavailable locally; no fetch was attempted.",
+                    message=(
+                        "Release ancestry could not be fetched from the "
+                        "verified repository."
+                    ),
                     tracked_changes=tracked_changes,
                     untracked_files=untracked_files,
                     **identified,
@@ -10756,7 +11868,7 @@ class GitMigrationPreflight:
                 return self._result(
                     status="migration_waiting_for_release",
                     reason="ancestry_unavailable",
-                    message="Release ancestry is unavailable locally; no fetch was attempted.",
+                    message="Release ancestry could not be verified.",
                     tracked_changes=tracked_changes,
                     untracked_files=untracked_files,
                     **identified,
@@ -10785,7 +11897,7 @@ class GitMigrationPreflight:
                     return self._result(
                         status="migration_waiting_for_release",
                         reason="ancestry_unavailable",
-                        message="Release ancestry is unavailable locally; no fetch was attempted.",
+                        message="Release ancestry could not be verified.",
                         tracked_changes=tracked_changes,
                         untracked_files=untracked_files,
                         **identified,
@@ -11130,7 +12242,7 @@ class ReleaseInstallUpdateStrategy:
     ):
         document = {
             "schema": INSTALL_METADATA_SCHEMA_VERSION,
-            "plugin_key": entry.key,
+            "package_id": entry.key,
             "management_mode": "release",
             "repository_identity": release.repository_identity,
             "version": release.version,
@@ -11288,6 +12400,10 @@ class ReleaseInstallUpdateStrategy:
                 plugin_key=entry.key,
                 expected_tree_sha256=release.artifact.tree_sha256,
                 repository_identity=release.repository_identity,
+                expected_domoticz_key=(release.domoticz_key or None),
+                expected_plugin_py_sha256=(
+                    release.plugin_py_sha256 or None
+                ),
             )
             self._move_validated_source(
                 validation.source_root,
@@ -11400,16 +12516,25 @@ class ReleaseInstallUpdateStrategy:
         )
 
     def preflight_migration(self, entry, release, trigger):
-        """Evaluate one Git checkout without fetching or changing it."""
+        """Evaluate one Git checkout under the release migration policy."""
         if trigger not in ReleaseManagementCoordinator.TRIGGERS:
             raise ValueError(
                 "Migration trigger must be manual or automatic."
             )
         if not isinstance(release, ReleaseDescriptor):
             raise ValueError("A validated release target is required.")
-        if not release.artifact.migration_eligible or not release.commit:
+        migration_mode = release.artifact.migration_mode
+        if migration_mode == "blocked":
             raise ValueError(
                 "The selected release is not migration eligible."
+            )
+        if trigger == "automatic" and migration_mode != "automatic":
+            raise ValueError(
+                "The selected release requires manual migration."
+            )
+        if not release.commit:
+            raise ValueError(
+                "The selected release has no commit for migration ancestry."
             )
         plugin_dir = self.plugin.resolve_installed_plugin_dir(entry.key)
         release_policy = getattr(entry.delivery, "release", None)
@@ -11953,11 +13078,19 @@ class ReleaseManagementCoordinator:
             )
 
         if installed_mode == "git":
-            if not release.artifact.migration_eligible:
+            migration_mode = release.artifact.migration_mode
+            if not release.commit or migration_mode == "blocked":
                 return self._decision(
                     "blocked",
                     "migration_waiting_for_release",
                     reason="release_not_migration_eligible",
+                    trigger=trigger,
+                )
+            if trigger == "automatic" and migration_mode != "automatic":
+                return self._decision(
+                    "blocked",
+                    "migration_waiting_for_release",
+                    reason="release_requires_manual_migration",
                     trigger=trigger,
                 )
             return self._decision(
@@ -13191,7 +14324,17 @@ class BasePlugin:
         return self.load_registry_file(self.get_bundled_registry_file(), "bundled", True)
 
     def load_local_registry(self):
-        return self.load_registry_file(self.get_local_registry_file(), "local")
+        document = self.local_registry_service.read_document()
+        if not document.exists:
+            Domoticz.Debug("No local registry file found.")
+            return None
+        if not document.writable:
+            Domoticz.Error(
+                "Error reading local registry file: " + document.message
+            )
+            return None
+        Domoticz.Log("Loaded local plugin registry schema v2.")
+        return document.entries
 
     def load_update_times_file(self, update_times_file, label):
         if not os.path.isfile(update_times_file):
@@ -13199,12 +14342,15 @@ class BasePlugin:
             return {}
 
         try:
-            with open(update_times_file, "r", encoding="utf-8") as f:
-                update_times = json.load(f)
-            if isinstance(update_times, dict):
-                Domoticz.Debug("Loaded update times from " + label + " file.")
-                return update_times
-            Domoticz.Error(label + " update_times file does not contain a JSON object.")
+            with open(update_times_file, "rb") as update_times_input:
+                contents = update_times_input.read()
+            document = _load_json_object(
+                contents,
+                label + " update_times file",
+            )
+            update_times = self.normalize_update_times_document(document)
+            Domoticz.Debug("Loaded update times from " + label + " file.")
+            return update_times
         except Exception as e:
             Domoticz.Error("Error reading " + label + " update_times file: " + str(e))
         return {}
@@ -13218,28 +14364,44 @@ class BasePlugin:
     def save_update_times_cache(self, update_times):
         update_times_file = self.get_update_times_cache_file()
         try:
-            with open(update_times_file, "w", encoding="utf-8") as f:
-                json.dump(update_times, f, indent=4)
-                f.write("\n")
+            document = UpdateTimesDocument.from_legacy_document(
+                dict(update_times)
+            ).to_document()
+            self.get_host().write_json_atomic(
+                update_times_file,
+                document,
+                sort_keys=False,
+            )
             Domoticz.Log("Updated update_times.cache.json.")
             return True
         except Exception as e:
             Domoticz.Error("Error writing update_times.cache.json: " + str(e))
             return False
 
+    def normalize_update_times_document(self, document):
+        if not isinstance(document, dict):
+            raise ValueError("update_times must contain a JSON object.")
+        if "schema_version" in document:
+            parsed = UpdateTimesDocument.from_document(document)
+        else:
+            parsed = UpdateTimesDocument.from_legacy_document(document)
+        return dict(parsed.by_package_id)
+
     def load_update_times(self):
         update_times = {}
-        Domoticz.Debug("Fetching update times from GitHub.")
+        Domoticz.Debug("Fetching remote update times.")
         try:
             req = urllib.request.Request(self.get_update_times_url())
             with urllib.request.urlopen(req, timeout=5) as response:
                 if response.status == 200:
-                    update_times = json.loads(response.read().decode("utf-8"))
-                    if isinstance(update_times, dict):
-                        Domoticz.Log("Successfully fetched update times from GitHub.")
-                    else:
-                        Domoticz.Error("Remote update_times.json does not contain a JSON object.")
-                        update_times = {}
+                    document = _load_json_object(
+                        response.read(),
+                        "remote update_times.json",
+                    )
+                    update_times = self.normalize_update_times_document(
+                        document
+                    )
+                    Domoticz.Log("Successfully fetched remote update times.")
                 else:
                     Domoticz.Error("Failed to fetch update times, status code: " + str(response.status))
         except Exception as e:
@@ -13912,7 +15074,9 @@ class BasePlugin:
         return normalized_registry, plugin_platforms
 
     def apply_registry_sources(self, public_registry, local_registry):
-        public_registry = dict(public_registry or {})
+        public_registry = self.registry_service.records_from_document(
+            public_registry or {}
+        )
         local_registry = dict(local_registry or {})
         merged_registry = dict(public_registry)
         merged_registry.update(local_registry)
@@ -13969,12 +15133,16 @@ class BasePlugin:
 
         if registry_loaded:
             if registry is not None:
-                self.public_registry_data = dict(registry)
-            selected_public_registry = (
-                registry
-                if registry is not None
-                else self.public_registry_data
-            )
+                try:
+                    self.public_registry_data = (
+                        self.registry_service.records_from_document(registry)
+                    )
+                except ValueError as error:
+                    Domoticz.Error(
+                        "Plugin registry is invalid: " + str(error)
+                    )
+                    registry = None
+            selected_public_registry = self.public_registry_data
             self.apply_registry_sources(
                 selected_public_registry,
                 local_registry,

@@ -9,6 +9,7 @@ from test_release_transactions import (
     assert_old_live,
     expected_current,
     install_metadata_document,
+    legacy_transaction_document,
     make_manager,
     new_manager,
     prepare_transaction,
@@ -20,7 +21,7 @@ from test_release_transactions import (
 def load_pending_document(manager_dir):
     pending_file = manager_dir / ".pypluginstore" / "pending_transactions.json"
     if not pending_file.exists():
-        return {"schema_version": 1, "operations": []}
+        return {"schema_version": 2, "operations": []}
     return json.loads(pending_file.read_text(encoding="utf-8"))
 
 
@@ -60,11 +61,12 @@ def test_windows_locked_transaction_queues_complete_pinned_descriptor(
     assert queued.phase == "queued_locked"
     assert_old_live(queued)
     pending = load_pending_document(manager_dir)
-    assert pending["schema_version"] == 1
+    assert pending["schema_version"] == 2
     assert len(pending["operations"]) == 1
     descriptor = pending["operations"][0]
     assert descriptor["operation_id"] == queued.operation_id
-    assert descriptor["plugin_key"] == "ExamplePlugin"
+    assert descriptor["package_id"] == "ExamplePlugin"
+    assert "plugin_key" not in descriptor
     assert descriptor["expected_current"] == expected_current()
     assert descriptor["target"] == target_release()
     assert descriptor["paths"] == queued.paths.to_document()
@@ -89,6 +91,43 @@ def test_windows_locked_transaction_retries_once_and_recovers_idempotently(
     recovered_manager.recover_pending()
     assert Path(recovered.paths.journal).read_bytes() == first_journal
     assert_new_live(recovered)
+
+
+def test_windows_restart_upgrades_v1_pending_queue_and_journal(
+    plugin_core_module, tmp_path, monkeypatch
+):
+    queued, manager_dir = queue_windows_locked_transaction(
+        plugin_core_module, tmp_path, monkeypatch
+    )
+    journal_path = Path(queued.paths.journal)
+    legacy_journal = legacy_transaction_document(
+        json.loads(journal_path.read_text(encoding="utf-8"))
+    )
+    journal_path.write_text(json.dumps(legacy_journal), encoding="utf-8")
+    pending_path = (
+        manager_dir / ".pypluginstore" / "pending_transactions.json"
+    )
+    pending = json.loads(pending_path.read_text(encoding="utf-8"))
+    pending["schema_version"] = 1
+    pending["operations"] = [
+        legacy_transaction_document(operation)
+        for operation in pending["operations"]
+    ]
+    pending_path.write_text(json.dumps(pending), encoding="utf-8")
+
+    recovered_manager = new_manager(plugin_core_module, windows=True)
+    recovered_manager.recover_pending()
+
+    recovered = recovered_manager.load_transaction(queued.operation_id)
+    upgraded_journal = json.loads(
+        journal_path.read_text(encoding="utf-8")
+    )
+    upgraded_pending = load_pending_document(manager_dir)
+    assert recovered.phase == "restart_pending"
+    assert upgraded_journal["schema_version"] == 2
+    assert upgraded_journal["package_id"] == "ExamplePlugin"
+    assert "plugin_key" not in upgraded_journal
+    assert upgraded_pending == {"schema_version": 2, "operations": []}
 
 
 def test_windows_queued_transaction_refuses_a_stale_current_target(
