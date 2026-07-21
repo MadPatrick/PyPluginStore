@@ -88,3 +88,10 @@ def test_workflows_do_not_grant_write_permissions_by_default():
             "\njobs:\n", 1
         )[0]
         assert "write" not in top_level_permissions, workflow_path.relative_to(REPO_ROOT)
+
+
+def test_release_publish_job_can_finalize_the_release_pull_request():
+    workflow = _workflow_text("release-please.yml")
+    publish = _job_block(workflow, "publish-release")
+
+    assert "permissions:\n      contents: write\n      pull-requests: write\n" in publish
