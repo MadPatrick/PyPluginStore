@@ -37,6 +37,25 @@ def registry_bytes(packages, **overrides):
     return (json.dumps(document, indent=2) + "\n").encode("utf-8")
 
 
+def release_first_package(provider, url, package_id="ExamplePlugin"):
+    return package(
+        package_id,
+        repository=repository(url),
+        delivery={
+            "preferred": "release_if_indexed",
+            "git_supported": True,
+            "release": {
+                "provider": provider,
+                "channel": "stable",
+                "tag_pattern": r"^v?[0-9]+(?:\.[0-9]+){1,3}$",
+                "artifact": "source_zip",
+                "source_path": ".",
+                "mutable_paths": [],
+            },
+        },
+    )
+
+
 @pytest.fixture
 def registry_records_module():
     return load_module_from_path(
@@ -324,3 +343,159 @@ def test_v2_repository_url_requires_a_canonical_public_https_web_url(
             registry_records_module,
             [package(repository=repository(url))],
         )
+
+
+@pytest.mark.parametrize(
+    ("provider", "url"),
+    [
+        ("github", "https://github.com/Owner/Example-Plugin"),
+        ("gitlab", "https://gitlab.com/Group/Example-Plugin"),
+        ("codeberg", "https://codeberg.org/Team/Example-Plugin"),
+    ],
+)
+def test_ci_registry_loader_requires_explicit_provider_neutral_policy(
+    registry_records_module,
+    provider,
+    url,
+):
+    packages = registry_records_module.registry_mapping_from_bytes(
+        registry_bytes([release_first_package(provider, url)])
+    )
+
+    assert packages["ExamplePlugin"]["repository"]["url"] == url
+    assert packages["ExamplePlugin"]["delivery"]["release"]["provider"] == (
+        provider
+    )
+
+
+@pytest.mark.parametrize(
+    ("provider", "url"),
+    [
+        ("gitlab", "https://github.com/Owner/Example-Plugin"),
+        ("forgejo", "https://codeberg.org/Team/Example-Plugin"),
+        ("codeberg", "https://gitlab.com/Group/Example-Plugin"),
+    ],
+)
+def test_ci_registry_loader_rejects_provider_host_mismatch(
+    registry_records_module,
+    provider,
+    url,
+):
+    with pytest.raises(ValueError, match="(?i)provider.*host"):
+        registry_records_module.registry_mapping_from_bytes(
+            registry_bytes([release_first_package(provider, url)])
+        )
+
+
+def test_ci_registry_writer_is_deterministic_and_never_writes_legacy_keys(
+    registry_records_module,
+):
+    packages = {
+        "Zulu": release_first_package(
+            "gitlab",
+            "https://gitlab.com/Group/Zulu",
+            "Zulu",
+        ),
+        "alpha": release_first_package(
+            "codeberg",
+            "https://codeberg.org/Team/Alpha",
+            "alpha",
+        ),
+    }
+
+    first = registry_records_module.registry_bytes_from_mapping(packages)
+    second = registry_records_module.registry_bytes_from_mapping(
+        dict(reversed(list(packages.items())))
+    )
+
+    assert first == second
+    document = json.loads(first)
+    assert list(document) == ["schema_version", "packages"]
+    assert [item["package_id"] for item in document["packages"]] == [
+        "Zulu",
+        "alpha",
+    ]
+    assert all(
+        not ({"owner", "repo", "plugin_key"} & set(item))
+        for item in document["packages"]
+    )
+
+
+def test_update_times_v2_round_trips_as_sorted_explicit_records(
+    registry_records_module,
+):
+    contents = registry_records_module.update_times_bytes_from_mapping(
+        {
+            "Zulu": "2026-07-21T11:00:00+02:00",
+            "alpha": "2026-07-20T09:00:00.958Z",
+        }
+    )
+
+    assert json.loads(contents) == {
+        "schema_version": 2,
+        "updates": [
+            {"package_id": "alpha", "updated_at": "2026-07-20T09:00:00Z"},
+            {"package_id": "Zulu", "updated_at": "2026-07-21T09:00:00Z"},
+        ],
+    }
+    assert registry_records_module.update_times_mapping_from_bytes(contents) == {
+        "alpha": "2026-07-20T09:00:00Z",
+        "Zulu": "2026-07-21T09:00:00Z",
+    }
+
+
+@pytest.mark.parametrize(
+    "document",
+    [
+        {"ExamplePlugin": "2026-07-21T09:00:00Z"},
+        {"schema_version": 2, "updates": {"ExamplePlugin": "timestamp"}},
+        {
+            "schema_version": 2,
+            "updates": [
+                {
+                    "plugin_key": "ExamplePlugin",
+                    "updated_at": "2026-07-21T09:00:00Z",
+                }
+            ],
+        },
+    ],
+)
+def test_update_times_v2_rejects_legacy_identity_shapes(
+    registry_records_module,
+    document,
+):
+    with pytest.raises(ValueError):
+        registry_records_module.update_times_mapping_from_bytes(
+            (json.dumps(document) + "\n").encode("utf-8")
+        )
+
+
+@pytest.mark.parametrize(
+    ("owner", "repository_name", "provider"),
+    [
+        ("Owner", "GitHub-Plugin", "github"),
+        ("gitlab.com/Group/Subgroup", "GitLab-Plugin", "gitlab"),
+        ("codeberg.org/Team", "Codeberg-Plugin", "codeberg"),
+    ],
+)
+def test_scanner_package_builder_emits_release_first_v2_records(
+    registry_records_module,
+    owner,
+    repository_name,
+    provider,
+):
+    document = registry_records_module.build_package_document(
+        repository_name,
+        "RUNTIME-KEY",
+        owner,
+        repository_name,
+        "Example plugin",
+        "main",
+        ["linux"],
+    )
+
+    assert document["package_id"] == repository_name
+    assert document["domoticz_key"] == "RUNTIME-KEY"
+    assert document["delivery"]["preferred"] == "release_if_indexed"
+    assert document["delivery"]["git_supported"] is True
+    assert document["delivery"]["release"]["provider"] == provider

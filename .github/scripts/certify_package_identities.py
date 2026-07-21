@@ -7,6 +7,7 @@ import json
 import os
 from pathlib import Path
 import sys
+import tempfile
 import urllib.request
 
 
@@ -39,11 +40,45 @@ def _json_bytes(document):
     ).encode("utf-8")
 
 
+def _atomic_write(path, contents):
+    target = Path(path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    descriptor, temporary_path = tempfile.mkstemp(
+        prefix="." + target.name + ".",
+        suffix=".tmp",
+        dir=str(target.parent),
+    )
+    try:
+        with os.fdopen(descriptor, "wb") as output:
+            output.write(contents)
+            output.flush()
+            os.fsync(output.fileno())
+        os.replace(temporary_path, target)
+        temporary_path = ""
+    finally:
+        if temporary_path and os.path.exists(temporary_path):
+            os.unlink(temporary_path)
+
+
 def _load_legacy_registry(contents):
     if not isinstance(contents, (bytes, bytearray)):
         raise ValueError("registry contents must be bytes.")
+
+    def reject_duplicate_keys(pairs):
+        result = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError(
+                    "Legacy registry contains duplicate JSON key " + key + "."
+                )
+            result[key] = value
+        return result
+
     try:
-        document = json.loads(bytes(contents).decode("utf-8"))
+        document = json.loads(
+            bytes(contents).decode("utf-8"),
+            object_pairs_hook=reject_duplicate_keys,
+        )
     except (UnicodeDecodeError, json.JSONDecodeError) as error:
         raise ValueError("Legacy registry is not valid JSON.") from error
     if not isinstance(document, dict) or "schema_version" in document:
@@ -143,7 +178,7 @@ def main(argv=None):
             Path(arguments.registry).read_bytes(),
             workers=arguments.workers,
         )
-        Path(arguments.output).write_bytes(_json_bytes(document))
+        _atomic_write(arguments.output, _json_bytes(document))
     except (OSError, ValueError) as error:
         print("Identity certification failed: " + str(error), file=sys.stderr)
         return 2
