@@ -1,6 +1,7 @@
 
 
 import base64
+import copy
 from collections.abc import Mapping
 from contextlib import contextmanager
 import hashlib
@@ -3258,7 +3259,8 @@ class ReleaseMetadataStore:
         return self._selection(generation)
 
 
-INSTALL_METADATA_SCHEMA_VERSION = 1
+INSTALL_METADATA_SCHEMA_VERSION = 2
+LEGACY_INSTALL_METADATA_SCHEMA_VERSION = 1
 WINDOWS_RESERVED_PATH_NAMES = {
     "aux",
     "con",
@@ -5389,13 +5391,30 @@ class InstallMetadata:
 
     @classmethod
     def from_document(cls, document):
-        """Parse strict release-managed install metadata."""
+        """Parse strict schema-v2 release-managed install metadata."""
+        return cls._from_document(
+            document,
+            schema_version=INSTALL_METADATA_SCHEMA_VERSION,
+            identity_field="package_id",
+        )
+
+    @classmethod
+    def from_legacy_document(cls, document):
+        """Normalize one explicit schema-v1 install metadata document."""
+        return cls._from_document(
+            document,
+            schema_version=LEGACY_INSTALL_METADATA_SCHEMA_VERSION,
+            identity_field="plugin_key",
+        )
+
+    @classmethod
+    def _from_document(cls, document, *, schema_version, identity_field):
         document = _require_document(
             document,
             "install metadata",
             (
                 "schema",
-                "plugin_key",
+                identity_field,
                 "management_mode",
                 "repository_identity",
                 "version",
@@ -5420,7 +5439,7 @@ class InstallMetadata:
         )
         if (
             type(document["schema"]) is not int
-            or document["schema"] != INSTALL_METADATA_SCHEMA_VERSION
+            or document["schema"] != schema_version
         ):
             raise ValueError("Install metadata schema is unsupported.")
 
@@ -5541,7 +5560,9 @@ class InstallMetadata:
 
         return cls(
             schema=INSTALL_METADATA_SCHEMA_VERSION,
-            plugin_key=_require_plugin_key(document["plugin_key"]),
+            plugin_key=_require_plugin_key(
+                document[identity_field], identity_field
+            ),
             management_mode=management_mode,
             repository_identity=repository_identity,
             version=_require_nonempty_string(document["version"], "version"),
@@ -5575,8 +5596,8 @@ class InstallMetadata:
     def to_document(self):
         """Return the canonical JSON-compatible install audit document."""
         document = {
-            "schema": self.schema,
-            "plugin_key": self.plugin_key,
+            "schema": INSTALL_METADATA_SCHEMA_VERSION,
+            "package_id": self.plugin_key,
             "management_mode": self.management_mode,
             "repository_identity": self.repository_identity,
             "version": self.version,
@@ -5606,6 +5627,11 @@ class InstallMetadata:
                 self.migration_inventory_sha256
             )
         return document
+
+    @property
+    def package_id(self):
+        """Expose the durable package identity without breaking callers."""
+        return self.plugin_key
 
 
 class InstallMetadataService:
@@ -5666,7 +5692,20 @@ class InstallMetadataService:
                 )
         except OSError as error:
             raise ValueError("Could not read install metadata: " + str(error)) from error
-        return InstallMetadata.from_document(document)
+        is_legacy = (
+            type(document.get("schema")) is int
+            and document.get("schema")
+            == LEGACY_INSTALL_METADATA_SCHEMA_VERSION
+        )
+        parser = (
+            InstallMetadata.from_legacy_document
+            if is_legacy
+            else InstallMetadata.from_document
+        )
+        metadata = parser(document)
+        if is_legacy:
+            self.write(plugin_dir, metadata)
+        return metadata
 
     def write(self, plugin_dir, metadata):
         """Fsync and atomically replace committed install metadata."""
@@ -6980,8 +7019,10 @@ class ChannelPreferenceService:
         )
 
 
-RELEASE_TRANSACTION_SCHEMA_VERSION = 1
-RELEASE_PENDING_TRANSACTIONS_SCHEMA_VERSION = 1
+RELEASE_TRANSACTION_SCHEMA_VERSION = 2
+LEGACY_RELEASE_TRANSACTION_SCHEMA_VERSION = 1
+RELEASE_PENDING_TRANSACTIONS_SCHEMA_VERSION = 2
+LEGACY_RELEASE_PENDING_TRANSACTIONS_SCHEMA_VERSION = 1
 RELEASE_TRANSACTION_OPERATIONS = {
     "release_install",
     "release_update",
@@ -7272,7 +7313,7 @@ class ReleaseTransaction:
         return {
             "schema_version": RELEASE_TRANSACTION_SCHEMA_VERSION,
             "operation_id": self.operation_id,
-            "plugin_key": self.plugin_key,
+            "package_id": self.plugin_key,
             "operation": self.operation,
             "phase": self.phase,
             "expected_current": _transaction_json_copy(
@@ -7301,13 +7342,40 @@ class ReleaseTransaction:
 
     @classmethod
     def from_document(cls, document, expected_paths):
+        """Parse one strict schema-v2 transaction journal."""
+        return cls._from_document(
+            document,
+            expected_paths,
+            schema_version=RELEASE_TRANSACTION_SCHEMA_VERSION,
+            identity_field="package_id",
+        )
+
+    @classmethod
+    def from_legacy_document(cls, document, expected_paths):
+        """Normalize one explicit schema-v1 transaction journal."""
+        return cls._from_document(
+            document,
+            expected_paths,
+            schema_version=LEGACY_RELEASE_TRANSACTION_SCHEMA_VERSION,
+            identity_field="plugin_key",
+        )
+
+    @classmethod
+    def _from_document(
+        cls,
+        document,
+        expected_paths,
+        *,
+        schema_version,
+        identity_field,
+    ):
         document = _require_document(
             document,
             "release transaction",
             (
                 "schema_version",
                 "operation_id",
-                "plugin_key",
+                identity_field,
                 "operation",
                 "phase",
                 "expected_current",
@@ -7324,15 +7392,16 @@ class ReleaseTransaction:
         )
         if (
             type(document["schema_version"]) is not int
-            or document["schema_version"]
-            != RELEASE_TRANSACTION_SCHEMA_VERSION
+            or document["schema_version"] != schema_version
         ):
             raise ValueError("Release transaction schema is unsupported.")
         operation_id = _require_plugin_key(
             document["operation_id"],
             "operation_id",
         )
-        plugin_key = _require_plugin_key(document["plugin_key"])
+        plugin_key = _require_plugin_key(
+            document[identity_field], identity_field
+        )
         operation = _require_nonempty_string(
             document["operation"],
             "operation",
@@ -7406,6 +7475,11 @@ class ReleaseTransaction:
             error=error,
             rollback_from=rollback_from,
         )
+
+    @property
+    def package_id(self):
+        """Expose the durable package identity without breaking callers."""
+        return self.plugin_key
 
 
 class ReleaseTransactionManager:
@@ -7636,8 +7710,9 @@ class ReleaseTransactionManager:
                 os.close(descriptor)
             process_lock.release()
 
-    def _write_transaction(self, transaction):
-        transaction.updated_at = self.plugin.get_host().utc_timestamp()
+    def _write_transaction(self, transaction, update_timestamp=True):
+        if update_timestamp:
+            transaction.updated_at = self.plugin.get_host().utc_timestamp()
         document = transaction.to_document()
         expected_paths = self._paths(
             transaction.plugin_key,
@@ -7674,7 +7749,7 @@ class ReleaseTransactionManager:
     def _pending_transaction_identity(self, transaction):
         return {
             "operation_id": transaction.operation_id,
-            "plugin_key": transaction.plugin_key,
+            "package_id": transaction.plugin_key,
             "operation": transaction.operation,
             "expected_current": transaction.expected_current,
             "target": transaction.target,
@@ -7703,14 +7778,24 @@ class ReleaseTransactionManager:
             "pending release transactions",
             ("schema_version", "operations"),
         )
-        if (
-            type(document["schema_version"]) is not int
-            or document["schema_version"]
-            != RELEASE_PENDING_TRANSACTIONS_SCHEMA_VERSION
-        ):
+        schema_version = document["schema_version"]
+        if type(schema_version) is not int or schema_version not in {
+            RELEASE_PENDING_TRANSACTIONS_SCHEMA_VERSION,
+            LEGACY_RELEASE_PENDING_TRANSACTIONS_SCHEMA_VERSION,
+        }:
             raise ValueError(
                 "Pending release transactions schema is unsupported."
             )
+        is_legacy = (
+            schema_version
+            == LEGACY_RELEASE_PENDING_TRANSACTIONS_SCHEMA_VERSION
+        )
+        identity_field = "plugin_key" if is_legacy else "package_id"
+        transaction_parser = (
+            ReleaseTransaction.from_legacy_document
+            if is_legacy
+            else ReleaseTransaction.from_document
+        )
         raw_operations = document["operations"]
         if not isinstance(raw_operations, list):
             raise ValueError(
@@ -7731,9 +7816,9 @@ class ReleaseTransactionManager:
                 raise ValueError(
                     "Pending release transactions contain a duplicate operation."
                 )
-            plugin_key = raw_operation.get("plugin_key", "")
+            plugin_key = raw_operation.get(identity_field, "")
             expected_paths = self._paths(plugin_key, operation_id)
-            transaction = ReleaseTransaction.from_document(
+            transaction = transaction_parser(
                 raw_operation,
                 expected_paths,
             )
@@ -7756,6 +7841,8 @@ class ReleaseTransactionManager:
                 )
             operation_ids.add(operation_id)
             operations.append(transaction)
+        if is_legacy:
+            self._write_pending_transactions_locked(operations)
         return operations
 
     def _write_pending_transactions_locked(self, transactions):
@@ -7828,9 +7915,20 @@ class ReleaseTransactionManager:
                 journal_file.read(),
                 "release transaction journal",
             )
-        plugin_key = document.get("plugin_key", "")
+        is_legacy = (
+            type(document.get("schema_version")) is int
+            and document.get("schema_version")
+            == LEGACY_RELEASE_TRANSACTION_SCHEMA_VERSION
+        )
+        identity_field = "plugin_key" if is_legacy else "package_id"
+        plugin_key = document.get(identity_field, "")
         expected_paths = self._paths(plugin_key, operation_id)
-        transaction = ReleaseTransaction.from_document(
+        parser = (
+            ReleaseTransaction.from_legacy_document
+            if is_legacy
+            else ReleaseTransaction.from_document
+        )
+        transaction = parser(
             document,
             expected_paths,
         )
@@ -7841,6 +7939,8 @@ class ReleaseTransactionManager:
         )
         transaction.expected_current = expected_current
         transaction.target = target
+        if is_legacy:
+            self._write_transaction(transaction, update_timestamp=False)
         return transaction
 
     def load_transaction(self, operation_id):
@@ -8266,9 +8366,19 @@ class ReleaseTransactionManager:
             "bytes": total_bytes,
         }
 
-    def _install_metadata_digest(self, metadata):
+    def _install_metadata_digest(
+        self,
+        metadata,
+        schema_version=INSTALL_METADATA_SCHEMA_VERSION,
+    ):
+        document = metadata.to_document()
+        if schema_version == LEGACY_INSTALL_METADATA_SCHEMA_VERSION:
+            document["schema"] = LEGACY_INSTALL_METADATA_SCHEMA_VERSION
+            document["plugin_key"] = document.pop("package_id")
+        elif schema_version != INSTALL_METADATA_SCHEMA_VERSION:
+            raise ValueError("Install metadata digest schema is unsupported.")
         contents = json.dumps(
-            metadata.to_document(),
+            document,
             ensure_ascii=False,
             allow_nan=False,
             sort_keys=True,
@@ -8307,9 +8417,16 @@ class ReleaseTransactionManager:
                 return False
             if staged_snapshot is not None:
                 staged_snapshot = _validated_staged_snapshot(staged_snapshot)
+                accepted_metadata_digests = {
+                    self._install_metadata_digest(metadata),
+                    self._install_metadata_digest(
+                        metadata,
+                        schema_version=LEGACY_INSTALL_METADATA_SCHEMA_VERSION,
+                    ),
+                }
                 if (
-                    self._install_metadata_digest(metadata)
-                    != staged_snapshot["install_metadata_sha256"]
+                    staged_snapshot["install_metadata_sha256"]
+                    not in accepted_metadata_digests
                     or metadata.artifact_files
                     != staged_snapshot["artifact_files"]
                     or metadata.preserved_files
@@ -9894,6 +10011,7 @@ class RegistryEntry:
         updated_at_slot_present=False,
         local=False,
         delivery=None,
+        domoticz_key="",
     ):
         self.key = str(key or "")
         self.author = str(author or "")
@@ -9905,6 +10023,7 @@ class RegistryEntry:
         self.updated_at_slot_present = bool(updated_at_slot_present or self.updated_at)
         self.local = bool(local)
         self.delivery = delivery or DeliveryPolicy.implicit()
+        self.domoticz_key = str(domoticz_key or "")
 
     def to_legacy_list(self):
         entry = [self.author, self.repository, self.description, self.branch]
@@ -9924,6 +10043,7 @@ class RegistryEntry:
             self.updated_at_slot_present,
             self.local,
             self.delivery,
+            self.domoticz_key,
         )
 
 
@@ -9934,10 +10054,22 @@ class RegistryService:
     def normalize_entry(self, key, data, local=False, default_platforms=None):
         platforms = ["unknown"]
         if isinstance(data, dict):
-            author = data.get("author", data.get("owner", ""))
-            repository = data.get("repository", data.get("repo", ""))
+            local_repository = data.get("repository") if local else None
+            if (
+                local
+                and "package_id" in data
+                and isinstance(local_repository, dict)
+            ):
+                author = local_repository.get("url", "")
+                repository = ""
+                branch = local_repository.get("branch", "master")
+                domoticz_key = data.get("domoticz_key", "")
+            else:
+                author = data.get("author", data.get("owner", ""))
+                repository = data.get("repository", data.get("repo", ""))
+                branch = data.get("branch", "master")
+                domoticz_key = data.get("domoticz_key", "")
             description = data.get("description", "")
-            branch = data.get("branch", "master")
             updated_at = "" if local else data.get("updated_at", "")
             platforms = self.plugin.normalize_platforms(data.get("platforms", data.get("platform", None)))
             try:
@@ -9969,6 +10101,7 @@ class RegistryService:
                 bool(updated_at),
                 local,
                 delivery,
+                domoticz_key,
             )
         elif isinstance(data, list):
             raw_entry = list(data[:5])
@@ -10035,6 +10168,9 @@ class LocalRegistryDocument:
     writable: bool
     error_code: str = ""
     message: str = ""
+    schema_version: int = 2
+    backup_path: str = ""
+    migrated: bool = False
 
 
 class LocalRegistryError(Exception):
@@ -10059,7 +10195,18 @@ class LocalRegistryError(Exception):
 class LocalRegistryService:
     """Read, validate, and atomically mutate registry_local.json."""
 
-    MISSING_REVISION_BYTES = b"PyPluginStore:missing-local-registry:v1"
+    SCHEMA_VERSION = 2
+    BACKUP_FILE_NAME = "registry_local.v1.backup.json"
+    MISSING_REVISION_BYTES = b"PyPluginStore:missing-local-registry:v2"
+    DOCUMENT_FIELDS = {"schema_version", "packages"}
+    PACKAGE_FIELDS = {
+        "package_id",
+        "domoticz_key",
+        "description",
+        "repository",
+        "platforms",
+    }
+    REPOSITORY_FIELDS = {"url", "branch"}
     FIELD_LIMITS = {
         "key": 128,
         "repository_source": 1000,
@@ -10075,9 +10222,334 @@ class LocalRegistryService:
         """Return a stable SHA-256 revision for exact file bytes."""
         return "sha256:" + hashlib.sha256(contents).hexdigest()
 
+    def backup_path(self):
+        return os.path.join(
+            os.path.dirname(self.plugin.get_local_registry_file()),
+            self.BACKUP_FILE_NAME,
+        )
+
+    def parse_json_object(self, contents, label):
+        """Decode strict JSON while rejecting duplicate object fields."""
+        def reject_duplicate_keys(pairs):
+            result = {}
+            for key, value in pairs:
+                if key in result:
+                    raise ValueError(
+                        label + " contains duplicate JSON key " + str(key) + "."
+                    )
+                result[key] = value
+            return result
+
+        try:
+            document = json.loads(
+                contents.decode("utf-8"),
+                object_pairs_hook=reject_duplicate_keys,
+            )
+        except json.JSONDecodeError as error:
+            raise ValueError(
+                "{} at line {} column {}.".format(
+                    error.msg,
+                    error.lineno,
+                    error.colno,
+                )
+            ) from error
+        except UnicodeDecodeError as error:
+            raise ValueError(str(error)) from error
+        if not isinstance(document, dict):
+            raise ValueError(label + " must contain a JSON object.")
+        return document
+
+    def require_exact_fields(self, document, allowed, label):
+        if not isinstance(document, dict):
+            raise ValueError(label + " must be an object.")
+        missing = sorted(set(allowed) - set(document))
+        unknown = sorted(set(document) - set(allowed))
+        if missing:
+            raise ValueError(label + " is missing " + missing[0] + ".")
+        if unknown:
+            raise ValueError(
+                label + " contains unknown field " + unknown[0] + "."
+            )
+
+    def canonical_identity(self, value, label, allow_empty=False):
+        if not isinstance(value, str):
+            raise ValueError(label + " must be text.")
+        if value != value.strip() or unicodedata.normalize("NFC", value) != value:
+            raise ValueError(label + " must be canonical text.")
+        if not value:
+            if allow_empty:
+                return ""
+            raise ValueError(label + " must not be empty.")
+        if self.has_control_characters(value):
+            raise ValueError(label + " contains control characters.")
+        return value
+
+    def validate_package_id(self, value):
+        value = self.canonical_identity(value, "Local package_id")
+        if len(value) > self.FIELD_LIMITS["key"]:
+            raise ValueError("Local package_id is too long.")
+        value = self.plugin.get_host().validate_plugin_key(value)
+        if value.casefold() == "idle":
+            raise ValueError("Local package_id cannot be Idle.")
+        return value
+
+    def validate_domoticz_key(self, value, allow_empty=False):
+        value = self.canonical_identity(
+            value,
+            "Local domoticz_key",
+            allow_empty=allow_empty,
+        )
+        if value and any(character in value for character in "<>"):
+            raise ValueError("Local domoticz_key contains unsafe characters.")
+        return value
+
+    def folded_package_id(self, package_id):
+        return unicodedata.normalize("NFC", package_id).casefold()
+
+    def normalize_persisted_platforms(self, platforms):
+        if not isinstance(platforms, list):
+            raise ValueError("Local registry platforms must be a list.")
+        normalized = []
+        for platform_name in platforms:
+            if not isinstance(platform_name, str):
+                raise ValueError("Local registry platform must be text.")
+            platform_name = platform_name.strip().lower()
+            if platform_name not in ("linux", "windows"):
+                raise ValueError("Local registry platform is unsupported.")
+            if platform_name not in normalized:
+                normalized.append(platform_name)
+        return [
+            platform_name
+            for platform_name in ("linux", "windows")
+            if platform_name in normalized
+        ]
+
+    def validate_persisted_record(self, record):
+        self.require_exact_fields(record, self.PACKAGE_FIELDS, "Local package")
+        package_id = self.validate_package_id(record["package_id"])
+        domoticz_key = self.validate_domoticz_key(
+            record["domoticz_key"],
+            allow_empty=True,
+        )
+
+        description = record["description"]
+        if not isinstance(description, str):
+            raise ValueError("Local package description must be text.")
+        if self.has_control_characters(description):
+            raise ValueError("Local package description contains control characters.")
+        if len(description) > self.FIELD_LIMITS["description"]:
+            raise ValueError("Local package description is too long.")
+
+        repository = record["repository"]
+        self.require_exact_fields(
+            repository,
+            self.REPOSITORY_FIELDS,
+            "Local package repository",
+        )
+        repository_url = repository["url"]
+        branch = repository["branch"]
+        if (
+            not isinstance(repository_url, str)
+            or repository_url != repository_url.strip()
+            or not self.repository_source_is_valid(repository_url)
+        ):
+            raise ValueError("Local package repository URL is invalid.")
+        if len(repository_url) > self.FIELD_LIMITS["repository_source"]:
+            raise ValueError("Local package repository URL is too long.")
+        if (
+            not isinstance(branch, str)
+            or not branch
+            or branch != branch.strip()
+            or self.has_control_characters(branch)
+        ):
+            raise ValueError("Local package repository branch is invalid.")
+        if len(branch) > self.FIELD_LIMITS["branch"]:
+            raise ValueError("Local package repository branch is too long.")
+
+        return {
+            "package_id": package_id,
+            "domoticz_key": domoticz_key,
+            "description": description,
+            "repository": {
+                "url": repository_url,
+                "branch": branch,
+            },
+            "platforms": self.normalize_persisted_platforms(
+                record["platforms"]
+            ),
+        }
+
+    def parse_v2_document(self, document):
+        self.require_exact_fields(
+            document,
+            self.DOCUMENT_FIELDS,
+            "Local registry",
+        )
+        if document["schema_version"] != self.SCHEMA_VERSION:
+            raise ValueError("Local registry schema is unsupported.")
+        packages = document["packages"]
+        if not isinstance(packages, list):
+            raise ValueError("Local registry packages must be an array.")
+
+        entries = {}
+        folded_ids = set()
+        for raw_record in packages:
+            record = self.validate_persisted_record(raw_record)
+            folded_id = self.folded_package_id(record["package_id"])
+            if folded_id in folded_ids:
+                raise ValueError(
+                    "Local registry contains colliding package IDs."
+                )
+            folded_ids.add(folded_id)
+            entries[record["package_id"]] = record
+        return entries
+
+    def serialize_entries(self, entries):
+        records = []
+        folded_ids = set()
+        for package_id, raw_record in entries.items():
+            if not isinstance(raw_record, dict):
+                raise ValueError("Local registry entry must be an object.")
+            candidate = copy.deepcopy(raw_record)
+            if candidate.get("package_id") != package_id:
+                raise ValueError("Local registry package_id does not match its entry.")
+            record = self.validate_persisted_record(candidate)
+            folded_id = self.folded_package_id(package_id)
+            if folded_id in folded_ids:
+                raise ValueError(
+                    "Local registry contains colliding package IDs."
+                )
+            folded_ids.add(folded_id)
+            records.append(record)
+        records.sort(
+            key=lambda record: (
+                record["package_id"].casefold(),
+                record["package_id"],
+            )
+        )
+        return (
+            json.dumps(
+                {
+                    "schema_version": self.SCHEMA_VERSION,
+                    "packages": records,
+                },
+                indent=2,
+                ensure_ascii=False,
+            )
+            + "\n"
+        ).encode("utf-8")
+
+    def atomic_write_bytes(self, path, contents):
+        directory = os.path.dirname(path)
+        os.makedirs(directory, exist_ok=True)
+        descriptor, temporary_path = tempfile.mkstemp(
+            prefix="." + os.path.basename(path) + ".",
+            suffix=".tmp",
+            dir=directory,
+        )
+        try:
+            with os.fdopen(descriptor, "wb") as output:
+                output.write(contents)
+                output.flush()
+                os.fsync(output.fileno())
+            os.replace(temporary_path, path)
+            temporary_path = ""
+        finally:
+            if temporary_path and os.path.exists(temporary_path):
+                os.unlink(temporary_path)
+
+    def preserve_legacy_backup(self, contents):
+        path = self.backup_path()
+        if os.path.lexists(path):
+            if os.path.islink(path) or not os.path.isfile(path):
+                raise ValueError("Local registry backup path is unsafe.")
+            with open(path, "rb") as backup_file:
+                if backup_file.read() != contents:
+                    raise ValueError(
+                        "Local registry backup already contains different bytes."
+                    )
+            return path
+        self.atomic_write_bytes(path, contents)
+        return path
+
+    def derive_installed_domoticz_key(self, package_id):
+        """Read identity only from the exact, real package folder."""
+        try:
+            package_id = self.plugin.get_host().validate_plugin_key(package_id)
+            plugin_dir = os.path.join(
+                self.plugin.get_host().plugins_dir(), package_id
+            )
+            if os.path.islink(plugin_dir) or not os.path.isdir(plugin_dir):
+                return ""
+            plugin_file = os.path.join(plugin_dir, "plugin.py")
+            if os.path.islink(plugin_file) or not os.path.isfile(plugin_file):
+                return ""
+            metadata = self.plugin.parse_domoticz_plugin_metadata(plugin_dir)
+            domoticz_key = (metadata or {}).get("key") or ""
+            if not domoticz_key:
+                return ""
+            return self.validate_domoticz_key(domoticz_key)
+        except (OSError, ValueError):
+            return ""
+
+    def normalize_legacy_platforms(self, platforms):
+        normalized = self.plugin.normalize_platforms(platforms)
+        return [] if normalized == ["unknown"] else normalized
+
+    def legacy_entry_to_record(self, package_id, entry):
+        package_id = self.validate_package_id(package_id)
+        platforms = []
+        if isinstance(entry, list):
+            if len(entry) < 4:
+                raise ValueError("Legacy local registry entry is incomplete.")
+            owner, repository, description, branch = entry[:4]
+            if len(entry) > 5:
+                platforms = entry[5]
+        elif isinstance(entry, dict):
+            if "package_id" in entry or isinstance(entry.get("repository"), dict):
+                raise ValueError("Local registry mixes legacy and v2 entries.")
+            owner = entry.get("owner", entry.get("author", ""))
+            repository = entry.get("repository", entry.get("repo", ""))
+            description = entry.get("description", "")
+            branch = entry.get("branch", "master")
+            platforms = entry.get("platforms", entry.get("platform", []))
+        else:
+            raise ValueError("Legacy local registry entry is invalid.")
+
+        if not isinstance(description, str) or not isinstance(branch, str):
+            raise ValueError("Legacy local registry text fields are invalid.")
+        source = self.plugin.build_git_clone_url(owner, repository)
+        return self.validate_persisted_record({
+            "package_id": package_id,
+            "domoticz_key": self.derive_installed_domoticz_key(package_id),
+            "description": description,
+            "repository": {
+                "url": source,
+                "branch": branch or "master",
+            },
+            "platforms": self.normalize_legacy_platforms(platforms),
+        })
+
+    def migrate_legacy_document(self, document):
+        entries = {}
+        folded_ids = set()
+        for package_id, legacy_entry in document.items():
+            if not isinstance(package_id, str):
+                raise ValueError("Legacy local package ID must be text.")
+            folded_id = self.folded_package_id(package_id)
+            if folded_id in folded_ids:
+                raise ValueError(
+                    "Legacy local registry contains colliding package IDs."
+                )
+            folded_ids.add(folded_id)
+            record = self.legacy_entry_to_record(package_id, legacy_entry)
+            entries[record["package_id"]] = record
+        return entries
+
     def read_document(self):
-        """Read the local registry without treating malformed data as empty."""
+        """Read v2, or durably migrate one valid legacy document to v2."""
         path = self.plugin.get_local_registry_file()
+        backup_path = self.backup_path()
         try:
             with open(path, "rb") as registry_file:
                 contents = registry_file.read()
@@ -10088,6 +10560,7 @@ class LocalRegistryService:
                 path=path,
                 exists=False,
                 writable=True,
+                backup_path=backup_path,
             )
         except Exception as error:
             return LocalRegistryDocument(
@@ -10098,29 +10571,24 @@ class LocalRegistryService:
                 writable=False,
                 error_code="registry_read_failed",
                 message=str(error),
+                backup_path=backup_path,
             )
 
         revision = self.revision_for_bytes(contents)
         try:
-            entries = json.loads(contents.decode("utf-8"))
-            if not isinstance(entries, dict):
-                raise ValueError("Local registry must contain a JSON object.")
-        except json.JSONDecodeError as error:
-            message = "{} at line {} column {}.".format(
-                error.msg,
-                error.lineno,
-                error.colno,
-            )
-            return LocalRegistryDocument(
-                entries={},
-                revision=revision,
-                path=path,
-                exists=True,
-                writable=False,
-                error_code="invalid_local_registry",
-                message=message,
-            )
-        except (UnicodeDecodeError, ValueError) as error:
+            parsed = self.parse_json_object(contents, "Local registry")
+            migrated = False
+            if type(parsed.get("schema_version")) is int:
+                entries = self.parse_v2_document(parsed)
+            else:
+                entries = self.migrate_legacy_document(parsed)
+                migrated_contents = self.serialize_entries(entries)
+                self.preserve_legacy_backup(contents)
+                self.atomic_write_bytes(path, migrated_contents)
+                contents = migrated_contents
+                revision = self.revision_for_bytes(contents)
+                migrated = True
+        except (OSError, ValueError) as error:
             return LocalRegistryDocument(
                 entries={},
                 revision=revision,
@@ -10129,6 +10597,7 @@ class LocalRegistryService:
                 writable=False,
                 error_code="invalid_local_registry",
                 message=str(error),
+                backup_path=backup_path,
             )
 
         return LocalRegistryDocument(
@@ -10137,6 +10606,8 @@ class LocalRegistryService:
             path=path,
             exists=True,
             writable=True,
+            backup_path=backup_path,
+            migrated=migrated,
         )
 
     def require_current_document(self, expected_revision):
@@ -10195,7 +10666,7 @@ class LocalRegistryService:
         field_errors = {}
 
         try:
-            self.plugin.get_host().validate_plugin_key(values["key"])
+            self.validate_package_id(values["key"])
         except ValueError:
             field_errors["key"] = "Enter a valid plugin key."
 
@@ -10222,10 +10693,10 @@ class LocalRegistryService:
 
     def write_entries(self, entries):
         try:
-            self.plugin.get_host().write_json_atomic(
+            contents = self.serialize_entries(entries)
+            self.atomic_write_bytes(
                 self.plugin.get_local_registry_file(),
-                entries,
-                sort_keys=False,
+                contents,
             )
         except Exception as error:
             raise LocalRegistryError(
@@ -10252,18 +10723,34 @@ class LocalRegistryService:
                     "Local registry entry was not found.",
                     reload_required=True,
                 )
-        elif values["key"] in document.entries:
-            raise LocalRegistryError(
-                "local_registry_entry_exists",
-                "A local registry entry with this key already exists.",
-                field_errors={"key": "This plugin key already exists locally."},
-            )
+        else:
+            requested_id = self.folded_package_id(values["key"])
+            if any(
+                self.folded_package_id(package_id) == requested_id
+                for package_id in document.entries
+            ):
+                raise LocalRegistryError(
+                    "local_registry_entry_exists",
+                    "A local registry entry with this key already exists.",
+                    field_errors={
+                        "key": "This plugin key already exists locally."
+                    },
+                )
 
         next_entries = dict(document.entries)
+        previous = next_entries.get(original_key, {}) if original_key else {}
         next_entries[values["key"]] = {
-            "owner": values["repository_source"],
+            "package_id": values["key"],
+            "domoticz_key": (
+                previous.get("domoticz_key", "")
+                or self.derive_installed_domoticz_key(values["key"])
+            ),
             "description": values["description"],
-            "branch": values["branch"],
+            "repository": {
+                "url": values["repository_source"],
+                "branch": values["branch"],
+            },
+            "platforms": list(previous.get("platforms", [])),
         }
         return self.write_entries(next_entries)
 
@@ -10291,23 +10778,19 @@ class LocalRegistryService:
 
     def entry_for_api(self, key, data, public_keys, installed_keys):
         errors = {}
-        if isinstance(data, dict):
-            author = data.get("author", data.get("owner", ""))
-            repository = data.get("repository", data.get("repo", ""))
+        if (
+            isinstance(data, dict)
+            and data.get("package_id") == key
+            and isinstance(data.get("repository"), dict)
+        ):
+            source = data["repository"].get("url", "")
             description = data.get("description", "")
-            branch = data.get("branch", "master")
-        elif isinstance(data, list) and len(data) >= 4:
-            author, repository, description, branch = data[:4]
+            branch = data["repository"].get("branch", "master")
         else:
-            author = ""
-            repository = ""
+            source = ""
             description = ""
             branch = "master"
-            errors["entry"] = "Entry must use a supported object or list format."
-
-        source = ""
-        if author or repository:
-            source = self.plugin.build_git_clone_url(author, repository)
+            errors["entry"] = "Entry must use the local registry v2 format."
 
         entry = {
             "key": str(key),
@@ -11385,7 +11868,7 @@ class ReleaseInstallUpdateStrategy:
     ):
         document = {
             "schema": INSTALL_METADATA_SCHEMA_VERSION,
-            "plugin_key": entry.key,
+            "package_id": entry.key,
             "management_mode": "release",
             "repository_identity": release.repository_identity,
             "version": release.version,
@@ -13446,7 +13929,17 @@ class BasePlugin:
         return self.load_registry_file(self.get_bundled_registry_file(), "bundled", True)
 
     def load_local_registry(self):
-        return self.load_registry_file(self.get_local_registry_file(), "local")
+        document = self.local_registry_service.read_document()
+        if not document.exists:
+            Domoticz.Debug("No local registry file found.")
+            return None
+        if not document.writable:
+            Domoticz.Error(
+                "Error reading local registry file: " + document.message
+            )
+            return None
+        Domoticz.Log("Loaded local plugin registry schema v2.")
+        return document.entries
 
     def load_update_times_file(self, update_times_file, label):
         if not os.path.isfile(update_times_file):
