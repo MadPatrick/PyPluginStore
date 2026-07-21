@@ -4,6 +4,25 @@ To add your plugin, please make a pull request with your lines added.
 
 Public registry entries live in `registry.json`. Private plugins, local forks, and test branches should use `registry_local.json` instead; see [docs/registry_local.md](docs/registry_local.md).
 
+New public entries use named object fields:
+
+```json
+{
+    "ExamplePlugin": {
+        "owner": "example-owner",
+        "repository": "domoticz-example-plugin",
+        "description": "Example plugin for Domoticz",
+        "branch": "main",
+        "platforms": [
+            "linux",
+            "windows"
+        ]
+    }
+}
+```
+
+Use `gitlab.com/group/subgroup` or `codeberg.org/owner` for non-GitHub owners, and omit `platforms` when support is unknown. The optional `delivery` object is reserved for reviewed release-policy overrides. Without it, GitHub, GitLab, and Codeberg entries use the inferred stable-release policy with Git still supported; other providers require a complete reviewed policy. Legacy positional arrays remain readable for compatibility, while the weekly scanner writes newly discovered plugins as objects. Object records require PyPluginStore v2.10.0 or newer, and GitLab/Codeberg Git management requires v2.15.0 or newer.
+
 Maintainers can infer and add platform metadata with:
 
 ```bash

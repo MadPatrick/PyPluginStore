@@ -1,6 +1,35 @@
 import json
 
+import pytest
+
 from plugin_core_helpers import configure_home, write_plugin_py
+
+
+def self_hosted_release_entry(provider="gitea"):
+    host = provider + ".example.test"
+    return {
+        "owner": "https://" + host + "/team",
+        "repository": "example-plugin",
+        "description": provider + " plugin",
+        "branch": "main",
+        "delivery": {
+            "schema_version": 1,
+            "preferred": "release_if_indexed",
+            "git_supported": True,
+            "release": {
+                "provider": provider,
+                "channel": "stable",
+                "tag_pattern": r"^v[0-9]+\.[0-9]+\.[0-9]+$",
+                "artifact": "source_zip",
+                "source_path": ".",
+                "mutable_paths": [],
+                "api_base": "https://" + host + "/api/v1",
+                "web_base": "https://" + host,
+                "release_page_size": 50,
+            },
+        },
+    }
+
 
 def test_add_self_to_registry_uses_installed_folder(plugin_core_module, tmp_path):
     configure_home(plugin_core_module, tmp_path)
@@ -278,6 +307,151 @@ def test_registry_entry_model_preserves_legacy_shape(plugin_core_module):
     }
     assert plugin.registry_entries["ObjectPlugin"].to_legacy_list() == registry["ObjectPlugin"]
     assert plugin.registry_entries["ListPlugin"].to_legacy_list() == registry["ListPlugin"]
+
+
+def test_registry_accepts_self_hosted_release_provider_capabilities(
+    plugin_core_module,
+):
+    plugin = plugin_core_module.BasePlugin()
+    entries = {
+        provider: self_hosted_release_entry(provider)
+        for provider in ("forgejo", "gitea")
+    }
+
+    registry, _platforms = plugin.normalize_registry(entries)
+
+    assert set(registry) == {"forgejo", "gitea"}
+    for provider in entries:
+        policy = plugin.registry_entries[provider].delivery.release
+        assert policy.web_base == "https://" + provider + ".example.test"
+        assert policy.release_page_size == 50
+        assert policy.allowed_origins == []
+    assert plugin_core_module.Domoticz.calls["Error"] == []
+
+
+def test_registry_accepts_codeberg_release_policy_defaults(plugin_core_module):
+    plugin = plugin_core_module.BasePlugin()
+    entry = self_hosted_release_entry("forgejo")
+    entry["owner"] = "codeberg.org/team"
+    release = entry["delivery"]["release"]
+    for field in ("api_base", "web_base", "release_page_size"):
+        del release[field]
+
+    registry, _platforms = plugin.normalize_registry({"Codeberg": entry})
+
+    assert "Codeberg" in registry
+    policy = plugin.registry_entries["Codeberg"].delivery.release
+    assert policy.web_base == ""
+    assert policy.release_page_size == 0
+
+
+@pytest.mark.parametrize(
+    "missing_field",
+    ("api_base", "web_base", "release_page_size"),
+)
+def test_registry_requires_complete_self_hosted_release_capabilities(
+    plugin_core_module,
+    missing_field,
+):
+    plugin = plugin_core_module.BasePlugin()
+    entry = self_hosted_release_entry()
+    del entry["delivery"]["release"][missing_field]
+
+    registry, _platforms = plugin.normalize_registry({"Gitea": entry})
+
+    assert registry == {}
+    assert "require api_base, web_base, and release_page_size" in str(
+        plugin_core_module.Domoticz.calls["Error"][0][0][0]
+    )
+
+
+@pytest.mark.parametrize("page_size", (True, 0, 101, "50"))
+def test_registry_rejects_invalid_release_page_size(
+    plugin_core_module,
+    page_size,
+):
+    plugin = plugin_core_module.BasePlugin()
+    entry = self_hosted_release_entry()
+    entry["delivery"]["release"]["release_page_size"] = page_size
+
+    registry, _platforms = plugin.normalize_registry({"Gitea": entry})
+
+    assert registry == {}
+    assert "must be between 1 and 100" in str(
+        plugin_core_module.Domoticz.calls["Error"][0][0][0]
+    )
+
+
+@pytest.mark.parametrize(
+    "web_base",
+    (
+        "http://gitea.example.test",
+        "https://user:secret@gitea.example.test",
+        "https://gitea.example.test?token=secret",
+        "https://gitea.example.test#fragment",
+        "https://gitea.example.test:70000",
+    ),
+)
+def test_registry_rejects_unsafe_release_web_base(
+    plugin_core_module,
+    web_base,
+):
+    plugin = plugin_core_module.BasePlugin()
+    entry = self_hosted_release_entry()
+    entry["delivery"]["release"]["web_base"] = web_base
+
+    registry, _platforms = plugin.normalize_registry({"Gitea": entry})
+
+    assert registry == {}
+
+
+def test_registry_rejects_capability_fields_for_github(plugin_core_module):
+    plugin = plugin_core_module.BasePlugin()
+    entry = self_hosted_release_entry()
+    entry["owner"] = "owner"
+    entry["delivery"]["release"]["provider"] = "github"
+
+    registry, _platforms = plugin.normalize_registry({"GitHub": entry})
+
+    assert registry == {}
+    assert "only valid for Forgejo and Gitea" in str(
+        plugin_core_module.Domoticz.calls["Error"][0][0][0]
+    )
+
+
+def test_registry_rejects_self_hosted_release_web_host_mismatch(
+    plugin_core_module,
+):
+    plugin = plugin_core_module.BasePlugin()
+    entry = self_hosted_release_entry()
+    entry["delivery"]["release"]["web_base"] = (
+        "https://other.example.test"
+    )
+
+    registry, _platforms = plugin.normalize_registry({"Gitea": entry})
+
+    assert registry == {}
+    assert "does not match registry host" in str(
+        plugin_core_module.Domoticz.calls["Error"][0][0][0]
+    )
+
+
+def test_registry_rejects_self_hosted_release_web_port_mismatch(
+    plugin_core_module,
+):
+    plugin = plugin_core_module.BasePlugin()
+    entry = self_hosted_release_entry()
+    entry["owner"] = "https://gitea.example.test:8443/team"
+    entry["delivery"]["release"]["api_base"] = (
+        "https://gitea.example.test:8443/api/v1"
+    )
+
+    registry, _platforms = plugin.normalize_registry({"Gitea": entry})
+
+    assert registry == {}
+    assert "does not match registry host" in str(
+        plugin_core_module.Domoticz.calls["Error"][0][0][0]
+    )
 
 
 def test_get_registry_entry_rebuilds_from_legacy_plugin_data(plugin_core_module):

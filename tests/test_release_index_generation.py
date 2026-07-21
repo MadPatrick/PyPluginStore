@@ -1330,6 +1330,36 @@ def test_provider_no_release_signal_reaches_no_release_report(
     )
 
 
+def test_object_entry_without_delivery_uses_implicit_release_first_policy(
+    release_index_generation_module,
+):
+    entry = registry_entry()
+    del entry["delivery"]
+    provider = RecordingProvider(
+        {"github.com/owner/example-plugin": [None]}
+    )
+
+    result = make_generator(
+        release_index_generation_module,
+        {"github": provider},
+        RecordingHttpClient({}),
+    ).generate(
+        registry_bytes=registry_bytes({"ExamplePlugin": entry}),
+        report_only=True,
+    )
+
+    assert status(result) == "no_release"
+    assert len(provider.calls) == 1
+    assert provider.calls[0]["policy"] == {
+        "provider": "github",
+        "channel": "stable",
+        "tag_pattern": r"^v?[0-9]+(?:\.[0-9]+){1,3}$",
+        "artifact": "source_zip",
+        "source_path": ".",
+        "mutable_paths": [],
+    }
+
+
 def test_github_not_found_error_remains_a_non_transient_provider_failure(
     release_index_generation_module,
 ):

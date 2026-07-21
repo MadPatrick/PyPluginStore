@@ -1021,7 +1021,13 @@ def test_scanner_adds_platforms_for_new_plugins(scan_plugins_module, tmp_path, m
 
     registry = json.loads(registry_file.read_text())
 
-    assert registry["repo"] == ["owner", "repo", "description", "main", "", ["windows"]]
+    assert registry["repo"] == {
+        "owner": "owner",
+        "repository": "repo",
+        "description": "description",
+        "branch": "main",
+        "platforms": ["windows"],
+    }
 
 
 def test_scanner_keeps_low_confidence_new_plugin_platforms_unknown(scan_plugins_module, tmp_path, monkeypatch):
@@ -1066,7 +1072,12 @@ def test_scanner_keeps_low_confidence_new_plugin_platforms_unknown(scan_plugins_
     registry = json.loads(registry_file.read_text())
     metadata = json.loads(metadata_file.read_text())
 
-    assert registry["repo"] == ["owner", "repo", "description", "main"]
+    assert registry["repo"] == {
+        "owner": "owner",
+        "repository": "repo",
+        "description": "description",
+        "branch": "main",
+    }
     assert metadata["entries"]["repo"]["registry_platforms"] == []
     assert metadata["entries"]["repo"]["last_detection"]["platforms"] == ["linux", "windows"]
     assert metadata["entries"]["repo"]["policy_action"] == "kept_low_confidence_new"
@@ -1310,22 +1321,20 @@ def test_scanner_adds_codeberg_and_gitlab_plugins(scan_plugins_module, tmp_path,
     registry = json.loads(registry_file.read_text())
     update_times = json.loads(update_times_file.read_text())
 
-    assert registry["Domoticz-Stromer-plugin"] == [
-        "codeberg.org/Hoog",
-        "Domoticz-Stromer-plugin",
-        "Domoticz plugin for integrating Stromer portal data.",
-        "main",
-        "",
-        ["linux", "windows"],
-    ]
-    assert registry["DomoticzSabNZBDPlugin"] == [
-        "gitlab.com/r.boeters",
-        "DomoticzSabNZBDPlugin",
-        "SabNZBD Python plugin for Domoticz Home Automation",
-        "master",
-        "",
-        ["linux", "windows"],
-    ]
+    assert registry["Domoticz-Stromer-plugin"] == {
+        "owner": "codeberg.org/Hoog",
+        "repository": "Domoticz-Stromer-plugin",
+        "description": "Domoticz plugin for integrating Stromer portal data.",
+        "branch": "main",
+        "platforms": ["linux", "windows"],
+    }
+    assert registry["DomoticzSabNZBDPlugin"] == {
+        "owner": "gitlab.com/r.boeters",
+        "repository": "DomoticzSabNZBDPlugin",
+        "description": "SabNZBD Python plugin for Domoticz Home Automation",
+        "branch": "master",
+        "platforms": ["linux", "windows"],
+    }
     assert update_times["Domoticz-Stromer-plugin"] == "2026-06-30T19:36:29Z"
     assert update_times["DomoticzSabNZBDPlugin"] == "2019-08-16T18:29:37.958Z"
 
