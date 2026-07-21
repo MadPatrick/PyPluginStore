@@ -514,6 +514,7 @@ def test_ui_load_and_refresh_treat_management_map_as_optional_extension():
 def test_ui_has_release_and_git_channel_badges_with_safe_text_rendering():
     html = (REPO_ROOT / "pypluginstore.html").read_text(encoding="utf-8")
     script = load_inline_script()
+    render_plugins = extract_js_function(script, "renderPlugins")
 
     assert ".channel-badge" in html
     assert ".channel-badge-release" in html
@@ -523,8 +524,10 @@ def test_ui_has_release_and_git_channel_badges_with_safe_text_rendering():
     assert "releaseChannelLabel" in script
     assert "channel-badge channel-badge-" in script
     assert "formatReleaseManagementStatus" in script
-    assert ".textContent = formatReleaseManagementStatus" in script
+    assert ".textContent = managementText" in script
     assert "innerHTML = formatReleaseManagementStatus" not in script
+    assert "const managementText = formatReleaseManagementStatus(management);" in render_plugins
+    assert "if (managementText)" in render_plugins
 
 
 def test_release_channel_labels_are_explicit():
@@ -609,7 +612,7 @@ def test_release_status_text_surfaces_versions_verification_migration_and_restar
             "state": release_management_state(
                 channel="git", status="git_available"
             ),
-            "fragments": ["Git update available"],
+            "fragments": ["Git · Update available"],
         },
         {
             "state": release_management_state(
@@ -642,6 +645,31 @@ for (const item of cases) {
             throw new Error(`missing "${fragment}" in "${text}"`);
         }
     }
+}
+"""
+    )
+
+
+def test_git_status_text_is_hidden_unless_an_update_is_available():
+    script = load_inline_script()
+    function_source = extract_js_function(
+        script, "formatReleaseManagementStatus"
+    )
+    run_node(
+        function_source
+        + """
+for (const status of ['git_current', 'git_unknown']) {
+    const text = formatReleaseManagementStatus({channel: 'git', status});
+    if (text !== '') {
+        throw new Error(`${status} unexpectedly rendered as "${text}"`);
+    }
+}
+const available = formatReleaseManagementStatus({
+    channel: 'git',
+    status: 'git_available'
+});
+if (available !== 'Git · Update available') {
+    throw new Error(`available Git update rendered as "${available}"`);
 }
 """
     )
