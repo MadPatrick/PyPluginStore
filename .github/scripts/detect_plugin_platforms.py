@@ -5,6 +5,7 @@ import json
 import os
 import re
 import sys
+import tempfile
 import time
 import urllib.error
 import urllib.parse
@@ -16,7 +17,12 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 if SCRIPT_DIR not in sys.path:
     sys.path.insert(0, SCRIPT_DIR)
 
-from registry_records import RegistryRecord, parse_registry_owner
+from registry_records import (
+    RegistryRecord,
+    load_registry_file,
+    parse_registry_owner,
+    save_registry_file,
+)
 
 
 REPO_ROOT = os.path.abspath(os.path.join(SCRIPT_DIR, "../.."))
@@ -31,7 +37,7 @@ MAX_TEXT_FILE_BYTES = 160_000
 API_USER_AGENT = "Domoticz-Plugin-Platform-Scanner"
 DEFAULT_GIT_HOST = "github.com"
 SUPPORTED_GIT_HOSTS = ("github.com", "gitlab.com", "codeberg.org")
-PLATFORM_METADATA_VERSION = 1
+PLATFORM_METADATA_VERSION = 2
 CONFIDENCE_ORDER = {
     "unknown": 0,
     "low": 1,
@@ -400,14 +406,24 @@ def set_registry_entry_platforms(data, platforms):
     platforms = normalize_platforms(platforms)
     if not platforms:
         return data
-    return RegistryRecord.from_entry("Plugin", data).with_platforms(
+    package_id = (
+        data.get("package_id", "Plugin")
+        if isinstance(data, dict)
+        else "Plugin"
+    )
+    return RegistryRecord.from_entry(package_id, data).with_platforms(
         platforms
     ).to_document()
 
 
 def registry_entry_identity(data):
     try:
-        record = RegistryRecord.from_entry("Plugin", data)
+        package_id = (
+            data.get("package_id", "Plugin")
+            if isinstance(data, dict)
+            else "Plugin"
+        )
+        record = RegistryRecord.from_entry(package_id, data)
     except ValueError:
         return "", "", ""
     return record.owner, record.repository, record.branch
@@ -421,7 +437,7 @@ def platform_metadata_identity(owner, repo, branch):
 
 def new_platform_metadata():
     return {
-        "version": PLATFORM_METADATA_VERSION,
+        "schema_version": PLATFORM_METADATA_VERSION,
         "entries": {},
     }
 
@@ -435,8 +451,66 @@ def normalize_platform_metadata(metadata):
         entries = {}
 
     return {
-        "version": metadata.get("version", PLATFORM_METADATA_VERSION),
+        "schema_version": PLATFORM_METADATA_VERSION,
         "entries": entries,
+    }
+
+
+def parse_platform_metadata(document):
+    if not isinstance(document, dict):
+        raise ValueError("Platform metadata must contain a JSON object.")
+    if set(document) != {"schema_version", "detections"}:
+        raise ValueError("Platform metadata must use the strict v2 schema.")
+    if document["schema_version"] != PLATFORM_METADATA_VERSION:
+        raise ValueError("Platform metadata schema is unsupported.")
+    detections = document["detections"]
+    if not isinstance(detections, list):
+        raise ValueError("Platform metadata detections must be an array.")
+    entries = {}
+    folded_ids = set()
+    for detection in detections:
+        if not isinstance(detection, dict):
+            raise ValueError("Platform metadata detection must be an object.")
+        package_id = detection.get("package_id")
+        if (
+            not isinstance(package_id, str)
+            or not package_id
+            or package_id != package_id.strip()
+            or package_id.startswith(".")
+            or "/" in package_id
+            or "\\" in package_id
+        ):
+            raise ValueError("Platform metadata package_id is invalid.")
+        folded_id = package_id.casefold()
+        if folded_id in folded_ids:
+            raise ValueError(
+                "Platform metadata contains a duplicate package_id."
+            )
+        folded_ids.add(folded_id)
+        entry = dict(detection)
+        del entry["package_id"]
+        entries[package_id] = entry
+    return {
+        "schema_version": PLATFORM_METADATA_VERSION,
+        "entries": entries,
+    }
+
+
+def platform_metadata_document(metadata):
+    metadata = normalize_platform_metadata(metadata)
+    detections = []
+    for package_id, entry in metadata["entries"].items():
+        if not isinstance(entry, dict):
+            raise ValueError("Platform metadata entry must be an object.")
+        record = {"package_id": package_id}
+        record.update(entry)
+        detections.append(record)
+    detections.sort(
+        key=lambda item: (item["package_id"].casefold(), item["package_id"])
+    )
+    return {
+        "schema_version": PLATFORM_METADATA_VERSION,
+        "detections": detections,
     }
 
 
@@ -444,15 +518,49 @@ def load_platform_metadata(metadata_file=PLATFORM_METADATA_FILE):
     if not os.path.exists(metadata_file):
         return new_platform_metadata()
 
+    def reject_duplicate_keys(pairs):
+        result = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError(
+                    "Platform metadata contains duplicate JSON key "
+                    + str(key)
+                    + "."
+                )
+            result[key] = value
+        return result
+
     with open(metadata_file, "r", encoding="utf-8") as f:
-        return normalize_platform_metadata(json.load(f))
+        return parse_platform_metadata(
+            json.load(f, object_pairs_hook=reject_duplicate_keys)
+        )
 
 
 def save_platform_metadata(metadata, metadata_file=PLATFORM_METADATA_FILE):
-    os.makedirs(os.path.dirname(metadata_file), exist_ok=True)
-    with open(metadata_file, "w", encoding="utf-8") as f:
-        json.dump(normalize_platform_metadata(metadata), f, indent=4)
-        f.write("\n")
+    directory = os.path.dirname(metadata_file) or "."
+    os.makedirs(directory, exist_ok=True)
+    descriptor, temporary_path = tempfile.mkstemp(
+        prefix="." + os.path.basename(metadata_file) + ".",
+        suffix=".tmp",
+        dir=directory,
+    )
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as output:
+            json.dump(
+                platform_metadata_document(metadata),
+                output,
+                ensure_ascii=False,
+                indent=2,
+                sort_keys=True,
+            )
+            output.write("\n")
+            output.flush()
+            os.fsync(output.fileno())
+        os.replace(temporary_path, metadata_file)
+        temporary_path = ""
+    finally:
+        if temporary_path and os.path.exists(temporary_path):
+            os.unlink(temporary_path)
 
 
 def baseline_platform_metadata_entry(key, data, reviewed=False):
@@ -863,8 +971,7 @@ def update_registry_platforms(
     limit=None,
     sleep_seconds=None,
 ):
-    with open(registry_file, "r", encoding="utf-8") as f:
-        registry = json.load(f)
+    registry = load_registry_file(registry_file)
 
     metadata_exists = os.path.exists(metadata_file)
     platform_metadata = ensure_platform_metadata_for_registry(
@@ -949,9 +1056,7 @@ def update_registry_platforms(
             time.sleep(sleep_seconds)
 
     if stats["updated"] and not dry_run:
-        with open(registry_file, "w", encoding="utf-8") as f:
-            json.dump(registry, f, indent=4)
-            f.write("\n")
+        save_registry_file(registry_file, registry)
 
     if stats["metadata_updated"] and not dry_run:
         platform_metadata = ensure_platform_metadata_for_registry(platform_metadata, registry)

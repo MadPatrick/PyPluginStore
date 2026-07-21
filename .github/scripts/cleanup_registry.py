@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 import argparse
-import json
 import os
 import sys
 import time
@@ -13,7 +12,20 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 if SCRIPT_DIR not in sys.path:
     sys.path.insert(0, SCRIPT_DIR)
 
-from registry_records import RegistryRecord, parse_registry_owner
+from detect_plugin_platforms import (
+    load_platform_metadata,
+    new_platform_metadata,
+    save_platform_metadata,
+)
+from package_identity import MAX_PLUGIN_SOURCE_BYTES, certify_plugin_py
+from registry_records import (
+    RegistryRecord,
+    load_registry_file,
+    load_update_times_file,
+    parse_registry_owner,
+    save_registry_file,
+    save_update_times_file,
+)
 
 
 REPO_ROOT = os.path.abspath(os.path.join(SCRIPT_DIR, "../.."))
@@ -29,11 +41,21 @@ REMOVABLE_STATUSES = {"missing", "empty"}
 
 
 class CheckResult:
-    def __init__(self, key, status, url="", reason=""):
+    def __init__(
+        self,
+        key,
+        status,
+        url="",
+        reason="",
+        domoticz_key="",
+        plugin_py_sha256="",
+    ):
         self.key = key
         self.status = status
         self.url = url
         self.reason = reason
+        self.domoticz_key = domoticz_key
+        self.plugin_py_sha256 = plugin_py_sha256
 
     @property
     def removable(self):
@@ -79,22 +101,6 @@ def headers_for_url(url):
     return headers
 
 
-def load_json_file(path, default=None):
-    if not os.path.exists(path):
-        return default
-    with open(path, "r", encoding="utf-8") as f:
-        return json.load(f)
-
-
-def save_json_file(path, data):
-    directory = os.path.dirname(path)
-    if directory:
-        os.makedirs(directory, exist_ok=True)
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=4)
-        f.write("\n")
-
-
 def check_root_plugin_py(key, data, opener=None):
     try:
         record = RegistryRecord.from_entry(key, data)
@@ -107,9 +113,31 @@ def check_root_plugin_py(key, data, opener=None):
 
     try:
         with opener(request, timeout=15) as response:
-            content = response.read(4096)
+            content = response.read(MAX_PLUGIN_SOURCE_BYTES + 1)
             if content.strip():
-                return CheckResult(key, "present", url=url)
+                if len(content) > MAX_PLUGIN_SOURCE_BYTES:
+                    return CheckResult(
+                        key,
+                        "invalid-plugin",
+                        url=url,
+                        reason="root plugin.py exceeds its size limit",
+                    )
+                try:
+                    identity = certify_plugin_py(content)
+                except ValueError as error:
+                    return CheckResult(
+                        key,
+                        "invalid-plugin",
+                        url=url,
+                        reason=str(error),
+                    )
+                return CheckResult(
+                    key,
+                    "present",
+                    url=url,
+                    domoticz_key=identity.domoticz_key,
+                    plugin_py_sha256=identity.plugin_py_sha256,
+                )
             return CheckResult(key, "empty", url=url, reason="root plugin.py is empty")
     except urllib.error.HTTPError as e:
         if e.code in {404, 410}:
@@ -148,21 +176,20 @@ def cleanup_registry_files(
     keys=None,
     opener=None,
 ):
-    registry = load_json_file(registry_file)
-    if not isinstance(registry, dict):
-        raise ValueError(f"Registry file {registry_file} does not contain a JSON object.")
+    registry = load_registry_file(registry_file)
 
     update_times_exists = os.path.exists(update_times_file)
-    update_times = load_json_file(update_times_file, {}) if update_times_exists else {}
-    if not isinstance(update_times, dict):
-        raise ValueError(f"Update-times file {update_times_file} does not contain a JSON object.")
+    update_times = load_update_times_file(
+        update_times_file,
+        missing_ok=True,
+    )
 
     platform_metadata_exists = os.path.exists(platform_metadata_file)
-    platform_metadata = load_json_file(platform_metadata_file, {"version": 1, "entries": {}})
-    if not isinstance(platform_metadata, dict):
-        raise ValueError(f"Platform metadata file {platform_metadata_file} does not contain a JSON object.")
-    if not isinstance(platform_metadata.get("entries", {}), dict):
-        platform_metadata["entries"] = {}
+    platform_metadata = (
+        load_platform_metadata(platform_metadata_file)
+        if platform_metadata_exists
+        else new_platform_metadata()
+    )
 
     selected_keys = set(keys or [])
     results = []
@@ -182,18 +209,22 @@ def cleanup_registry_files(
     removable_keys = [result.key for result in results if result.removable]
     if apply_changes and removable_keys:
         remove_registry_entries(registry, update_times, platform_metadata, removable_keys)
-        save_json_file(registry_file, registry)
+        save_registry_file(registry_file, registry)
         if update_times_exists:
-            save_json_file(update_times_file, update_times)
+            save_update_times_file(update_times_file, update_times)
         if platform_metadata_exists:
-            save_json_file(platform_metadata_file, platform_metadata)
+            save_platform_metadata(platform_metadata, platform_metadata_file)
 
     stats = {
         "checked": len(results),
         "present": sum(1 for result in results if result.status == "present"),
         "would_remove": 0 if apply_changes else len(removable_keys),
         "removed": len(removable_keys) if apply_changes else 0,
-        "errors": sum(1 for result in results if result.status in {"error", "invalid-entry"}),
+        "errors": sum(
+            1
+            for result in results
+            if result.status in {"error", "invalid-entry", "invalid-plugin"}
+        ),
     }
     return stats
 

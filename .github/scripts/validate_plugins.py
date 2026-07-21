@@ -22,16 +22,25 @@ ROOT_PLUGIN_MAX_ATTEMPTS = 3
 ROOT_PLUGIN_RETRY_DELAY_SECONDS = 1
 
 try:
-    from detect_plugin_platforms import get_registry_entry_platforms
+    from detect_plugin_platforms import (
+        get_registry_entry_platforms,
+        load_platform_metadata,
+    )
 except ImportError:
     get_registry_entry_platforms = None
+    load_platform_metadata = None
 
 try:
     from cleanup_registry import check_root_plugin_py
 except ImportError:
     check_root_plugin_py = None
 
-from registry_records import RegistryRecord, parse_registry_owner
+from registry_records import (
+    RegistryRecord,
+    load_registry_file,
+    load_update_times_file,
+    parse_registry_owner,
+)
 
 def load_registry():
     print(f"Checking if registry file exists at: {REGISTRY_FILE_PATH}")
@@ -39,8 +48,7 @@ def load_registry():
         print(f"Registry file not found at: {REGISTRY_FILE_PATH}")
         sys.exit(1)
 
-    with open(REGISTRY_FILE_PATH, 'r') as f:
-        registry_data = json.load(f)
+    registry_data = load_registry_file(REGISTRY_FILE_PATH)
 
     validate_platform_metadata(registry_data)
     validate_update_times(registry_data)
@@ -57,6 +65,7 @@ def load_registry():
             "repository": record.repository,
             "description": record.description,
             "branch": record.branch,
+            "domoticz_key": data["domoticz_key"],
         }
     return plugin_data
 
@@ -82,13 +91,9 @@ def validate_platform_metadata(registry_data):
     if not os.path.isfile(PLATFORM_METADATA_FILE_PATH):
         return
 
-    with open(PLATFORM_METADATA_FILE_PATH, 'r') as f:
-        metadata = json.load(f)
-
-    if not isinstance(metadata, dict):
-        raise ValueError("Platform metadata must be a JSON object.")
-    if metadata.get("version") != 1:
-        raise ValueError("Platform metadata has an unsupported version.")
+    if load_platform_metadata is None:
+        raise ValueError("Platform metadata validation is unavailable.")
+    metadata = load_platform_metadata(PLATFORM_METADATA_FILE_PATH)
 
     entries = metadata.get("entries")
     if not isinstance(entries, dict):
@@ -120,11 +125,7 @@ def validate_update_times(registry_data):
     if not os.path.isfile(UPDATE_TIMES_FILE_PATH):
         return
 
-    with open(UPDATE_TIMES_FILE_PATH, 'r') as f:
-        update_times = json.load(f)
-
-    if not isinstance(update_times, dict):
-        raise ValueError("Update-times file must be a JSON object.")
+    update_times = load_update_times_file(UPDATE_TIMES_FILE_PATH)
 
     registry_keys = {key for key in registry_data if key != "Idle"}
     stale_keys = sorted(key for key in update_times if key not in registry_keys)
@@ -193,7 +194,15 @@ def validate_repository(author, repository, branch):
     return result.returncode == 0 and bool(result.stdout.strip())
 
 
-def validate_root_plugin_py(key, author, repository, branch, opener=None, sleeper=time.sleep):
+def validate_root_plugin_py(
+    key,
+    author,
+    repository,
+    branch,
+    domoticz_key="",
+    opener=None,
+    sleeper=time.sleep,
+):
     if check_root_plugin_py is None:
         print("Root plugin.py validation is unavailable because cleanup_registry.py could not be imported.")
         return False
@@ -205,6 +214,17 @@ def validate_root_plugin_py(key, author, repository, branch, opener=None, sleepe
             opener=opener,
         )
         if result.status == "present":
+            if domoticz_key and result.domoticz_key != domoticz_key:
+                print(
+                    "Root plugin.py key for "
+                    + key
+                    + " is "
+                    + result.domoticz_key
+                    + ", expected "
+                    + domoticz_key
+                    + "."
+                )
+                return False
             return True
         if result.status != "error" or attempt == ROOT_PLUGIN_MAX_ATTEMPTS:
             break
@@ -244,6 +264,7 @@ def main():
                 data["author"],
                 data["repository"],
                 data["branch"],
+                data["domoticz_key"],
             )
 
         if repository_is_valid and plugin_file_is_valid:
