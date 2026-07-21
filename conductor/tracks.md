@@ -24,5 +24,5 @@ This file tracks all major tracks for the project. Each track has its own detail
 
 ---
 
-## [~] Track: Explicit package identities and automatic Git-to-release transitions
+## [x] Track: Explicit package identities and automatic Git-to-release transitions
 *Link: [./conductor/tracks/package_identity_transition_20260721/](./conductor/tracks/package_identity_transition_20260721/)*

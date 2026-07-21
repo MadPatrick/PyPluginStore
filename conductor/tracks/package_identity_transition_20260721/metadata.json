@@ -1,8 +1,8 @@
 {
   "track_id": "package_identity_transition_20260721",
   "type": "feature",
-  "status": "in_progress",
+  "status": "completed",
   "created_at": "2026-07-21T11:57:15Z",
-  "updated_at": "2026-07-21T11:57:15Z",
+  "updated_at": "2026-07-21T13:39:21Z",
   "description": "Replace package-keyed metadata with explicit package_id records, certify Domoticz runtime identity consistently, support safe automatic Git-to-release ZIP transitions, and repair pre-activation release cleanup."
 }
