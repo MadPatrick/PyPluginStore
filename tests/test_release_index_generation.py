@@ -1822,6 +1822,44 @@ def test_explicit_tombstone_request_decertifies_prior_release_with_reason(
     assert provider.calls == []
 
 
+def test_v2_tombstone_survives_package_removal_from_registry(
+    release_index_generation_module,
+):
+    old_registry = registry_bytes()
+    tombstone = {
+        "repository_identity": "github.com/owner/example-plugin",
+        "last_revision": 7,
+        "release_id": "github:owner/example-plugin:v1.0.0",
+        "reason": "The registry record was not a Domoticz plugin.",
+        "removed_at": "2026-07-17T12:00:00Z",
+    }
+    previous = previous_index(
+        old_registry,
+        {},
+        tombstones={"ExamplePlugin": tombstone},
+    )
+    current_registry = (
+        json.dumps({"schema_version": 2, "packages": []}, indent=2)
+        + "\n"
+    ).encode("utf-8")
+    generator = make_generator(
+        release_index_generation_module,
+        {"github": ExplodingProvider()},
+        ExplodingHttpClient(),
+    )
+
+    result = generator.generate(
+        registry_bytes=current_registry,
+        previous_index=previous,
+        report_only=True,
+    )
+
+    assert result.document["releases"] == []
+    assert tombstone_map(result.document) == {
+        "ExamplePlugin": {"package_id": "ExamplePlugin", **tombstone}
+    }
+
+
 @pytest.mark.parametrize(
     "tombstone_request",
     [

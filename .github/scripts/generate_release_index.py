@@ -1495,12 +1495,12 @@ def _validate_v2_previous(previous, registry):
         )
         if package_id in tombstones or package_id in plugins:
             raise ValueError("Previous package state is duplicated.")
-        if package_id not in registry:
-            raise ValueError("Previously tombstoned package disappeared from registry.")
         normalized = copy.deepcopy(tombstone)
         normalized.pop("package_id")
-        if normalized["repository_identity"] != _entry_repository_identity(
-            registry[package_id]
+        if (
+            package_id in registry
+            and normalized["repository_identity"]
+            != _entry_repository_identity(registry[package_id])
         ):
             raise ValueError("Previous tombstone repository no longer matches registry.")
         _require_positive_integer(
