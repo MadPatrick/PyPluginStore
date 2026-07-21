@@ -136,7 +136,79 @@ def test_load_update_times_falls_back_to_bundled_file(plugin_core_module, tmp_pa
     assert plugin.load_update_times() == {"Plugin": "2026-06-14T15:10:03Z"}
     assert json.loads(bundled_file.read_text()) == {"Plugin": "2026-06-14T15:10:03Z"}
     assert json.loads((manager_dir / "update_times.cache.json").read_text()) == {
-        "Plugin": "2026-06-14T15:10:03Z",
+        "schema_version": 2,
+        "updates": [
+            {
+                "package_id": "Plugin",
+                "updated_at": "2026-06-14T15:10:03Z",
+            }
+        ],
+    }
+
+
+def test_load_update_times_accepts_strict_remote_v2(
+    plugin_core_module, tmp_path, monkeypatch
+):
+    _, manager_dir = configure_home(plugin_core_module, tmp_path)
+    plugin = plugin_core_module.BasePlugin()
+
+    class FakeResponse:
+        status = 200
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc_value, traceback):
+            return False
+
+        def read(self):
+            return json.dumps(
+                {
+                    "schema_version": 2,
+                    "updates": [
+                        {
+                            "package_id": "Plugin",
+                            "updated_at": "2026-07-21T12:00:00Z",
+                        }
+                    ],
+                }
+            ).encode("utf-8")
+
+    monkeypatch.setattr(
+        plugin_core_module.urllib.request,
+        "urlopen",
+        lambda *args, **kwargs: FakeResponse(),
+    )
+
+    assert plugin.load_update_times() == {
+        "Plugin": "2026-07-21T12:00:00Z"
+    }
+    assert json.loads(
+        (manager_dir / "update_times.cache.json").read_text()
+    ) == {
+        "schema_version": 2,
+        "updates": [
+            {
+                "package_id": "Plugin",
+                "updated_at": "2026-07-21T12:00:00Z",
+            }
+        ],
+    }
+
+
+def test_legacy_update_times_normalize_to_canonical_utc(
+    plugin_core_module,
+):
+    plugin = plugin_core_module.BasePlugin()
+
+    assert plugin.normalize_update_times_document(
+        {
+            "OffsetPlugin": "2026-07-21T14:00:00+02:00",
+            "FractionPlugin": "2026-07-21T12:00:00.958Z",
+        }
+    ) == {
+        "FractionPlugin": "2026-07-21T12:00:00Z",
+        "OffsetPlugin": "2026-07-21T12:00:00Z",
     }
 
 
@@ -281,6 +353,56 @@ def test_registry_normalizer_accepts_object_entries_with_platforms(plugin_core_m
     assert platforms["ObjectPlugin"] == ["linux", "windows"]
     assert registry["ListPlugin"] == ["owner", "repo", "description", "main", ""]
     assert platforms["ListPlugin"] == ["windows"]
+
+
+def test_registry_normalizer_consumes_strict_v2_package_records(
+    plugin_core_module,
+):
+    plugin = plugin_core_module.BasePlugin()
+    document = {
+        "schema_version": 2,
+        "packages": [
+            {
+                "package_id": "SmaPackage",
+                "domoticz_key": "SMA",
+                "description": "SMA inverter",
+                "repository": {
+                    "url": "https://gitlab.com/group/sma-plugin",
+                    "branch": "main",
+                },
+                "platforms": ["linux"],
+                "delivery": {
+                    "preferred": "release_if_indexed",
+                    "git_supported": True,
+                    "release": {
+                        "provider": "gitlab",
+                        "channel": "stable",
+                        "tag_pattern": r"^v[0-9]+\.[0-9]+\.[0-9]+$",
+                        "artifact": "source_zip",
+                        "source_path": ".",
+                        "mutable_paths": [],
+                    },
+                },
+            }
+        ],
+    }
+
+    registry, platforms = plugin.normalize_registry(document)
+
+    assert registry == {
+        "SmaPackage": [
+            "https://gitlab.com/group/sma-plugin",
+            "",
+            "SMA inverter",
+            "main",
+        ]
+    }
+    entry = plugin.registry_entries["SmaPackage"]
+    assert entry.package_id == "SmaPackage"
+    assert entry.domoticz_key == "SMA"
+    assert entry.delivery.preferred == "release_if_indexed"
+    assert entry.delivery.release.provider == "gitlab"
+    assert platforms == {"SmaPackage": ["linux"]}
 
 
 def test_registry_entry_model_preserves_legacy_shape(plugin_core_module):

@@ -221,6 +221,20 @@ def test_v2_registry_parsing_is_strict(registry_records_module, contents):
         registry_records_module.RegistryDocument.from_bytes(contents)
 
 
+def test_release_if_indexed_requires_an_explicit_discovery_policy(
+    registry_records_module,
+):
+    document = package(
+        delivery={
+            "preferred": "release_if_indexed",
+            "git_supported": True,
+        }
+    )
+
+    with pytest.raises(ValueError, match="(?i)release.*requires"):
+        parse_registry(registry_records_module, [document])
+
+
 @pytest.mark.parametrize(
     "package_ids",
     [

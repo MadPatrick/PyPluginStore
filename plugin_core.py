@@ -36,12 +36,12 @@ from datetime import datetime, timedelta, timezone
 import Domoticz
 
 
-def _load_package_registry():
-    """Import the sibling registry contract from normal or path-based loads."""
+def _load_package_registry_module():
+    """Import sibling package contracts from normal or path-based loads."""
     try:
-        from package_registry import PackageRegistry as registry_class
+        import package_registry as registry_module
 
-        return registry_class
+        return registry_module
     except ModuleNotFoundError as error:
         if error.name != "package_registry":
             raise
@@ -62,10 +62,12 @@ def _load_package_registry():
         if sys.modules.get("package_registry") is module:
             del sys.modules["package_registry"]
         raise
-    return module.PackageRegistry
+    return module
 
 
-PackageRegistry = _load_package_registry()
+_package_registry_module = _load_package_registry_module()
+PackageRegistry = _package_registry_module.PackageRegistry
+UpdateTimesDocument = _package_registry_module.UpdateTimesDocument
 
 
 API_PAYLOAD_MAX_LENGTH = 2000
@@ -10013,7 +10015,8 @@ class RegistryEntry:
         delivery=None,
         domoticz_key="",
     ):
-        self.key = str(key or "")
+        self.package_id = str(key or "")
+        self.key = self.package_id
         self.author = str(author or "")
         self.repository = str(repository or "")
         self.description = str(description or "")
@@ -10054,15 +10057,18 @@ class RegistryService:
     def normalize_entry(self, key, data, local=False, default_platforms=None):
         platforms = ["unknown"]
         if isinstance(data, dict):
-            local_repository = data.get("repository") if local else None
-            if (
-                local
-                and "package_id" in data
-                and isinstance(local_repository, dict)
+            explicit_repository = data.get("repository")
+            if "package_id" in data and isinstance(
+                explicit_repository, dict
             ):
-                author = local_repository.get("url", "")
+                if data.get("package_id") != key:
+                    Domoticz.Error(
+                        "Plugin '" + str(key) + "' package_id does not match its record."
+                    )
+                    return None, ["unknown"]
+                author = explicit_repository.get("url", "")
                 repository = ""
-                branch = local_repository.get("branch", "master")
+                branch = explicit_repository.get("branch", "master")
                 domoticz_key = data.get("domoticz_key", "")
             else:
                 author = data.get("author", data.get("owner", ""))
@@ -10076,9 +10082,18 @@ class RegistryService:
                 if local:
                     delivery = DeliveryPolicy.git_only()
                 else:
+                    delivery_document = data.get("delivery")
+                    if (
+                        isinstance(delivery_document, dict)
+                        and "schema_version" not in delivery_document
+                    ):
+                        delivery_document = {
+                            "schema_version": DELIVERY_POLICY_SCHEMA_VERSION,
+                            **delivery_document,
+                        }
                     delivery = (
                         DeliveryPolicy.from_document(
-                            data["delivery"],
+                            delivery_document,
                             normalize_repository_identity(author, repository),
                         )
                         if "delivery" in data
@@ -10131,7 +10146,19 @@ class RegistryService:
 
         return entry, platforms
 
+    def records_from_document(self, registry):
+        if not isinstance(registry, dict):
+            raise ValueError("Registry must be an object.")
+        if "schema_version" in registry:
+            parsed = PackageRegistry.from_document(registry)
+            return {
+                package.package_id: package.to_document()
+                for package in parsed.packages
+            }
+        return dict(registry)
+
     def normalize_registry(self, registry, local_keys=None):
+        registry = self.records_from_document(registry)
         local_keys = set(local_keys or [])
         normalized_registry = {}
         plugin_platforms = {}
@@ -13947,12 +13974,15 @@ class BasePlugin:
             return {}
 
         try:
-            with open(update_times_file, "r", encoding="utf-8") as f:
-                update_times = json.load(f)
-            if isinstance(update_times, dict):
-                Domoticz.Debug("Loaded update times from " + label + " file.")
-                return update_times
-            Domoticz.Error(label + " update_times file does not contain a JSON object.")
+            with open(update_times_file, "rb") as update_times_input:
+                contents = update_times_input.read()
+            document = _load_json_object(
+                contents,
+                label + " update_times file",
+            )
+            update_times = self.normalize_update_times_document(document)
+            Domoticz.Debug("Loaded update times from " + label + " file.")
+            return update_times
         except Exception as e:
             Domoticz.Error("Error reading " + label + " update_times file: " + str(e))
         return {}
@@ -13966,28 +13996,44 @@ class BasePlugin:
     def save_update_times_cache(self, update_times):
         update_times_file = self.get_update_times_cache_file()
         try:
-            with open(update_times_file, "w", encoding="utf-8") as f:
-                json.dump(update_times, f, indent=4)
-                f.write("\n")
+            document = UpdateTimesDocument.from_legacy_document(
+                dict(update_times)
+            ).to_document()
+            self.get_host().write_json_atomic(
+                update_times_file,
+                document,
+                sort_keys=False,
+            )
             Domoticz.Log("Updated update_times.cache.json.")
             return True
         except Exception as e:
             Domoticz.Error("Error writing update_times.cache.json: " + str(e))
             return False
 
+    def normalize_update_times_document(self, document):
+        if not isinstance(document, dict):
+            raise ValueError("update_times must contain a JSON object.")
+        if "schema_version" in document:
+            parsed = UpdateTimesDocument.from_document(document)
+        else:
+            parsed = UpdateTimesDocument.from_legacy_document(document)
+        return dict(parsed.by_package_id)
+
     def load_update_times(self):
         update_times = {}
-        Domoticz.Debug("Fetching update times from GitHub.")
+        Domoticz.Debug("Fetching remote update times.")
         try:
             req = urllib.request.Request(self.get_update_times_url())
             with urllib.request.urlopen(req, timeout=5) as response:
                 if response.status == 200:
-                    update_times = json.loads(response.read().decode("utf-8"))
-                    if isinstance(update_times, dict):
-                        Domoticz.Log("Successfully fetched update times from GitHub.")
-                    else:
-                        Domoticz.Error("Remote update_times.json does not contain a JSON object.")
-                        update_times = {}
+                    document = _load_json_object(
+                        response.read(),
+                        "remote update_times.json",
+                    )
+                    update_times = self.normalize_update_times_document(
+                        document
+                    )
+                    Domoticz.Log("Successfully fetched remote update times.")
                 else:
                     Domoticz.Error("Failed to fetch update times, status code: " + str(response.status))
         except Exception as e:
@@ -14660,7 +14706,9 @@ class BasePlugin:
         return normalized_registry, plugin_platforms
 
     def apply_registry_sources(self, public_registry, local_registry):
-        public_registry = dict(public_registry or {})
+        public_registry = self.registry_service.records_from_document(
+            public_registry or {}
+        )
         local_registry = dict(local_registry or {})
         merged_registry = dict(public_registry)
         merged_registry.update(local_registry)
@@ -14717,12 +14765,16 @@ class BasePlugin:
 
         if registry_loaded:
             if registry is not None:
-                self.public_registry_data = dict(registry)
-            selected_public_registry = (
-                registry
-                if registry is not None
-                else self.public_registry_data
-            )
+                try:
+                    self.public_registry_data = (
+                        self.registry_service.records_from_document(registry)
+                    )
+                except ValueError as error:
+                    Domoticz.Error(
+                        "Plugin registry is invalid: " + str(error)
+                    )
+                    registry = None
+            selected_public_registry = self.public_registry_data
             self.apply_registry_sources(
                 selected_public_registry,
                 local_registry,

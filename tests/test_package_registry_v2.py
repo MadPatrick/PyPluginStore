@@ -19,6 +19,11 @@ def package_record(
     domoticz_key="EXAMPLE",
     repository_url="https://gitlab.com/example-group/example-plugin",
 ):
+    provider = (
+        "github"
+        if repository_url.startswith("https://github.com/")
+        else "gitlab"
+    )
     return {
         "package_id": package_id,
         "domoticz_key": domoticz_key,
@@ -31,6 +36,14 @@ def package_record(
         "delivery": {
             "preferred": "release_if_indexed",
             "git_supported": True,
+            "release": {
+                "provider": provider,
+                "channel": "stable",
+                "tag_pattern": r"^v?[0-9]+(?:\.[0-9]+){1,3}$",
+                "artifact": "source_zip",
+                "source_path": ".",
+                "mutable_paths": [],
+            },
         },
     }
 
@@ -63,6 +76,7 @@ specification = importlib.util.spec_from_file_location("isolated_plugin_core", s
 module = importlib.util.module_from_spec(specification)
 specification.loader.exec_module(module)
 assert module.PackageRegistry.__module__ == "package_registry"
+assert module.UpdateTimesDocument.__module__ == "package_registry"
 """
 
     subprocess.run(
@@ -169,6 +183,72 @@ def test_registry_v2_parses_explicit_package_record(plugin_core_module):
     assert package.repository_identity == (
         "gitlab.com/example-group/example-plugin"
     )
+
+
+def test_update_times_v2_uses_explicit_package_records(plugin_core_module):
+    update_times = plugin_core_module.UpdateTimesDocument.from_document(
+        {
+            "schema_version": 2,
+            "updates": [
+                {
+                    "package_id": "ExamplePlugin",
+                    "updated_at": "2026-07-21T12:00:00Z",
+                }
+            ],
+        }
+    )
+
+    assert update_times.by_package_id == {
+        "ExamplePlugin": "2026-07-21T12:00:00Z"
+    }
+    assert update_times.to_document() == {
+        "schema_version": 2,
+        "updates": [
+            {
+                "package_id": "ExamplePlugin",
+                "updated_at": "2026-07-21T12:00:00Z",
+            }
+        ],
+    }
+
+
+def test_update_times_v2_rejects_legacy_or_ambiguous_records(
+    plugin_core_module,
+):
+    with pytest.raises(ValueError):
+        plugin_core_module.UpdateTimesDocument.from_document(
+            {"ExamplePlugin": "2026-07-21T12:00:00Z"}
+        )
+
+    with pytest.raises(ValueError, match="duplicate package_id"):
+        plugin_core_module.UpdateTimesDocument.from_document(
+            {
+                "schema_version": 2,
+                "updates": [
+                    {
+                        "package_id": "ExamplePlugin",
+                        "updated_at": "2026-07-21T12:00:00Z",
+                    },
+                    {
+                        "package_id": "exampleplugin",
+                        "updated_at": "2026-07-21T12:00:00Z",
+                    },
+                ],
+            }
+        )
+
+    with pytest.raises(ValueError, match="canonical UTC"):
+        plugin_core_module.UpdateTimesDocument.from_document(
+            {
+                "schema_version": 2,
+                "updates": [
+                    {
+                        "package_id": "ExamplePlugin",
+                        "updated_at": "2026-07-21T12:00:00+00:00",
+                    }
+                ],
+            }
+        )
 
 
 @pytest.mark.parametrize(

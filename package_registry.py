@@ -6,6 +6,7 @@ so compatibility does not leak into the current schema.
 """
 
 import copy
+from datetime import datetime, timezone
 import json
 import re
 import unicodedata
@@ -19,6 +20,8 @@ SUPPORTED_PREFERENCES = {"git", "release", "release_if_indexed"}
 CONTROL_CHARACTERS = re.compile(r"[\x00-\x1f\x7f]")
 
 REGISTRY_FIELDS = {"schema_version", "packages"}
+UPDATE_TIMES_FIELDS = {"schema_version", "updates"}
+UPDATE_TIME_FIELDS = {"package_id", "updated_at"}
 PACKAGE_FIELDS = {
     "package_id",
     "domoticz_key",
@@ -47,6 +50,8 @@ RELEASE_FIELDS = {
     "allow_automatic_git_migration",
     "manifest_path",
 }
+
+DEFAULT_STABLE_TAG_PATTERN = r"^v?[0-9]+(?:\.[0-9]+){1,3}$"
 
 
 def _require_exact_fields(document, label, allowed, required):
@@ -205,8 +210,10 @@ class PackageDelivery:
                 {"provider"},
             )
             release = copy.deepcopy(release)
-        if preferred == "release" and release is None:
-            raise ValueError("Release delivery requires delivery.release.")
+        if preferred in {"release", "release_if_indexed"} and release is None:
+            raise ValueError(
+                "Release-first delivery requires delivery.release."
+            )
         if preferred == "git" and not git_supported:
             raise ValueError("Git delivery requires git_supported.")
         return cls(preferred, git_supported, release)
@@ -348,6 +355,32 @@ def _legacy_repository_url(owner, repository):
     return base + "/" + repository
 
 
+def _default_delivery_document(repository):
+    host = urllib.parse.urlsplit(repository.url).hostname
+    provider = {
+        "github.com": "github",
+        "gitlab.com": "gitlab",
+        "codeberg.org": "codeberg",
+    }.get(host)
+    if provider is None:
+        return {
+            "preferred": "git",
+            "git_supported": True,
+        }
+    return {
+        "preferred": "release_if_indexed",
+        "git_supported": True,
+        "release": {
+            "provider": provider,
+            "channel": "stable",
+            "tag_pattern": DEFAULT_STABLE_TAG_PATTERN,
+            "artifact": "source_zip",
+            "source_path": ".",
+            "mutable_paths": [],
+        },
+    }
+
+
 class RegistryDocument:
     """One normalized registry-v2 document."""
 
@@ -407,10 +440,7 @@ class RegistryDocument:
                     raise ValueError("Legacy registry entry is incomplete.")
                 owner, repository, description, branch = value[:4]
                 platforms = value[5] if len(value) > 5 else []
-                delivery_document = {
-                    "preferred": "release_if_indexed",
-                    "git_supported": True,
-                }
+                delivery_document = None
             elif isinstance(value, dict):
                 owner = value.get("owner", value.get("author"))
                 repository = value.get("repository", value.get("repo"))
@@ -418,12 +448,7 @@ class RegistryDocument:
                 branch = value.get("branch", "master")
                 platforms = value.get("platforms", value.get("platform", []))
                 delivery_document = copy.deepcopy(value.get("delivery"))
-                if delivery_document is None:
-                    delivery_document = {
-                        "preferred": "release_if_indexed",
-                        "git_supported": True,
-                    }
-                else:
+                if delivery_document is not None:
                     delivery_document.pop("schema_version", None)
             else:
                 raise ValueError("Legacy registry entry must be an array or object.")
@@ -431,6 +456,10 @@ class RegistryDocument:
             repository_record = PackageRepository.from_document(
                 {"url": repository_url, "branch": branch}
             )
+            if delivery_document is None:
+                delivery_document = _default_delivery_document(
+                    repository_record
+                )
             package_id = legacy_id
             if (
                 legacy_id == "Domoticz-Shelly-plugin"
@@ -476,3 +505,148 @@ class RegistryDocument:
 
 
 PackageRegistry = RegistryDocument
+
+
+@dataclass(frozen=True)
+class PackageUpdateTime:
+    package_id: str
+    updated_at: str
+
+    @classmethod
+    def from_document(cls, document):
+        document = _require_exact_fields(
+            document,
+            "update time",
+            UPDATE_TIME_FIELDS,
+            UPDATE_TIME_FIELDS,
+        )
+        package_id = _require_package_id(document["package_id"])
+        updated_at = _require_string(document["updated_at"], "updated_at")
+        try:
+            parsed = datetime.strptime(updated_at, "%Y-%m-%dT%H:%M:%SZ")
+        except ValueError as error:
+            raise ValueError(
+                "updated_at must be a canonical UTC timestamp."
+            ) from error
+        canonical = parsed.replace(tzinfo=timezone.utc).strftime(
+            "%Y-%m-%dT%H:%M:%SZ"
+        )
+        if canonical != updated_at:
+            raise ValueError("updated_at must be a canonical UTC timestamp.")
+        return cls(package_id=package_id, updated_at=updated_at)
+
+    def to_document(self):
+        return {
+            "package_id": self.package_id,
+            "updated_at": self.updated_at,
+        }
+
+
+class UpdateTimesDocument:
+    """Strict package update timestamps with an explicit legacy boundary."""
+
+    def __init__(self, updates, *, legacy=False):
+        self.schema_version = REGISTRY_SCHEMA_VERSION
+        self.updates = tuple(
+            sorted(
+                updates,
+                key=lambda item: (item.package_id.casefold(), item.package_id),
+            )
+        )
+        self.by_package_id = {
+            item.package_id: item.updated_at for item in self.updates
+        }
+        self.legacy = bool(legacy)
+
+    @classmethod
+    def from_document(cls, document):
+        document = _require_exact_fields(
+            document,
+            "update times",
+            UPDATE_TIMES_FIELDS,
+            UPDATE_TIMES_FIELDS,
+        )
+        if (
+            type(document["schema_version"]) is not int
+            or document["schema_version"] != REGISTRY_SCHEMA_VERSION
+        ):
+            raise ValueError("update_times.schema_version is not supported.")
+        records = document["updates"]
+        if not isinstance(records, list):
+            raise ValueError("update_times.updates must be an array.")
+        updates = []
+        folded_ids = set()
+        for raw_record in records:
+            record = PackageUpdateTime.from_document(raw_record)
+            folded_id = record.package_id.casefold()
+            if folded_id in folded_ids:
+                raise ValueError("Update times contain a duplicate package_id.")
+            folded_ids.add(folded_id)
+            updates.append(record)
+        return cls(updates)
+
+    @classmethod
+    def from_bytes(cls, contents):
+        return cls.from_document(
+            _strict_json_document(contents, "update times")
+        )
+
+    @classmethod
+    def from_legacy_document(cls, document):
+        if not isinstance(document, dict) or "schema_version" in document:
+            raise ValueError(
+                "Legacy update times must be a package-keyed object."
+            )
+        updates = []
+        folded_ids = set()
+        for package_id, updated_at in document.items():
+            updated_at = _require_string(updated_at, "updated_at")
+            try:
+                parsed = datetime.fromisoformat(
+                    updated_at.replace("Z", "+00:00")
+                )
+            except ValueError as error:
+                raise ValueError(
+                    "Legacy updated_at is not an ISO 8601 timestamp."
+                ) from error
+            if parsed.tzinfo is None:
+                raise ValueError(
+                    "Legacy updated_at must include a timezone."
+                )
+            updated_at = (
+                parsed.astimezone(timezone.utc)
+                .replace(microsecond=0)
+                .strftime("%Y-%m-%dT%H:%M:%SZ")
+            )
+            record = PackageUpdateTime.from_document(
+                {
+                    "package_id": package_id,
+                    "updated_at": updated_at,
+                }
+            )
+            folded_id = record.package_id.casefold()
+            if folded_id in folded_ids:
+                raise ValueError(
+                    "Legacy update times contain a duplicate package_id."
+                )
+            folded_ids.add(folded_id)
+            updates.append(record)
+        return cls(updates, legacy=True)
+
+    @classmethod
+    def from_legacy_bytes(cls, contents):
+        return cls.from_legacy_document(
+            _strict_json_document(contents, "legacy update times")
+        )
+
+    def to_document(self):
+        return {
+            "schema_version": REGISTRY_SCHEMA_VERSION,
+            "updates": [item.to_document() for item in self.updates],
+        }
+
+    def to_bytes(self):
+        return (
+            json.dumps(self.to_document(), ensure_ascii=False, indent=2)
+            + "\n"
+        ).encode("utf-8")
