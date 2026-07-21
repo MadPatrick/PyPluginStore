@@ -558,11 +558,21 @@ def test_release_status_text_surfaces_versions_verification_migration_and_restar
                 available_version="1.4.0",
                 available_revision=4,
             ),
-            "fragments": ["Release", "v1.4.0", "revision 4", "current"],
+            "fragments": ["Release", "v1.4.0", "current"],
         },
         {
             "state": release_management_state(),
-            "fragments": ["v2.0.0", "revision 5", "available"],
+            "fragments": ["v2.0.0", "available"],
+        },
+        {
+            "state": release_management_state(
+                status="current",
+                installed_version="",
+                available_version="",
+                installed_revision=98,
+                available_revision=99,
+            ),
+            "fragments": ["Release", "current"],
         },
         {
             "state": release_management_state(
@@ -605,7 +615,15 @@ def test_release_status_text_surfaces_versions_verification_migration_and_restar
             "state": release_management_state(
                 status="rollback_available",
             ),
-            "fragments": ["Rollback", "v1.3.0", "revision 3"],
+            "fragments": ["Rollback", "v1.3.0"],
+        },
+        {
+            "state": release_management_state(
+                status="rollback_available",
+                rollback_version="",
+                rollback_revision=99,
+            ),
+            "fragments": ["Rollback available"],
         },
     ]
     run_node(
@@ -616,6 +634,9 @@ def test_release_status_text_surfaces_versions_verification_migration_and_restar
         + """
 for (const item of cases) {
     const text = formatReleaseManagementStatus(item.state);
+    if (text.toLowerCase().includes('revision')) {
+        throw new Error(`internal release revision leaked into "${text}"`);
+    }
     for (const fragment of item.fragments) {
         if (!text.includes(fragment)) {
             throw new Error(`missing "${fragment}" in "${text}"`);
