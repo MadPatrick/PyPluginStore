@@ -206,6 +206,39 @@ def registry_bytes(entries=None, *, indent=2):
     ).encode("utf-8")
 
 
+def registry_v2_bytes(
+    *,
+    package_id="ExamplePlugin",
+    domoticz_key="EXAMPLE",
+    repository_url="https://github.com/owner/example-plugin",
+):
+    entry = registry_entry(domoticz_key=domoticz_key)
+    delivery = copy.deepcopy(entry["delivery"])
+    delivery.pop("schema_version", None)
+    return (
+        json.dumps(
+            {
+                "schema_version": 2,
+                "packages": [
+                    {
+                        "package_id": package_id,
+                        "domoticz_key": domoticz_key,
+                        "description": entry["description"],
+                        "repository": {
+                            "url": repository_url,
+                            "branch": entry["branch"],
+                        },
+                        "platforms": ["linux", "windows"],
+                        "delivery": delivery,
+                    }
+                ],
+            },
+            indent=2,
+        )
+        + "\n"
+    ).encode("utf-8")
+
+
 def candidate(
     *,
     provider="github",
@@ -644,7 +677,6 @@ def test_source_archive_certification_records_transport_and_canonical_tree_ident
         selected,
         archive,
     )
-
     entry = release_map(result.document)["ExamplePlugin"]
     artifact = entry["artifact"]
     assert entry["revision"] == 1
@@ -684,6 +716,32 @@ def test_source_archive_certification_records_transport_and_canonical_tree_ident
     ]
     assert status(result) == "certified_new"
     assert result.report["summary"] == {"certified_new": 1}
+
+
+def test_generator_consumes_strict_registry_v2_package_records(
+    release_index_generation_module,
+):
+    contents = registry_v2_bytes()
+    selected = candidate()
+    result, _provider, _http = generate_single(
+        release_index_generation_module,
+        selected,
+        zip_archive(),
+        registry_contents=contents,
+    )
+
+    assert status(result) == "certified_new"
+    assert result.document["registry_sha256"] == hashlib.sha256(
+        contents
+    ).hexdigest()
+    assert [
+        release["package_id"] for release in result.document["releases"]
+    ] == ["ExamplePlugin"]
+    release = result.document["releases"][0]
+    assert release["certified_identity"] == {
+        "domoticz_key": "EXAMPLE",
+        "plugin_py_sha256": hashlib.sha256(PLUGIN_PY).hexdigest(),
+    }
 
 
 def test_certification_rejects_domoticz_identity_mismatch(

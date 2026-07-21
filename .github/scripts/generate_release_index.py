@@ -33,6 +33,7 @@ if str(REPOSITORY_ROOT) not in sys.path:
     sys.path.insert(0, str(REPOSITORY_ROOT))
 
 from package_identity import certify_plugin_py  # noqa: E402
+from package_registry import PackageRegistry  # noqa: E402
 
 
 INDEX_SCHEMA_VERSION = 2
@@ -1069,8 +1070,34 @@ def _registry_coordinates(entry):
             raise ValueError("Legacy registry entry is incomplete.")
         owner, repository = entry[:2]
     elif isinstance(entry, dict):
-        owner = entry.get("owner", entry.get("author"))
-        repository = entry.get("repository", entry.get("repo"))
+        repository_document = entry.get("repository")
+        if isinstance(repository_document, dict):
+            repository_url = repository_document.get("url")
+            try:
+                parsed = urllib.parse.urlsplit(repository_url)
+            except (TypeError, ValueError) as error:
+                raise ValueError(
+                    "Registry repository URL is invalid."
+                ) from error
+            path_parts = parsed.path.strip("/").split("/")
+            if (
+                parsed.scheme != "https"
+                or not parsed.netloc
+                or len(path_parts) < 2
+            ):
+                raise ValueError(
+                    "Registry repository URL is incomplete."
+                )
+            owner = (
+                "https://"
+                + parsed.netloc
+                + "/"
+                + "/".join(path_parts[:-1])
+            )
+            repository = path_parts[-1]
+        else:
+            owner = entry.get("owner", entry.get("author"))
+            repository = entry.get("repository", entry.get("repo"))
     else:
         raise ValueError("Registry entry must be an object or legacy list.")
     owner = _require_string(owner, "registry owner")
@@ -1082,6 +1109,19 @@ def _registry_coordinates(entry):
     if not repository:
         raise ValueError("Registry repository is empty.")
     return owner, repository
+
+
+def _registry_records(document):
+    """Normalize strict v2 while keeping v1 at an explicit read boundary."""
+    if not isinstance(document, dict):
+        raise ValueError("Registry must be an object.")
+    if "schema_version" not in document:
+        return copy.deepcopy(document)
+    registry = PackageRegistry.from_document(document)
+    return {
+        package.package_id: package.to_document()
+        for package in registry.packages
+    }
 
 
 def _repository_location(owner, repository):
@@ -1966,7 +2006,10 @@ class ReleaseIndexGenerator:
         if type(report_only) is not bool:
             raise ValueError("report_only must be a boolean.")
         registry_contents = bytes(registry_bytes)
-        registry = _strict_json_object(registry_contents, "registry")
+        registry_document = _strict_json_object(
+            registry_contents, "registry"
+        )
+        registry = _registry_records(registry_document)
         previous = _validate_previous(previous_index, registry)
         tombstone_requests = _validate_tombstone_requests(
             tombstone_requests, previous, registry
