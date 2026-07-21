@@ -439,9 +439,12 @@ def test_release_index_v2_requires_matching_tombstone_when_package_disappears(
     assert current.tombstones["ExamplePlugin"].last_revision == 1
 
 
-def test_release_index_v2_rejects_reactivation_of_removed_package(
-    plugin_core_module,
-):
+TOMBSTONED_RELEASE_ID = "gitlab:example-group/example-plugin:v1.0.0"
+REACTIVATED_RELEASE_ID = "gitlab:example-group/example-plugin:v1.1.0"
+REACTIVATED_COMMIT = "89abcdef0123456789abcdef0123456789abcdef"
+
+
+def previous_tombstoned_release_index(plugin_core_module):
     previous_registry_bytes = json_bytes(registry_document(packages=[]))
     previous_document = release_index_document(
         previous_registry_bytes,
@@ -452,29 +455,126 @@ def test_release_index_v2_rejects_reactivation_of_removed_package(
                 "repository_identity": (
                     "gitlab.com/example-group/example-plugin"
                 ),
-                "last_revision": 1,
-                "release_id": (
-                    "gitlab:example-group/example-plugin:v1.0.0"
-                ),
+                "last_revision": 3,
+                "release_id": TOMBSTONED_RELEASE_ID,
                 "reason": "Package was removed.",
                 "removed_at": "2026-07-20T08:00:00Z",
             }
         ],
     )
     previous_document["sequence"] = 42
-    previous = plugin_core_module.ReleaseIndex.from_document(
+    return plugin_core_module.ReleaseIndex.from_document(
         previous_document,
         registry_bytes=previous_registry_bytes,
         now=NOW,
     )
-    current_registry_bytes = json_bytes(registry_document())
 
-    with pytest.raises(ValueError, match="reactivated without review"):
-        plugin_core_module.ReleaseIndex.from_document(
-            release_index_document(current_registry_bytes),
-            registry_bytes=current_registry_bytes,
-            now=NOW,
-            previous=previous,
+
+def reactivated_release():
+    release = release_record()
+    release.update(
+        revision=4,
+        release_id=REACTIVATED_RELEASE_ID,
+        supersedes=[TOMBSTONED_RELEASE_ID],
+        version="1.1.0",
+        tag="v1.1.0",
+        released_at="2026-07-21T08:30:00Z",
+        commit=REACTIVATED_COMMIT,
+    )
+    release["artifact"].update(
+        url=(
+            "https://gitlab.com/example-group/example-plugin/"
+            "-/archive/"
+            + REACTIVATED_COMMIT
+            + "/example-plugin.zip"
+        ),
+        sha256="3" * 64,
+        tree_sha256="4" * 64,
+        root_prefix="example-plugin-" + REACTIVATED_COMMIT,
+    )
+    return release
+
+
+def parse_reactivated_release(
+    plugin_core_module,
+    release,
+    repository_url="https://gitlab.com/example-group/example-plugin",
+):
+    current_registry_bytes = json_bytes(
+        registry_document(
+            [package_record(repository_url=repository_url)]
+        )
+    )
+    return plugin_core_module.ReleaseIndex.from_document(
+        release_index_document(
+            current_registry_bytes,
+            releases=[release],
+        ),
+        registry_bytes=current_registry_bytes,
+        now=NOW,
+        previous=previous_tombstoned_release_index(plugin_core_module),
+    )
+
+
+def test_release_index_v2_allows_safe_tombstone_reactivation(
+    plugin_core_module,
+):
+    current = parse_reactivated_release(
+        plugin_core_module,
+        reactivated_release(),
+    )
+
+    release = current.releases["ExamplePlugin"]
+    assert release.revision == 4
+    assert release.release_id == REACTIVATED_RELEASE_ID
+    assert release.supersedes == [TOMBSTONED_RELEASE_ID]
+    assert release.domoticz_key == "EXAMPLE"
+    assert release.plugin_py_sha256 == "2" * 64
+    assert current.tombstones == {}
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        "same-release-id",
+        "missing-predecessor",
+        "repository-mismatch",
+        "non-incremented-revision",
+    ],
+)
+def test_release_index_v2_rejects_unsafe_tombstone_reactivation(
+    plugin_core_module,
+    case,
+):
+    release = reactivated_release()
+    repository_url = "https://gitlab.com/example-group/example-plugin"
+    if case == "same-release-id":
+        release["release_id"] = TOMBSTONED_RELEASE_ID
+        release["supersedes"] = []
+    elif case == "missing-predecessor":
+        release["supersedes"] = []
+    elif case == "repository-mismatch":
+        repository_url = "https://gitlab.com/other-group/example-plugin"
+        release["repository_identity"] = (
+            "gitlab.com/other-group/example-plugin"
+        )
+        release["release_id"] = (
+            "gitlab:other-group/example-plugin:v1.1.0"
+        )
+        release["artifact"]["url"] = (
+            "https://gitlab.com/other-group/example-plugin/"
+            "-/archive/"
+            + REACTIVATED_COMMIT
+            + "/example-plugin.zip"
+        )
+    elif case == "non-incremented-revision":
+        release["revision"] = 3
+
+    with pytest.raises(ValueError):
+        parse_reactivated_release(
+            plugin_core_module,
+            release,
+            repository_url=repository_url,
         )
 
 

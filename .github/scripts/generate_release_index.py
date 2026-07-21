@@ -2057,6 +2057,7 @@ class ReleaseIndexGenerator:
         for plugin_key in sorted(set(registry) | set(tombstone_requests)):
             plugin_key = _require_string(plugin_key, "registry plugin key")
             prior = previous_plugins.get(plugin_key)
+            prior_tombstone = previous_tombstones.get(plugin_key)
             if plugin_key in tombstone_requests:
                 report_providers[plugin_key] = prior["provider"]
                 tombstone = {
@@ -2068,9 +2069,6 @@ class ReleaseIndexGenerator:
                 }
                 tombstones[plugin_key] = tombstone
                 reports[plugin_key] = {"status": "tombstoned"}
-                continue
-            if plugin_key in previous_tombstones:
-                reports[plugin_key] = {"status": "retained_tombstone"}
                 continue
 
             if prior is not None and "certified_identity" not in prior:
@@ -2102,6 +2100,10 @@ class ReleaseIndexGenerator:
                         report_providers[plugin_key] = prior["provider"]
                         plugins[plugin_key] = copy.deepcopy(prior)
                         reports[plugin_key] = {"status": "retained_policy_disabled"}
+                    elif prior_tombstone is not None:
+                        reports[plugin_key] = {
+                            "status": "retained_tombstone_policy_disabled"
+                        }
                     else:
                         reports[plugin_key] = {"status": "policy_disabled"}
                     continue
@@ -2119,7 +2121,11 @@ class ReleaseIndexGenerator:
                 if prior is not None:
                     plugins[plugin_key] = copy.deepcopy(prior)
                 reports[plugin_key] = {
-                    "status": "configuration_failed",
+                    "status": (
+                        "retained_tombstone_configuration_failure"
+                        if prior_tombstone is not None
+                        else "configuration_failed"
+                    ),
                     "detail": str(error),
                 }
                 continue
@@ -2140,7 +2146,7 @@ class ReleaseIndexGenerator:
                 reports[plugin_key] = {
                     "status": (
                         "retained_provider_failure"
-                        if prior is not None
+                        if prior is not None or prior_tombstone is not None
                         else "provider_failed"
                     ),
                     "transient": True,
@@ -2151,7 +2157,11 @@ class ReleaseIndexGenerator:
                 if prior is not None:
                     plugins[plugin_key] = copy.deepcopy(prior)
                 reports[plugin_key] = {
-                    "status": "retained_provider_failure" if prior else "provider_failed",
+                    "status": (
+                        "retained_provider_failure"
+                        if prior is not None or prior_tombstone is not None
+                        else "provider_failed"
+                    ),
                     "transient": False,
                     "detail": str(error),
                 }
@@ -2161,9 +2171,34 @@ class ReleaseIndexGenerator:
                 if prior is not None:
                     plugins[plugin_key] = copy.deepcopy(prior)
                     reports[plugin_key] = {"status": "retained_no_candidate"}
+                elif prior_tombstone is not None:
+                    reports[plugin_key] = {
+                        "status": "retained_tombstone_no_candidate"
+                    }
                 else:
                     reports[plugin_key] = {"status": "no_release"}
                 continue
+
+            if prior_tombstone is not None:
+                if selected.release_id == prior_tombstone["release_id"]:
+                    reports[plugin_key] = {
+                        "status": "retained_tombstone",
+                        "cache_hit": candidate_cache_hit,
+                    }
+                    continue
+                if (
+                    selected.repository_identity
+                    != prior_tombstone["repository_identity"]
+                ):
+                    reports[plugin_key] = {
+                        "status": "certification_failed",
+                        "detail": (
+                            "Release repository does not match the tombstoned "
+                            "package."
+                        ),
+                        "cache_hit": candidate_cache_hit,
+                    }
+                    continue
 
             if prior is not None and (
                 selected.release_id in prior.get("supersedes", [])
@@ -2216,7 +2251,19 @@ class ReleaseIndexGenerator:
                 continue
 
             cache_hit = candidate_cache_hit and artifact_cache_hit
-            if prior is None:
+            if prior_tombstone is not None:
+                entry = _candidate_entry(
+                    selected,
+                    artifact,
+                    prior_tombstone["last_revision"] + 1,
+                    [prior_tombstone["release_id"]],
+                )
+                tombstones.pop(plugin_key, None)
+                report = {
+                    "status": "reactivated",
+                    "revision_changed": True,
+                }
+            elif prior is None:
                 entry = _candidate_entry(selected, artifact, 1, [])
                 report = {
                     "status": "certified_new",

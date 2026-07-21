@@ -1747,6 +1747,38 @@ def test_missing_candidate_without_prior_certification_reports_no_release(
     assert result.report["summary"] == {"no_release": 1}
 
 
+def test_release_if_indexed_discovers_a_release_after_git_only_operation(
+    release_index_generation_module,
+):
+    contents = registry_bytes()
+    repository_identity = "github.com/owner/example-plugin"
+    first = make_generator(
+        release_index_generation_module,
+        {
+            "github": RecordingProvider(
+                {repository_identity: [None]}
+            )
+        },
+        RecordingHttpClient({}),
+    ).generate(registry_bytes=contents, report_only=True)
+    selected = candidate()
+
+    second, provider, http_client = generate_single(
+        release_index_generation_module,
+        selected,
+        zip_archive(),
+        registry_contents=contents,
+        previous=first.document,
+    )
+
+    assert first.document["releases"] == []
+    assert status(first) == "no_release"
+    assert release_map(second.document)["ExamplePlugin"]["revision"] == 1
+    assert status(second) == "certified_new"
+    assert len(provider.calls) == 1
+    assert len(http_client.calls) == 1
+
+
 def test_policy_disable_does_not_silently_remove_previously_accepted_release(
     release_index_generation_module,
 ):
@@ -1900,6 +1932,90 @@ def test_v2_tombstone_survives_package_removal_from_registry(
     assert tombstone_map(result.document) == {
         "ExamplePlugin": {"package_id": "ExamplePlugin", **tombstone}
     }
+
+
+def test_tombstoned_release_is_not_reaccepted_as_a_new_candidate(
+    release_index_generation_module,
+):
+    contents = registry_bytes()
+    selected = candidate()
+    tombstone = {
+        "repository_identity": selected.repository_identity,
+        "last_revision": 7,
+        "release_id": selected.release_id,
+        "reason": "The release failed package identity certification.",
+        "removed_at": "2026-07-17T12:00:00Z",
+    }
+    previous = previous_index(
+        contents,
+        {},
+        tombstones={"ExamplePlugin": tombstone},
+    )
+    provider = RecordingProvider(
+        {selected.repository_identity: [selected]}
+    )
+    generator = make_generator(
+        release_index_generation_module,
+        {"github": provider},
+        ExplodingHttpClient(),
+    )
+
+    result = generator.generate(
+        registry_bytes=contents,
+        previous_index=previous,
+        report_only=True,
+    )
+
+    assert result.document["releases"] == []
+    assert tombstone_map(result.document) == {
+        "ExamplePlugin": {"package_id": "ExamplePlugin", **tombstone}
+    }
+    assert status(result) == "retained_tombstone"
+    assert result.report["plugins"]["ExamplePlugin"]["cache_hit"] is False
+    assert len(provider.calls) == 1
+
+
+def test_new_certified_release_reactivates_a_tombstoned_package(
+    release_index_generation_module,
+):
+    contents = registry_bytes()
+    previous_release_id = "github:owner/example-plugin:v1.0.0"
+    tombstone = {
+        "repository_identity": "github.com/owner/example-plugin",
+        "last_revision": 7,
+        "release_id": previous_release_id,
+        "reason": "The release failed package identity certification.",
+        "removed_at": "2026-07-17T12:00:00Z",
+    }
+    previous = previous_index(
+        contents,
+        {},
+        tombstones={"ExamplePlugin": tombstone},
+    )
+    selected = candidate(
+        release_id="github:owner/example-plugin:v2.0.0",
+        version="2.0.0",
+        tag="v2.0.0",
+        commit=COMMIT_2,
+        artifact_url="https://downloads.example.test/v2.zip",
+    )
+    archive = zip_archive(root_prefix="example-plugin-" + COMMIT_2)
+
+    result, _provider, _http = generate_single(
+        release_index_generation_module,
+        selected,
+        archive,
+        registry_contents=contents,
+        previous=previous,
+    )
+
+    current = release_map(result.document)["ExamplePlugin"]
+    assert result.document["tombstones"] == []
+    assert current["revision"] == 8
+    assert current["release_id"] == selected.release_id
+    assert current["supersedes"] == [previous_release_id]
+    assert status(result) == "reactivated"
+    assert result.report["summary"] == {"reactivated": 1}
 
 
 @pytest.mark.parametrize(

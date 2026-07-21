@@ -2855,7 +2855,22 @@ class ReleaseIndex:
         for plugin_key, previous_tombstone in previous.tombstones.items():
             current_tombstone = self.tombstones.get(plugin_key)
             if current_tombstone is None:
-                raise ValueError("A de-certified release was reactivated without review.")
+                current_release = self.plugins.get(plugin_key)
+                if (
+                    current_release is None
+                    or current_release.repository_identity
+                    != previous_tombstone.repository_identity
+                    or current_release.revision
+                    <= previous_tombstone.last_revision
+                    or current_release.release_id
+                    == previous_tombstone.release_id
+                    or previous_tombstone.release_id
+                    not in current_release.supersedes
+                ):
+                    raise ValueError(
+                        "A de-certified release was reactivated without review."
+                    )
+                continue
             if (
                 current_tombstone.repository_identity
                 != previous_tombstone.repository_identity
