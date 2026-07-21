@@ -16,6 +16,7 @@ from pathlib import Path
 import re
 import sys
 import tempfile
+import urllib.parse
 
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -215,7 +216,8 @@ def _certify_packages(mapping, certifications):
             package_document["domoticz_key"] = certification["domoticz_key"]
             release = package_document["delivery"].get("release")
             if (
-                package.repository_identity.startswith("codeberg.org/")
+                urllib.parse.urlsplit(package.repository_url).hostname
+                == "codeberg.org"
                 and isinstance(release, dict)
                 and release.get("provider") == "forgejo"
             ):
