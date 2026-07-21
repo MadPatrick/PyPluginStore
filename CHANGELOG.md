@@ -1,5 +1,60 @@
 # Changelog
 
+## [2.19.0](https://github.com/adrighem/PyPluginStore/compare/v2.18.0...v2.19.0) (2026-07-21)
+
+
+### Features
+
+* add release-first plugin management ([5636fa5](https://github.com/adrighem/PyPluginStore/commit/5636fa5b45d204d0240a5db4d89635d93310c2f6)), closes [#64](https://github.com/adrighem/PyPluginStore/issues/64)
+* **registry:** automate release index updates ([4fa2a2d](https://github.com/adrighem/PyPluginStore/commit/4fa2a2de0f25fe4ccb64a9a15f7d5a89be4285db)), closes [#64](https://github.com/adrighem/PyPluginStore/issues/64)
+* **releases:** activate release-first runtime ([c933f48](https://github.com/adrighem/PyPluginStore/commit/c933f481eb413dc3912e6f7cf127fecd58038924)), closes [#64](https://github.com/adrighem/PyPluginStore/issues/64)
+* **releases:** add atomic replacement transactions ([f7580fc](https://github.com/adrighem/PyPluginStore/commit/f7580fc943339eb32b8663cbbe7d7cf72da3ab60)), closes [#64](https://github.com/adrighem/PyPluginStore/issues/64)
+* **releases:** add delivery and index models ([602573a](https://github.com/adrighem/PyPluginStore/commit/602573aad15896459556f852a852649d14a29873)), closes [#64](https://github.com/adrighem/PyPluginStore/issues/64)
+* **releases:** add durable metadata generations ([db4d87d](https://github.com/adrighem/PyPluginStore/commit/db4d87dbd10baa9494487504035a4b9e0ca0c52c)), closes [#64](https://github.com/adrighem/PyPluginStore/issues/64)
+* **releases:** add provider-neutral candidate model ([9c9fe43](https://github.com/adrighem/PyPluginStore/commit/9c9fe438df8aeffbd63d2cdfde82d3b3083d00fc)), closes [#64](https://github.com/adrighem/PyPluginStore/issues/64)
+* **releases:** add release-first management coordinator ([ae43754](https://github.com/adrighem/PyPluginStore/commit/ae437545b20bce5069d8beb6bf8d0574c690c855)), closes [#64](https://github.com/adrighem/PyPluginStore/issues/64)
+* **releases:** add safe Git migration preflight ([2d62822](https://github.com/adrighem/PyPluginStore/commit/2d62822f12cb2f960a06c18055c822ed8f745624)), closes [#64](https://github.com/adrighem/PyPluginStore/issues/64)
+* **releases:** certify release artifacts securely ([a873a68](https://github.com/adrighem/PyPluginStore/commit/a873a68b8da192bfec0b5017e9309753904b4af7)), closes [#64](https://github.com/adrighem/PyPluginStore/issues/64)
+* **releases:** certify staged artifact trees ([168aa70](https://github.com/adrighem/PyPluginStore/commit/168aa70d855bae5b9edb4bf737b89d959af031e2)), closes [#64](https://github.com/adrighem/PyPluginStore/issues/64)
+* **releases:** finalize rollback lifecycle ([bf56e6a](https://github.com/adrighem/PyPluginStore/commit/bf56e6a165ce990ee7795f147be0dcc972337032)), closes [#64](https://github.com/adrighem/PyPluginStore/issues/64)
+* **releases:** harden runtime artifact staging ([00abc9e](https://github.com/adrighem/PyPluginStore/commit/00abc9e7803341ecec7b26249339fba97bf9f118)), closes [#64](https://github.com/adrighem/PyPluginStore/issues/64)
+* **releases:** migrate Git installs safely ([f27fd54](https://github.com/adrighem/PyPluginStore/commit/f27fd5406c9548d895e9b72b24af2caa249ead6a)), closes [#64](https://github.com/adrighem/PyPluginStore/issues/64)
+* **releases:** persist channel preferences ([72eebcd](https://github.com/adrighem/PyPluginStore/commit/72eebcda06769d65ad71e0b5fe892208f7632087)), closes [#64](https://github.com/adrighem/PyPluginStore/issues/64)
+* **releases:** persist install audit metadata ([a56a101](https://github.com/adrighem/PyPluginStore/commit/a56a101486a386cf85d9735cadcfb192e6bdeecc)), closes [#64](https://github.com/adrighem/PyPluginStore/issues/64)
+* **releases:** preserve reviewed plugin data ([81dd483](https://github.com/adrighem/PyPluginStore/commit/81dd4834432f22ba9413617b0143c9a60f89e51b)), closes [#64](https://github.com/adrighem/PyPluginStore/issues/64)
+* **releases:** publish initial release-first index ([44aac97](https://github.com/adrighem/PyPluginStore/commit/44aac978bc8a2eeeb133e89c808cfd346576926a)), closes [#64](https://github.com/adrighem/PyPluginStore/issues/64)
+* **releases:** queue locked Windows replacements ([62ed533](https://github.com/adrighem/PyPluginStore/commit/62ed533832270cfb3cae8dde1e7afc9d9d387cc0)), closes [#64](https://github.com/adrighem/PyPluginStore/issues/64)
+* **releases:** resolve Forgejo and Codeberg releases ([8dbb9d7](https://github.com/adrighem/PyPluginStore/commit/8dbb9d73615da2809d9501a24194f5c870bba10b)), closes [#64](https://github.com/adrighem/PyPluginStore/issues/64)
+* **releases:** resolve generic HTTPS manifests ([5848a14](https://github.com/adrighem/PyPluginStore/commit/5848a14f8f112b25c76940c5a344ece05983f188)), closes [#64](https://github.com/adrighem/PyPluginStore/issues/64)
+* **releases:** resolve Gitea releases ([589bb61](https://github.com/adrighem/PyPluginStore/commit/589bb610233ad3ffee447a001d6ab74462d7b344)), closes [#64](https://github.com/adrighem/PyPluginStore/issues/64)
+* **releases:** resolve GitHub releases ([54cf8f8](https://github.com/adrighem/PyPluginStore/commit/54cf8f85d240e3ba88271a5486f2243d16410791)), closes [#64](https://github.com/adrighem/PyPluginStore/issues/64)
+* **releases:** resolve GitLab releases ([c0fad49](https://github.com/adrighem/PyPluginStore/commit/c0fad49bd9a835c0ab9f46b1088176401b3e653e)), closes [#64](https://github.com/adrighem/PyPluginStore/issues/64)
+* **ui:** add release channel management controls ([473581d](https://github.com/adrighem/PyPluginStore/commit/473581d4d2fae40273ceccb76ad24bd3b864ee02)), closes [#64](https://github.com/adrighem/PyPluginStore/issues/64)
+* update Domoticz Python plugin registry ([ee958c0](https://github.com/adrighem/PyPluginStore/commit/ee958c0669c28fbb84182bef4b8688f066a2a5bf))
+* write new registry entries as objects ([ddac637](https://github.com/adrighem/PyPluginStore/commit/ddac6377d1c457847d3440f0b17d7bfd6fbe1969)), closes [#64](https://github.com/adrighem/PyPluginStore/issues/64)
+
+
+### Bug Fixes
+
+* accept self-hosted release capabilities ([3e9b25c](https://github.com/adrighem/PyPluginStore/commit/3e9b25c0dfb6c3069df9ae214f4449856e88ce3b)), closes [#64](https://github.com/adrighem/PyPluginStore/issues/64)
+* allow selecting plugin card text ([6bf834c](https://github.com/adrighem/PyPluginStore/commit/6bf834cdad2bc8e6a7cf04452e850fb4a8ad3658))
+* flush release trees on Windows ([9b204cd](https://github.com/adrighem/PyPluginStore/commit/9b204cd0c8658104dd368d4f551016f154a68c26)), closes [#64](https://github.com/adrighem/PyPluginStore/issues/64)
+* hide internal release revisions ([fc3af3c](https://github.com/adrighem/PyPluginStore/commit/fc3af3ce463c3ef5328704c8cb02c04b0cb9bced))
+* **releases:** bind pagination to host capabilities ([fcff37b](https://github.com/adrighem/PyPluginStore/commit/fcff37be31dc2bba2d9279bf67474b10ca236984)), closes [#64](https://github.com/adrighem/PyPluginStore/issues/64)
+* **releases:** bind runtime decisions to fresh state ([33b997f](https://github.com/adrighem/PyPluginStore/commit/33b997f705054eee4517cfc57eee4472c934193c))
+* **releases:** harden live provider discovery ([34e3284](https://github.com/adrighem/PyPluginStore/commit/34e32849c541b2879e3f08b9ca0f9605e00c5ba1)), closes [#64](https://github.com/adrighem/PyPluginStore/issues/64)
+* **releases:** persist artifact provenance manifest ([2625035](https://github.com/adrighem/PyPluginStore/commit/26250358c8ce156cc555d7b220a23f3793cd7f8b)), closes [#64](https://github.com/adrighem/PyPluginStore/issues/64)
+* restore Git self-update action ([c362a94](https://github.com/adrighem/PyPluginStore/commit/c362a9491bc9cbe49755e2ab9ef6774a7780b7eb))
+* use reliable Windows file identities ([bd13c49](https://github.com/adrighem/PyPluginStore/commit/bd13c4935a8a153be6a9f3143844e34ea3778cc4)), closes [#64](https://github.com/adrighem/PyPluginStore/issues/64)
+* wrap plugin card actions ([bda0668](https://github.com/adrighem/PyPluginStore/commit/bda06688217e5d18ddac69ab3272dafbed21a514))
+
+
+### Documentation
+
+* design release-first plugin management ([23642ff](https://github.com/adrighem/PyPluginStore/commit/23642ffc7ec0abd15d8c0ca930fe82d2685be2e8)), closes [#64](https://github.com/adrighem/PyPluginStore/issues/64)
+* **maintainer:** record release-first rollout ([4158ea2](https://github.com/adrighem/PyPluginStore/commit/4158ea2cbfb6876ca44e4028e6ac5bad37d26c20)), closes [#64](https://github.com/adrighem/PyPluginStore/issues/64)
+* **releases:** clarify multi-host capabilities ([7bac9bf](https://github.com/adrighem/PyPluginStore/commit/7bac9bfd2355393fbbd344ed1971765504fbcd87)), closes [#64](https://github.com/adrighem/PyPluginStore/issues/64)
+
 ## [2.18.0](https://github.com/adrighem/PyPluginStore/compare/v2.17.1...v2.18.0) (2026-07-16)
 
 
