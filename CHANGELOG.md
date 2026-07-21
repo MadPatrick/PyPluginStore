@@ -1,5 +1,33 @@
 # Changelog
 
+## [2.20.0](https://github.com/adrighem/PyPluginStore/compare/v2.19.1...v2.20.0) (2026-07-21)
+
+
+### Features
+
+* **registry:** add explicit package contracts ([f937f42](https://github.com/adrighem/PyPluginStore/commit/f937f42da43a4719dd63e5671582695168d88342))
+* **registry:** consume explicit package data ([ef9ceb8](https://github.com/adrighem/PyPluginStore/commit/ef9ceb8e86b649a03a2070322b952a9521bdaa2e))
+* **registry:** migrate weekly automation to v2 ([f73ce9b](https://github.com/adrighem/PyPluginStore/commit/f73ce9b8c99a9e807bc41f3c6faa46e8ada734c5))
+* **registry:** publish explicit package identities ([0d0057d](https://github.com/adrighem/PyPluginStore/commit/0d0057d4dcdd158f3a2739cb33f0557a4495bb16))
+* **releases:** automate safe Git migrations ([8067dca](https://github.com/adrighem/PyPluginStore/commit/8067dca2f38bc5673c0e22dd8e05a1ff06cc9d9d))
+* **releases:** certify package identities ([8e5c943](https://github.com/adrighem/PyPluginStore/commit/8e5c94342588ce813572bdfa9a9a6c4c9e7753c1))
+* **releases:** recover from rejected releases ([1339fa9](https://github.com/adrighem/PyPluginStore/commit/1339fa92ae2973d2ca6bd8a1e6095f86288bed05))
+* **state:** migrate persisted package identities ([2d5ac9d](https://github.com/adrighem/PyPluginStore/commit/2d5ac9d37010b7ee36a9f859e3fe85e957d6fe42))
+
+
+### Bug Fixes
+
+* **releases:** read registry v2 packages ([7147eb5](https://github.com/adrighem/PyPluginStore/commit/7147eb5505b37ed8c02d672bbef2bde922070de1))
+* **releases:** retain removed package tombstones ([fc47018](https://github.com/adrighem/PyPluginStore/commit/fc47018ef4cb861a6a758bfe6816050bf57ca483))
+* **releases:** tombstone removed legacy packages ([ce6e8b7](https://github.com/adrighem/PyPluginStore/commit/ce6e8b7e7b642009f2593bb116410ba25933049d))
+* **security:** parse Codeberg migration host ([80324db](https://github.com/adrighem/PyPluginStore/commit/80324db7aead177fccbb60bf84415d02fbc12148))
+* **ui:** hide idle Git status details ([3b892c7](https://github.com/adrighem/PyPluginStore/commit/3b892c769d78ab41963ce4781fcd5715bec540b7))
+
+
+### Documentation
+
+* **releases:** explain release-first migration ([77b1499](https://github.com/adrighem/PyPluginStore/commit/77b14995a782aed8e3227c255313c4f4e9b944e7))
+
 ## [2.19.1](https://github.com/adrighem/PyPluginStore/compare/v2.19.0...v2.19.1) (2026-07-21)
 
 
