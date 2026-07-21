@@ -146,17 +146,17 @@ Use `registry_local.json` when you want your Domoticz installation to track a di
 
 Open **Local registry** in the Plugin Store header to add, edit, or delete entries. You can start from an existing public plugin to create an override, or create a blank entry for a private, local, or unpublished repository. Local entries are loaded after the public registry, override matching public entries, and show a **Local** badge.
 
-The manager validates entries without contacting the repository and saves changes atomically. Existing manual files remain supported. See the [`registry_local.json` how-to](docs/registry_local.md) for the UI workflow, advanced object-style examples, and GitHub, GitLab, Codeberg, SSH, and local repository sources. If a plugin card shows **Repo mismatch**, see the [Repo Mismatch warning](docs/registry_local.md#repo-mismatch-warning).
+The manager validates entries without contacting the repository and saves changes atomically. A valid legacy local file is backed up and atomically rewritten to schema v2 on first load. See the [`registry_local.json` how-to](docs/registry_local.md) for the UI workflow, v2 examples, and GitHub, GitLab, Codeberg, SSH, and local repository sources. If a plugin card shows **Repo mismatch**, see the [Repo Mismatch warning](docs/registry_local.md#repo-mismatch-warning).
 
 Local registry entries remain Git-managed. Release delivery is enabled only by the reviewed public registry and its matching release index.
 
 ### Release and Git Channels
 
-Release is the primary channel when PyPluginStore has a fresh, certified release target. Certification is a reviewed, per-plugin opt-in through `release_index.json`; merely publishing a release on a supported forge does not activate it. A plugin that has never been release-managed continues using Git when no certified target exists. Local registry entries and the guarded PyPluginStore self-update also remain Git-managed. **Use Git** records an explicit keep-Git preference for an existing Git checkout.
+Release is the primary channel when PyPluginStore has a fresh, certified release target. A `release_if_indexed` package uses Git until that target exists. The weekly scan checks every eligible package, so a maintainer can start with Git and publish stable releases later without changing the package's registry identity. A matching release is downloaded and certified, then proposed through the weekly pull request; after review and merge, new installs become release-first and clean existing Git installs can migrate during **Update**. Local registry entries and PyPluginStore's own self-update remain Git-managed. **Use Git** records an explicit keep-Git preference for an existing Git checkout.
 
-Once Release has been activated for a plugin, missing, expired, invalid, or mismatched release metadata blocks the operation instead of silently falling back to Git. Existing Git installations are not replaced in bulk: selecting **Update** runs a read-only migration preflight first and leaves the checkout untouched when it finds unsupported history, submodules, a repository mismatch, or local data that has not been approved. A clean checkout migrates only when the pinned release commit equals or descends from the installed commit. Safe reviewed local data can require exact manual approval, while an ahead or diverged checkout also requires explicit downgrade confirmation.
+Once Release has been activated for a plugin, missing, expired, invalid, or mismatched release metadata blocks the operation instead of silently falling back to Git. Existing Git installations are not replaced in bulk: migration preflight verifies the configured remote, commit ancestry, working tree, submodules, and permitted local data. Automatic migration requires a clean checkout whose installed commit equals or precedes the release commit and whose archive has proven source continuity. Notify-only mode only reports the transition; a keep-Git preference, local changes, repository mismatches, or insufficient evidence leave the checkout on Git.
 
-Release archives are downloaded by immutable source revision, checked against their published byte length and SHA-256 digest, extracted with portable path and size limits, compiled and identity-checked, then activated together with a complete staged dependency snapshot. A failed release operation never falls back to a branch update.
+Commit-addressed source archives provide automatic migration evidence. An attached ZIP must have a canonical selected tree equal to the source archive for the same commit; otherwise it requires a reviewed manual channel switch. Every accepted archive is checked against its byte length, SHA-256, canonical tree, layout, Python compilation, `package_id`, and exact Domoticz runtime key before activation with a complete staged dependency snapshot. A failed release operation never falls back to a branch update.
 
 A release-managed folder has no Git metadata. PyPluginStore therefore refuses a direct **Use Git** switch unless it can follow a separately verified replacement path. Restore a verified Git migration backup with **Rollback** when one is available; a fresh clone must be a distinct, explicitly confirmed operation. Without either safeguard, the installed release is left untouched.
 
@@ -264,25 +264,40 @@ To install dependencies for a specific plugin manually:
 
 ## 📚 For Plugin Developers
 
-To add your plugin to the manager, submit a Pull Request that adds a named object to `registry.json`:
+To add your plugin to the manager, submit a Pull Request that adds a record to the `packages` array in `registry.json`:
 
 ```json
-"ExamplePlugin": {
-    "owner": "example-owner",
-    "repository": "domoticz-example-plugin",
+{
+    "package_id": "ExamplePlugin",
+    "domoticz_key": "EXAMPLE",
     "description": "Example plugin for Domoticz",
-    "branch": "main",
-    "platforms": ["linux", "windows"]
+    "repository": {
+        "url": "https://github.com/example-owner/domoticz-example-plugin",
+        "branch": "main"
+    },
+    "platforms": ["linux", "windows"],
+    "delivery": {
+        "preferred": "release_if_indexed",
+        "git_supported": true,
+        "release": {
+            "provider": "github",
+            "channel": "stable",
+            "tag_pattern": "^v?[0-9]+(?:\\.[0-9]+){1,3}$",
+            "artifact": "source_zip",
+            "source_path": ".",
+            "mutable_paths": []
+        }
+    }
 }
 ```
 
-GitHub owners use the account or organization name. Use `gitlab.com/group/subgroup` or `codeberg.org/owner` for those hosters. Omit `platforms` when support is unknown. Legacy positional entries remain readable during the staged object-record migration; object entries require PyPluginStore v2.10.0 or newer, and GitLab/Codeberg Git management requires v2.15.0 or newer.
+`package_id` is PyPluginStore's stable package identity and normally becomes the install folder for a new install. `domoticz_key` is the exact `<plugin key="...">` from `plugin.py`; Domoticz uses it for hardware compatibility, and it does not need to equal `package_id`. Use a canonical HTTPS repository URL for GitHub, GitLab, Codeberg/Forgejo, or Gitea. Self-hosted forges and generic HTTPS manifests require explicit reviewed endpoint policy. Omit no required v2 fields; use an empty `platforms` array when platform support is unknown. The public v2 schema does not accept keyed package objects, positional entries, the owner/repository split, or `plugin_key`.
 
 When a Pull Request modifying `registry.json` is merged, a GitHub Action automatically updates the registry metadata including the latest repository push timestamps.
 
 Public registry entries can use `["linux"]`, `["windows"]`, or `["linux", "windows"]` for `platforms`. Plugins without platform metadata are shown as unknown rather than blocked.
 
-CI validation checks that every public registry entry points to an existing root-level `plugin.py`. Release discovery for GitHub, GitLab, Codeberg/Forgejo, Gitea, and generic HTTPS manifests is normalized into the provider-neutral `release_index.json`; runtime installations never depend on forge-specific APIs. Maintainer tooling and generated-file workflow notes are documented in [CONTRIBUTING.md](CONTRIBUTING.md).
+CI validates the registered repository, root `plugin.py`, and exact Domoticz key. Weekly release discovery checks every release-eligible package across GitHub, GitLab, Codeberg/Forgejo, Gitea, and reviewed generic HTTPS manifests, then normalizes accepted artifacts into the provider-neutral `release_index.json`; runtime installations never depend on forge-specific APIs. Maintainer tooling and generated-file workflow notes are documented in [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ---
 

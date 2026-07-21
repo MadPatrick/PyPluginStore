@@ -1,215 +1,184 @@
-# registry_local.json How-To
+# `registry_local.json` How-To
 
-Use `registry_local.json` for plugins that should only appear in your own PyPluginStore installation: private repositories, local forks, test branches, or plugins that are not ready for the public registry.
+Use `registry_local.json` for private repositories, local forks, test branches,
+LAN repositories, or plugins that are not ready for the public registry. Local
+packages are Git-managed and do not participate in the public release index.
 
-## Manage Entries in the UI
+## Manage entries in the UI
 
-Open the Plugin Store custom page and select **Local registry** in the header. The manager lets you:
+Open **Local registry** in the Plugin Store header. You can add a blank package,
+copy a public package into a local override, edit its repository or branch, and
+delete an override without deleting the installed plugin.
 
-- Add a blank entry for a private, local, or unpublished plugin.
-- Select a public plugin and prefill a new local override.
-- Edit the repository source, description, or branch of an existing local entry.
-- Delete an override without deleting the installed plugin directory.
+`package_id` is the stable PyPluginStore identity and cannot be renamed while
+editing. Create a new package and remove the old entry if you need another ID.
+The `domoticz_key` is separate: it is the exact `<plugin key="...">` value that
+Domoticz uses to bind hardware configuration.
 
-The plugin key cannot be renamed while editing. To use a different key, create a new entry and delete the old one.
+Saving validates the document locally and writes it atomically; it does not
+contact or install the repository. Concurrent edits are protected by a content
+revision. Repository URLs containing HTTP credentials are rejected, so use the
+Git credentials or SSH keys available to the Domoticz OS user.
 
-Saving validates the values locally; it does not contact the repository or install the plugin. Use SSH keys or the Git credential configuration of the Domoticz OS user for private access. Repository URLs containing HTTP usernames or passwords are rejected so credentials are not persisted through the UI.
+If JSON is malformed, the dialog stays read-only and shows the parse error.
+Correct the file manually, then select **Reload entries**.
 
-Every save and delete includes a revision of the file that was loaded. If another browser tab or process changes `registry_local.json`, PyPluginStore keeps your form values and asks you to reload instead of overwriting the newer file.
+## Automatic upgrade from the old format
 
-If the file contains malformed JSON, the dialog shows the file path and parse error and stays read-only. Correct the file manually, then select **Reload entries**.
+On the first successful read of a valid package-keyed v1 file, PyPluginStore:
 
-UI-created and UI-edited entries use one complete **Repository source** and do not write platform metadata. Existing entries that are not edited keep their current representation and platform values.
+1. preserves its exact bytes as `registry_local.v1.backup.json`;
+2. derives `domoticz_key` only from the exact installed package's `plugin.py`
+   when available;
+3. atomically rewrites `registry_local.json` as schema v2.
 
-## Advanced Manual Editing
+An uninstalled package may therefore migrate with an empty `domoticz_key`.
+Malformed input, colliding package IDs, unsafe paths, or an incompatible backup
+leave the original file untouched and read-only. The active v2 file never keeps
+legacy owner/author/repo aliases, positional entries, or keyed package objects.
 
-The UI is the recommended workflow. You can still create or edit the file directly in the installed PyPluginStore folder:
+## Manual file format
+
+The file is stored beside the installed PyPluginStore plugin:
 
 - Linux: `/path/to/domoticz/plugins/00-PyPluginStore/registry_local.json`
 - Windows: `C:\path\to\domoticz\plugins\00-PyPluginStore\registry_local.json`
 
-PyPluginStore loads the public `registry.json` first, then overlays `registry_local.json`. Local entries show a **Local** badge in the Plugin Store UI. If a local entry uses the same key as a public entry, the local entry wins.
-
-After editing the file, click **Refresh status** in the Plugin Store UI or restart Domoticz.
-
-## Manual File Format
-
-Use object-style entries. The file itself must be valid JSON: double-quoted strings, no comments, and no trailing commas. Manual entries may keep separate `owner` and `repository` fields and optional platform metadata for backward compatibility.
+Use schema v2 with an explicit `packages` array:
 
 ```json
 {
-    "MyPlugin": {
-        "owner": "my-github-user",
-        "repository": "domoticz-my-plugin",
-        "description": "Description shown in PyPluginStore.",
-        "branch": "main",
-        "platforms": ["linux", "windows"]
+  "schema_version": 2,
+  "packages": [
+    {
+      "package_id": "HeatingLab",
+      "domoticz_key": "HEATING-LAB",
+      "description": "Private heating automation plugin.",
+      "repository": {
+        "url": "git@github.com:my-org/domoticz-heating-lab.git",
+        "branch": "main"
+      },
+      "platforms": ["linux"]
     }
+  ]
 }
 ```
 
-The top-level key, `MyPlugin` in this example, is the plugin key and install folder name. Keep it simple: no slashes, backslashes, empty names, or names starting with `.`.
-
-## Fields
+The JSON must use double quotes and contain no comments or trailing commas.
+Package IDs must be unique even when case is ignored.
 
 | Field | Use |
 | --- | --- |
-| `owner` | GitHub owner, hosted path such as `gitlab.com/group`, or a full clone URL. |
-| `repository` | Repository name. Omit it when `owner` is already a full clone URL. |
-| `description` | Text shown in the Plugin Store UI. |
-| `branch` | Branch to clone or update, usually `main` or `master`. Defaults to `master` if omitted. |
-| `platforms` | Optional list: `["linux"]`, `["windows"]`, or `["linux", "windows"]`. Omitted means unknown, not blocked. |
+| `package_id` | Stable PyPluginStore package identity; normally the new-install folder name. |
+| `domoticz_key` | Exact Domoticz `<plugin key="...">`; it may differ from `package_id`. Use `""` only when it cannot yet be certified. |
+| `description` | Text shown on the package card. |
+| `repository.url` | Complete Git clone source: HTTPS, SSH, `file://`, or an approved LAN URL. |
+| `repository.branch` | Branch to clone or update. |
+| `platforms` | `[]`, `["linux"]`, `["windows"]`, or both. Empty means unknown. |
 
-`author` and `repo` are accepted aliases for older files. The UI stores a complete clone source in `owner` and omits `repository`; both representations are supported.
+Unlike the public registry, a local record has no `delivery` policy because it
+always stays on Git.
 
-## Common Use Cases
+## Common use cases
 
-### Private GitHub Repository Over SSH
-
-Use this when the Domoticz host has an SSH key that can read the private repository.
+### Private repository over SSH
 
 ```json
 {
-    "HeatingLab": {
-        "owner": "git@github.com:my-org/domoticz-heating-lab.git",
-        "description": "Private heating automation plugin.",
-        "branch": "main",
-        "platforms": ["linux"]
+  "schema_version": 2,
+  "packages": [
+    {
+      "package_id": "HeatingLab",
+      "domoticz_key": "HEATING-LAB",
+      "description": "Private heating automation plugin.",
+      "repository": {
+        "url": "git@github.com:my-org/domoticz-heating-lab.git",
+        "branch": "main"
+      },
+      "platforms": ["linux"]
     }
+  ]
 }
 ```
 
-### Private Repository Over HTTPS
-
-Use this when your Git credential helper or URL configuration already gives the Domoticz user access.
+### GitLab and Codeberg repositories
 
 ```json
 {
-    "WeatherLab": {
-        "owner": "https://github.com/my-org/domoticz-weather-lab.git",
-        "description": "Private weather station plugin.",
-        "branch": "main",
-        "platforms": ["linux", "windows"]
-    }
-}
-```
-
-### GitLab or Codeberg Plugin
-
-Include the host name in `owner`.
-
-```json
-{
-    "SabnzbdLab": {
-        "owner": "gitlab.com/my-group",
-        "repository": "domoticz-sabnzbd-lab",
-        "description": "Local GitLab plugin entry.",
-        "branch": "main",
-        "platforms": ["linux"]
+  "schema_version": 2,
+  "packages": [
+    {
+      "package_id": "SabnzbdLab",
+      "domoticz_key": "SABNZBD-LAB",
+      "description": "Local GitLab plugin entry.",
+      "repository": {
+        "url": "https://gitlab.com/my-group/domoticz-sabnzbd-lab.git",
+        "branch": "main"
+      },
+      "platforms": ["linux"]
     },
-    "StromerLab": {
-        "owner": "codeberg.org/my-user",
-        "repository": "domoticz-stromer-lab",
-        "description": "Local Codeberg plugin entry.",
-        "branch": "main",
-        "platforms": ["linux", "windows"]
+    {
+      "package_id": "StromerLab",
+      "domoticz_key": "STROMER-LAB",
+      "description": "Local Codeberg plugin entry.",
+      "repository": {
+        "url": "https://codeberg.org/my-user/domoticz-stromer-lab.git",
+        "branch": "main"
+      },
+      "platforms": ["linux", "windows"]
     }
+  ]
 }
 ```
 
-### Local or LAN Git Repository
-
-Use a full clone URL in `owner`. This also works for local bare repositories.
+### Local or LAN repository
 
 ```json
 {
-    "GarageController": {
-        "owner": "file:///srv/git/domoticz-garage-controller.git",
-        "description": "Garage controller plugin from a local Git repository.",
-        "branch": "main",
-        "platforms": ["linux"]
+  "schema_version": 2,
+  "packages": [
+    {
+      "package_id": "GarageController",
+      "domoticz_key": "GARAGE-CONTROLLER",
+      "description": "Garage controller from a local bare repository.",
+      "repository": {
+        "url": "file:///srv/git/domoticz-garage-controller.git",
+        "branch": "main"
+      },
+      "platforms": ["linux"]
     }
+  ]
 }
 ```
 
-### Override a Public Registry Entry
+## Override a public package
 
-Use the same key as the public entry. PyPluginStore keeps the public registry available, but this one local entry replaces the public definition on your installation.
+Use the same `package_id` as the public record. The local package replaces that
+one definition on this installation and stays Git-managed. Prefer to keep its
+`domoticz_key` unchanged so Domoticz continues to recognize the same hardware.
 
-```json
-{
-    "deCONZ": {
-        "owner": "my-github-user",
-        "repository": "domoticz-deconz-fork",
-        "description": "Local deCONZ fork with custom patches.",
-        "branch": "my-domoticz-branch",
-        "platforms": ["linux"]
-    }
-}
-```
+## Repo mismatch warning
 
-### Repo Mismatch Warning
+**Repo mismatch** means an installed checkout does not match the repository in
+the active public or local record for that `package_id`. PyPluginStore will not
+update it automatically because it may be an intentional fork.
 
-**Repo mismatch** means an installed plugin's Git checkout does not match the configured registry entry for that plugin key. PyPluginStore does not update it automatically, because it may be a fork or branch you chose on purpose.
+- If the checkout is intentional, add or update a matching local override.
+- If the public repository is intended, remove the mismatched folder, install
+  the registered package, and restart Domoticz.
 
-You have two good options:
-
-- If the installed repo is the one you want, open **Local registry** and add a matching repository source and branch.
-- If you want the managed registry repo instead, remove the mismatched plugin folder, install the registry entry, and restart Domoticz. This works as long as the `plugin.py` metadata keeps the same `<plugin key="...">`, because Domoticz uses that key to match the existing hardware entry.
-
-Deleting a local override never removes the installed plugin. If a public entry becomes active again and points elsewhere, the installed checkout may show **Repo mismatch** until the registry and checkout agree.
-
-### Test a Feature Branch
-
-Point a local entry at a branch before you publish or submit it to the public registry.
-
-```json
-{
-    "MyPluginBeta": {
-        "owner": "my-github-user",
-        "repository": "domoticz-my-plugin",
-        "description": "Beta branch of my Domoticz plugin.",
-        "branch": "feature/new-hardware-support",
-        "platforms": ["linux", "windows"]
-    }
-}
-```
-
-## Complete Example
-
-```json
-{
-    "HeatingLab": {
-        "owner": "git@github.com:my-org/domoticz-heating-lab.git",
-        "description": "Private heating automation plugin.",
-        "branch": "main",
-        "platforms": ["linux"]
-    },
-    "SabnzbdLab": {
-        "owner": "gitlab.com/my-group",
-        "repository": "domoticz-sabnzbd-lab",
-        "description": "Local GitLab plugin entry.",
-        "branch": "main",
-        "platforms": ["linux"]
-    },
-    "deCONZ": {
-        "owner": "my-github-user",
-        "repository": "domoticz-deconz-fork",
-        "description": "Local deCONZ fork with custom patches.",
-        "branch": "my-domoticz-branch",
-        "platforms": ["linux"]
-    }
-}
-```
+Keeping the same `domoticz_key` preserves Domoticz's hardware identity even
+when the package ID or physical folder differs. Deleting a local override never
+deletes the installed folder.
 
 ## Troubleshooting
 
-For manually edited files, validate the JSON before reloading:
+Validate a manually edited file before reloading it:
 
 ```bash
 python -m json.tool /path/to/domoticz/plugins/00-PyPluginStore/registry_local.json
 ```
 
-Then open **Local registry** and select **Reload entries**, or click **Refresh status** on the main page.
-
-If a private plugin appears but install fails, check that the Domoticz OS user can run `git ls-remote` against the same URL and branch. PyPluginStore cannot install a private repository until Git access works outside PyPluginStore too.
+Then select **Reload entries** or **Refresh status**. If a private repository
+cannot be installed, verify that the Domoticz OS user can run `git ls-remote`
+against the exact configured URL and branch.
