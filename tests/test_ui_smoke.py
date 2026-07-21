@@ -699,6 +699,18 @@ def test_card_header_badges_use_multiline_rows():
     assert "if (statusBadges.childNodes.length > 0)" in script
 
 
+def test_plugin_card_actions_wrap_when_buttons_do_not_fit():
+    html = (REPO_ROOT / "pypluginstore.html").read_text()
+
+    actions_rule = extract_css_rule(
+        html,
+        "#pypluginstore-container .pps-actions",
+    )
+    assert "display: flex" in actions_rule
+    assert "flex-wrap: wrap" in actions_rule
+    assert "gap: 8px" in actions_rule
+
+
 def test_local_registry_uses_one_accessible_native_dialog():
     html = (REPO_ROOT / "pypluginstore.html").read_text()
 
