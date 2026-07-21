@@ -28,8 +28,16 @@ import urllib.parse
 import zipfile
 
 
-INDEX_SCHEMA_VERSION = 1
-CACHE_SCHEMA_VERSION = 2
+REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
+if str(REPOSITORY_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPOSITORY_ROOT))
+
+from package_identity import certify_plugin_py  # noqa: E402
+
+
+INDEX_SCHEMA_VERSION = 2
+LEGACY_INDEX_SCHEMA_VERSION = 1
+CACHE_SCHEMA_VERSION = 3
 DEFAULT_VALIDITY_SECONDS = 7 * 24 * 60 * 60
 DEFAULT_CACHE_TTL_SECONDS = 60 * 60
 DEFAULT_MAX_ARCHIVE_SIZE = 50 * 1024 * 1024
@@ -73,15 +81,17 @@ CANDIDATE_FIELDS = (
     "artifact_kind",
     "artifact_provenance",
     "artifact_url",
+    "source_archive_url",
     "artifact_size",
     "provider_sha256",
     "source_path",
-    "migration_eligible",
+    "migration_mode",
+    "migration_evidence",
 )
 ARTIFACT_FIELDS = (
     "kind",
     "provenance",
-    "migration_eligible",
+    "migration",
     "url",
     "sha256",
     "size",
@@ -89,6 +99,29 @@ ARTIFACT_FIELDS = (
     "root_prefix",
     "source_path",
 )
+CERTIFIED_IDENTITY_FIELDS = ("domoticz_key", "plugin_py_sha256")
+CACHED_ARTIFACT_FIELDS = ARTIFACT_FIELDS + ("certified_identity",)
+MIGRATION_MODES = {"automatic", "blocked", "manual"}
+MIGRATION_EVIDENCE = {
+    "commit_source_archive",
+    "generic_manifest",
+    "source_equivalent_asset",
+    "unverified_asset",
+}
+RELEASE_ENTRY_FIELDS = {
+    "certified_identity",
+    "revision",
+    "release_id",
+    "supersedes",
+    "provider",
+    "repository_identity",
+    "version",
+    "tag",
+    "released_at",
+    "commit",
+    "artifact",
+}
+LEGACY_RELEASE_ENTRY_FIELDS = RELEASE_ENTRY_FIELDS - {"certified_identity"}
 
 
 class TransientProviderError(RuntimeError):
@@ -114,6 +147,8 @@ class _CertifiedZip:
     size: int
     tree_sha256: str
     root_prefix: str
+    domoticz_key: str
+    plugin_py_sha256: str
 
 
 def _now_utc(clock):
@@ -644,6 +679,16 @@ def _validate_candidate(document, provider, repository_identity, now):
     }:
         raise ValueError("Candidate artifact provenance is unsupported.")
     _require_https_url(document["artifact_url"], "candidate.artifact_url")
+    source_archive_url = _require_string(
+        document["source_archive_url"],
+        "candidate.source_archive_url",
+        allow_empty=True,
+    )
+    if source_archive_url:
+        _require_https_url(
+            source_archive_url,
+            "candidate.source_archive_url",
+        )
     artifact_size = document["artifact_size"]
     if artifact_size is not None:
         _require_positive_integer(artifact_size, "candidate.artifact_size")
@@ -653,21 +698,134 @@ def _validate_candidate(document, provider, repository_identity, now):
         allow_empty=True,
     )
     _normalize_relative_path(document["source_path"], "candidate.source_path")
-    if type(document["migration_eligible"]) is not bool:
-        raise ValueError("candidate.migration_eligible must be a boolean.")
-    if document["migration_eligible"] and not commit:
-        raise ValueError("Migration eligibility requires a resolved commit.")
+    migration_mode = _require_string(
+        document["migration_mode"], "candidate.migration_mode"
+    )
+    migration_evidence = _require_string(
+        document["migration_evidence"], "candidate.migration_evidence"
+    )
+    if migration_mode not in {"automatic", "blocked", "manual"}:
+        raise ValueError("candidate.migration_mode is unsupported.")
+    if migration_evidence not in {
+        "commit_source_archive",
+        "generic_manifest",
+        "unverified_asset",
+    }:
+        raise ValueError("candidate.migration_evidence is unsupported.")
+    if migration_mode == "automatic" and not commit:
+        raise ValueError("Automatic migration requires a resolved commit.")
+    if selected_provider != "generic" and not source_archive_url:
+        raise ValueError("Forge candidates require a source archive URL.")
+    if migration_mode == "automatic" and not source_archive_url:
+        raise ValueError("Automatic migration requires a source archive URL.")
+    if migration_mode == "automatic" and (
+        migration_evidence != "commit_source_archive"
+    ):
+        raise ValueError(
+            "Automatic provider migration requires commit source evidence."
+        )
     return SimpleNamespace(**copy.deepcopy(document))
 
 
-def _validate_cached_artifact(document, candidate):
+def _validate_migration(document, label="migration"):
+    if not isinstance(document, dict) or set(document) != {"mode", "evidence"}:
+        raise ValueError(label + " has an unexpected shape.")
+    mode = _require_string(document["mode"], label + ".mode")
+    evidence = _require_string(document["evidence"], label + ".evidence")
+    if mode not in MIGRATION_MODES:
+        raise ValueError(label + ".mode is unsupported.")
+    if evidence not in MIGRATION_EVIDENCE:
+        raise ValueError(label + ".evidence is unsupported.")
+    if mode == "automatic" and evidence not in {
+        "commit_source_archive",
+        "source_equivalent_asset",
+    }:
+        raise ValueError(label + " lacks automatic migration evidence.")
+    if mode == "manual" and evidence in {
+        "commit_source_archive",
+        "source_equivalent_asset",
+    }:
+        raise ValueError(label + " has contradictory migration evidence.")
+    return {"mode": mode, "evidence": evidence}
+
+
+def _validate_certified_identity(document, label="certified_identity"):
+    if not isinstance(document, dict) or set(document) != set(
+        CERTIFIED_IDENTITY_FIELDS
+    ):
+        raise ValueError(label + " has an unexpected shape.")
+    domoticz_key = _require_string(
+        document["domoticz_key"], label + ".domoticz_key"
+    )
+    if any(character in domoticz_key for character in "<>\r\n"):
+        raise ValueError(label + ".domoticz_key is unsafe.")
+    return {
+        "domoticz_key": domoticz_key,
+        "plugin_py_sha256": _require_sha256(
+            document["plugin_py_sha256"], label + ".plugin_py_sha256"
+        ),
+    }
+
+
+def _validate_public_artifact(document, label="artifact"):
     if not isinstance(document, dict) or set(document) != set(ARTIFACT_FIELDS):
+        raise ValueError(label + " has an unexpected shape.")
+    kind = _require_string(document["kind"], label + ".kind")
+    if kind not in {"asset_zip", "generic_zip", "source_zip"}:
+        raise ValueError(label + ".kind is unsupported.")
+    provenance = _require_string(
+        document["provenance"], label + ".provenance"
+    )
+    if provenance not in {
+        "attached_asset",
+        "forge_release_asset",
+        "forge_source_archive",
+        "generic_manifest",
+        "release_asset",
+    }:
+        raise ValueError(label + ".provenance is unsupported.")
+    root_prefix = _normalize_relative_path(
+        document["root_prefix"], label + ".root_prefix"
+    )
+    if root_prefix != "." and "/" in root_prefix:
+        raise ValueError(label + ".root_prefix must be one wrapper segment.")
+    if kind == "source_zip" and root_prefix == ".":
+        raise ValueError(label + " source ZIP requires one wrapper segment.")
+    return {
+        "kind": kind,
+        "provenance": provenance,
+        "migration": _validate_migration(
+            document["migration"], label + ".migration"
+        ),
+        "url": _require_https_url(document["url"], label + ".url"),
+        "sha256": _require_sha256(document["sha256"], label + ".sha256"),
+        "size": _require_positive_integer(document["size"], label + ".size"),
+        "tree_sha256": _require_sha256(
+            document["tree_sha256"], label + ".tree_sha256"
+        ),
+        "root_prefix": root_prefix,
+        "source_path": _normalize_relative_path(
+            document["source_path"], label + ".source_path"
+        ),
+    }
+
+
+def _validate_cached_artifact(document, candidate):
+    if not isinstance(document, dict) or set(document) != set(
+        CACHED_ARTIFACT_FIELDS
+    ):
         raise ValueError("Cached artifact has an unexpected shape.")
     if document["kind"] != candidate.artifact_kind:
         raise ValueError("Cached artifact kind changed.")
     if document["provenance"] != candidate.artifact_provenance:
         raise ValueError("Cached artifact provenance changed.")
-    if document["migration_eligible"] != candidate.migration_eligible:
+    migration = _validate_migration(
+        document["migration"], "cached artifact migration"
+    )
+    if migration != {
+        "mode": candidate.migration_mode,
+        "evidence": candidate.migration_evidence,
+    }:
         raise ValueError("Cached artifact migration policy changed.")
     if document["url"] != candidate.artifact_url:
         raise ValueError("Cached artifact URL changed.")
@@ -681,6 +839,9 @@ def _validate_cached_artifact(document, candidate):
         raise ValueError("artifact.root_prefix must be one wrapper segment.")
     if document["source_path"] != candidate.source_path:
         raise ValueError("Cached artifact source path changed.")
+    _validate_certified_identity(
+        document["certified_identity"], "cached certified identity"
+    )
     return copy.deepcopy(document)
 
 
@@ -877,6 +1038,8 @@ def _certify_zip_bytes(data, candidate):
     )
     if expected_plugin not in set(relative_paths):
         raise ValueError("Configured source_path does not contain plugin.py.")
+    plugin_contents = dict(relative_files)[expected_plugin]
+    package_identity = certify_plugin_py(plugin_contents)
 
     records = []
     for path, contents in relative_files:
@@ -895,6 +1058,8 @@ def _certify_zip_bytes(data, candidate):
         size=len(data),
         tree_sha256=tree_sha256,
         root_prefix=root_prefix,
+        domoticz_key=package_identity.domoticz_key,
+        plugin_py_sha256=package_identity.plugin_py_sha256,
     )
 
 
@@ -1100,11 +1265,29 @@ def _entry_repository_identity(entry):
     return identity
 
 
-def _validate_previous(previous, registry):
-    if previous is None:
-        return None
-    if not isinstance(previous, dict):
-        raise ValueError("previous_index must be an object.")
+def _validate_previous_common(previous):
+    _require_positive_integer(previous["sequence"], "previous sequence")
+    _parse_utc(previous["generated_at"], "previous generated_at")
+    _parse_utc(previous["expires_at"], "previous expires_at")
+    _require_sha256(previous["registry_sha256"], "previous registry_sha256")
+
+
+def _legacy_migration(artifact):
+    eligible = artifact.pop("migration_eligible")
+    if type(eligible) is not bool:
+        raise ValueError("Legacy migration_eligible must be a boolean.")
+    if eligible:
+        return {"mode": "automatic", "evidence": "commit_source_archive"}
+    evidence = (
+        "generic_manifest"
+        if artifact.get("provenance") == "generic_manifest"
+        else "unverified_asset"
+    )
+    return {"mode": "manual", "evidence": evidence}
+
+
+def _validate_legacy_previous(previous, registry):
+    """Normalize one read-only schema-v1 previous index for v2 generation."""
     required = {
         "schema_version",
         "sequence",
@@ -1114,16 +1297,15 @@ def _validate_previous(previous, registry):
         "plugins",
     }
     optional = {"tombstones"}
-    if not required.issubset(previous) or not set(previous).issubset(required | optional):
-        raise ValueError("previous_index has an unsupported shape.")
-    if previous["schema_version"] != INDEX_SCHEMA_VERSION:
-        raise ValueError("previous_index schema is unsupported.")
-    _require_positive_integer(previous["sequence"], "previous sequence")
-    _parse_utc(previous["generated_at"], "previous generated_at")
-    _parse_utc(previous["expires_at"], "previous expires_at")
-    _require_sha256(previous["registry_sha256"], "previous registry_sha256")
-    plugins = previous["plugins"]
-    tombstones = previous.get("tombstones", {})
+    if not isinstance(previous, dict) or not required.issubset(previous) or (
+        not set(previous).issubset(required | optional)
+    ):
+        raise ValueError("legacy previous_index has an unsupported shape.")
+    if previous["schema_version"] != LEGACY_INDEX_SCHEMA_VERSION:
+        raise ValueError("legacy previous_index schema is unsupported.")
+    _validate_previous_common(previous)
+    plugins = copy.deepcopy(previous["plugins"])
+    tombstones = copy.deepcopy(previous.get("tombstones", {}))
     if not isinstance(plugins, dict) or not isinstance(tombstones, dict):
         raise ValueError("previous_index plugin collections must be objects.")
     if set(plugins) & set(tombstones):
@@ -1134,6 +1316,11 @@ def _validate_previous(previous, registry):
     for key, entry in plugins.items():
         if not isinstance(entry, dict):
             raise ValueError("Previous release entry must be an object.")
+        if set(entry) not in (
+            LEGACY_RELEASE_ENTRY_FIELDS,
+            LEGACY_RELEASE_ENTRY_FIELDS | {"source_revision"},
+        ):
+            raise ValueError("Legacy release entry has an unsupported shape.")
         if entry.get("repository_identity") != _entry_repository_identity(registry[key]):
             raise ValueError("Previous release repository no longer matches registry.")
         _require_positive_integer(entry.get("revision"), "previous revision")
@@ -1142,12 +1329,170 @@ def _validate_previous(previous, registry):
             raise ValueError("Previous release lineage must be a list.")
         if not isinstance(entry.get("artifact"), dict):
             raise ValueError("Previous release artifact must be an object.")
+        legacy_artifact = copy.deepcopy(entry["artifact"])
+        if set(legacy_artifact) != set(ARTIFACT_FIELDS) - {"migration"} | {
+            "migration_eligible"
+        }:
+            raise ValueError("Legacy release artifact has an unsupported shape.")
+        legacy_artifact["migration"] = _legacy_migration(legacy_artifact)
+        entry = copy.deepcopy(entry)
+        entry["artifact"] = _validate_public_artifact(
+            legacy_artifact, "legacy release artifact"
+        )
+        plugins[key] = entry
     for tombstone in tombstones.values():
         if not isinstance(tombstone, dict):
             raise ValueError("Previous tombstone must be an object.")
-    result = copy.deepcopy(previous)
-    result.setdefault("tombstones", {})
-    return result
+    return {
+        "schema_version": LEGACY_INDEX_SCHEMA_VERSION,
+        "sequence": previous["sequence"],
+        "generated_at": previous["generated_at"],
+        "expires_at": previous["expires_at"],
+        "registry_sha256": previous["registry_sha256"],
+        "plugins": copy.deepcopy(plugins),
+        "tombstones": copy.deepcopy(tombstones),
+    }
+
+
+def _validate_v2_previous(previous, registry):
+    required = {
+        "schema_version",
+        "sequence",
+        "generated_at",
+        "expires_at",
+        "registry_sha256",
+        "releases",
+        "tombstones",
+    }
+    if not isinstance(previous, dict) or set(previous) != required:
+        raise ValueError("previous_index v2 has an unsupported shape.")
+    if previous["schema_version"] != INDEX_SCHEMA_VERSION:
+        raise ValueError("previous_index v2 schema is unsupported.")
+    _validate_previous_common(previous)
+    if not isinstance(previous["releases"], list) or not isinstance(
+        previous["tombstones"], list
+    ):
+        raise ValueError("previous_index v2 collections must be arrays.")
+
+    plugins = {}
+    for release in previous["releases"]:
+        if not isinstance(release, dict):
+            raise ValueError("Previous release record must be an object.")
+        package_id = _require_string(
+            release.get("package_id"), "previous package_id"
+        )
+        if package_id in plugins:
+            raise ValueError("Previous releases contain a duplicate package_id.")
+        entry = copy.deepcopy(release)
+        entry.pop("package_id")
+        if set(entry) not in (
+            RELEASE_ENTRY_FIELDS,
+            RELEASE_ENTRY_FIELDS | {"source_revision"},
+        ):
+            raise ValueError("Previous release record has an unsupported shape.")
+        if package_id not in registry:
+            raise ValueError("Previously accepted package disappeared from registry.")
+        if entry["repository_identity"] != _entry_repository_identity(
+            registry[package_id]
+        ):
+            raise ValueError("Previous release repository no longer matches registry.")
+        _require_positive_integer(entry["revision"], "previous revision")
+        release_id = _require_string(
+            entry["release_id"], "previous release_id"
+        )
+        if not isinstance(entry["supersedes"], list):
+            raise ValueError("Previous release lineage must be a list.")
+        lineage = []
+        for predecessor in entry["supersedes"]:
+            predecessor = _require_string(
+                predecessor, "previous superseded release_id"
+            )
+            if predecessor == release_id or predecessor in lineage:
+                raise ValueError("Previous release lineage is invalid.")
+            lineage.append(predecessor)
+        entry["supersedes"] = lineage
+        provider = _require_string(entry["provider"], "previous provider")
+        _require_string(
+            entry["repository_identity"], "previous repository_identity"
+        )
+        _require_string(entry["version"], "previous version")
+        _require_string(
+            entry["tag"], "previous tag", allow_empty=provider == "generic"
+        )
+        _parse_utc(entry["released_at"], "previous released_at")
+        commit = _require_git_object_id(
+            entry["commit"], "previous commit", allow_empty=provider == "generic"
+        )
+        source_revision = entry.get("source_revision", commit)
+        _require_string(source_revision, "previous source_revision")
+        if provider != "generic" and source_revision != commit:
+            raise ValueError("Previous source revision does not match commit.")
+        _validate_certified_identity(entry["certified_identity"])
+        entry["artifact"] = _validate_public_artifact(
+            entry["artifact"], "previous release artifact"
+        )
+        if (
+            entry["artifact"]["migration"]["mode"] == "automatic"
+            and not commit
+        ):
+            raise ValueError("Automatic previous migration requires a commit.")
+        plugins[package_id] = entry
+
+    tombstones = {}
+    tombstone_fields = {
+        "package_id",
+        "repository_identity",
+        "last_revision",
+        "release_id",
+        "reason",
+        "removed_at",
+    }
+    for tombstone in previous["tombstones"]:
+        if not isinstance(tombstone, dict) or set(tombstone) != tombstone_fields:
+            raise ValueError("Previous tombstone record has an unsupported shape.")
+        package_id = _require_string(
+            tombstone["package_id"], "previous tombstone package_id"
+        )
+        if package_id in tombstones or package_id in plugins:
+            raise ValueError("Previous package state is duplicated.")
+        if package_id not in registry:
+            raise ValueError("Previously tombstoned package disappeared from registry.")
+        normalized = copy.deepcopy(tombstone)
+        normalized.pop("package_id")
+        if normalized["repository_identity"] != _entry_repository_identity(
+            registry[package_id]
+        ):
+            raise ValueError("Previous tombstone repository no longer matches registry.")
+        _require_positive_integer(
+            normalized["last_revision"], "previous tombstone revision"
+        )
+        _require_string(
+            normalized["release_id"], "previous tombstone release_id"
+        )
+        _require_string(normalized["reason"], "previous tombstone reason")
+        _parse_utc(normalized["removed_at"], "previous tombstone removed_at")
+        tombstones[package_id] = normalized
+    return {
+        "schema_version": INDEX_SCHEMA_VERSION,
+        "sequence": previous["sequence"],
+        "generated_at": previous["generated_at"],
+        "expires_at": previous["expires_at"],
+        "registry_sha256": previous["registry_sha256"],
+        "plugins": plugins,
+        "tombstones": tombstones,
+    }
+
+
+def _validate_previous(previous, registry):
+    if previous is None:
+        return None
+    if not isinstance(previous, dict):
+        raise ValueError("previous_index must be an object.")
+    if previous.get("schema_version") == LEGACY_INDEX_SCHEMA_VERSION:
+        return _validate_legacy_previous(previous, registry)
+    if previous.get("schema_version") == INDEX_SCHEMA_VERSION:
+        return _validate_v2_previous(previous, registry)
+    raise ValueError("previous_index schema is unsupported.")
 
 
 def _validate_tombstone_requests(requests, previous, registry):
@@ -1171,17 +1516,26 @@ def _artifact_document(candidate, certified):
     return {
         "kind": candidate.artifact_kind,
         "provenance": candidate.artifact_provenance,
-        "migration_eligible": candidate.migration_eligible,
+        "migration": {
+            "mode": candidate.migration_mode,
+            "evidence": candidate.migration_evidence,
+        },
         "url": candidate.artifact_url,
         "sha256": certified.sha256,
         "size": certified.size,
         "tree_sha256": certified.tree_sha256,
         "root_prefix": certified.root_prefix,
         "source_path": candidate.source_path,
+        "certified_identity": {
+            "domoticz_key": certified.domoticz_key,
+            "plugin_py_sha256": certified.plugin_py_sha256,
+        },
     }
 
 
 def _candidate_entry(candidate, artifact, revision, supersedes):
+    artifact = copy.deepcopy(artifact)
+    certified_identity = artifact.pop("certified_identity")
     entry = {
         "revision": revision,
         "release_id": candidate.release_id,
@@ -1192,17 +1546,54 @@ def _candidate_entry(candidate, artifact, revision, supersedes):
         "tag": candidate.tag,
         "released_at": candidate.released_at,
         "commit": candidate.commit,
-        "artifact": copy.deepcopy(artifact),
+        "certified_identity": certified_identity,
+        "artifact": artifact,
     }
     if candidate.provider == "generic" or candidate.source_revision != candidate.commit:
         entry["source_revision"] = candidate.source_revision
     return entry
 
 
+def _public_artifact(artifact):
+    if not isinstance(artifact, dict) or not set(ARTIFACT_FIELDS).issubset(
+        artifact
+    ):
+        raise ValueError("Certified artifact has an incomplete shape.")
+    return {field: copy.deepcopy(artifact[field]) for field in ARTIFACT_FIELDS}
+
+
 def _mutation_report(reason, **fields):
     report = {"status": "quarantined_mutation", "reason": reason}
     report.update(fields)
     return report
+
+
+def _release_records(plugins):
+    records = []
+    for package_id in sorted(plugins):
+        entry = copy.deepcopy(plugins[package_id])
+        if set(entry) not in (
+            RELEASE_ENTRY_FIELDS,
+            RELEASE_ENTRY_FIELDS | {"source_revision"},
+        ):
+            raise ValueError("Release record has an unsupported shape.")
+        identity = _validate_certified_identity(
+            entry.get("certified_identity")
+        )
+        artifact = _validate_public_artifact(
+            entry.get("artifact"), "release artifact"
+        )
+        entry["certified_identity"] = identity
+        entry["artifact"] = artifact
+        records.append({"package_id": package_id, **entry})
+    return records
+
+
+def _tombstone_records(tombstones):
+    return [
+        {"package_id": package_id, **copy.deepcopy(tombstones[package_id])}
+        for package_id in sorted(tombstones)
+    ]
 
 
 def _compare_with_previous(candidate, artifact, previous_entry):
@@ -1252,11 +1643,12 @@ def _compare_with_previous(candidate, artifact, previous_entry):
         return previous_entry, _mutation_report(
             "release_identity_metadata_changed"
         )
+    current_artifact = _public_artifact(artifact)
     previous_artifact = previous_entry.get("artifact", {})
     for field, value in (
         ("kind", candidate.artifact_kind),
         ("provenance", candidate.artifact_provenance),
-        ("migration_eligible", candidate.migration_eligible),
+        ("migration", current_artifact["migration"]),
         ("source_path", candidate.source_path),
     ):
         if previous_artifact.get(field) != value:
@@ -1264,7 +1656,7 @@ def _compare_with_previous(candidate, artifact, previous_entry):
                 "release_artifact_policy_changed"
             )
 
-    if artifact["tree_sha256"] != previous_artifact.get("tree_sha256"):
+    if current_artifact["tree_sha256"] != previous_artifact.get("tree_sha256"):
         reason = (
             "source_tree_changed"
             if candidate.artifact_provenance == "forge_source_archive"
@@ -1272,25 +1664,33 @@ def _compare_with_previous(candidate, artifact, previous_entry):
         )
         return previous_entry, _mutation_report(
             reason,
-            observed_tree_sha256=artifact["tree_sha256"],
+            observed_tree_sha256=current_artifact["tree_sha256"],
             accepted_tree_sha256=previous_artifact.get("tree_sha256"),
         )
 
     transport_fields = ("url", "sha256", "size", "root_prefix")
     transport_changed = any(
-        artifact.get(field) != previous_artifact.get(field)
+        current_artifact.get(field) != previous_artifact.get(field)
         for field in transport_fields
     )
     if candidate.artifact_provenance != "forge_source_archive" and transport_changed:
         return previous_entry, _mutation_report("artifact_bytes_changed")
     if not transport_changed:
-        return copy.deepcopy(previous_entry), {
+        refreshed = copy.deepcopy(previous_entry)
+        refreshed["certified_identity"] = copy.deepcopy(
+            artifact["certified_identity"]
+        )
+        refreshed["artifact"] = current_artifact
+        return refreshed, {
             "status": "unchanged",
             "revision_changed": False,
         }
 
     refreshed = copy.deepcopy(previous_entry)
-    refreshed["artifact"] = copy.deepcopy(artifact)
+    refreshed["certified_identity"] = copy.deepcopy(
+        artifact["certified_identity"]
+    )
+    refreshed["artifact"] = current_artifact
     return refreshed, {
         "status": "transport_refreshed",
         "revision_changed": False,
@@ -1442,6 +1842,119 @@ class ReleaseIndexGenerator:
             self.cache.put(key, artifact)
         return artifact, False
 
+    def _certify_migration_evidence(
+        self,
+        plugin_key,
+        registry_digest,
+        candidate,
+        artifact,
+        allowed_origins,
+    ):
+        """Strengthen an attached asset only when its commit tree is equal."""
+        if not (
+            candidate.artifact_kind == "asset_zip"
+            and candidate.migration_mode == "manual"
+            and candidate.migration_evidence == "unverified_asset"
+            and candidate.commit
+            and candidate.source_archive_url
+        ):
+            return artifact, True
+
+        source_document = {
+            field: getattr(candidate, field) for field in CANDIDATE_FIELDS
+        }
+        source_document.update(
+            artifact_kind="source_zip",
+            artifact_provenance="forge_source_archive",
+            artifact_url=candidate.source_archive_url,
+            artifact_size=None,
+            provider_sha256="",
+            migration_mode="automatic",
+            migration_evidence="commit_source_archive",
+        )
+        source_candidate = _validate_candidate(
+            source_document,
+            candidate.provider,
+            candidate.repository_identity,
+            _parse_utc(candidate.released_at, "candidate.released_at"),
+        )
+        try:
+            source_artifact, cache_hit = self._certify_artifact(
+                plugin_key,
+                registry_digest,
+                source_candidate,
+                allowed_origins,
+            )
+        except Exception:
+            # Source comparison strengthens migration authorization only. A
+            # verified release asset remains installable in manual mode when
+            # its provider source archive is temporarily unavailable.
+            return artifact, False
+        strengthened = copy.deepcopy(artifact)
+        if source_artifact["tree_sha256"] == artifact["tree_sha256"]:
+            strengthened["migration"] = {
+                "mode": "automatic",
+                "evidence": "source_equivalent_asset",
+            }
+        return strengthened, cache_hit
+
+    def _certify_legacy_previous_entry(
+        self,
+        package_id,
+        registry_digest,
+        previous_entry,
+    ):
+        """Re-certify one v1 accepted artifact before emitting it as v2."""
+        if "certified_identity" in previous_entry:
+            return copy.deepcopy(previous_entry)
+        artifact = previous_entry["artifact"]
+        migration = _validate_migration(
+            artifact["migration"], "legacy normalized migration"
+        )
+        candidate = SimpleNamespace(
+            provider=previous_entry["provider"],
+            repository_identity=previous_entry["repository_identity"],
+            release_id=previous_entry["release_id"],
+            version=previous_entry["version"],
+            tag=previous_entry["tag"],
+            released_at=previous_entry["released_at"],
+            source_revision=previous_entry.get(
+                "source_revision", previous_entry.get("commit", "")
+            ),
+            commit=previous_entry.get("commit", ""),
+            artifact_kind=artifact["kind"],
+            artifact_provenance=artifact["provenance"],
+            artifact_url=artifact["url"],
+            source_archive_url=(
+                artifact["url"]
+                if artifact["provenance"] == "forge_source_archive"
+                else ""
+            ),
+            artifact_size=artifact["size"],
+            provider_sha256=artifact["sha256"],
+            source_path=artifact["source_path"],
+            migration_mode=migration["mode"],
+            migration_evidence=migration["evidence"],
+        )
+        certified, _cache_hit = self._certify_artifact(
+            package_id,
+            registry_digest,
+            candidate,
+            [],
+        )
+        public_artifact = _public_artifact(certified)
+        for field in ARTIFACT_FIELDS:
+            if public_artifact[field] != artifact[field]:
+                raise ValueError(
+                    "Legacy accepted artifact no longer matches its certification."
+                )
+        upgraded = copy.deepcopy(previous_entry)
+        upgraded["certified_identity"] = copy.deepcopy(
+            certified["certified_identity"]
+        )
+        upgraded["artifact"] = public_artifact
+        return upgraded
+
     def generate(
         self,
         *,
@@ -1490,6 +2003,24 @@ class ReleaseIndexGenerator:
             if plugin_key in previous_tombstones:
                 reports[plugin_key] = {"status": "retained_tombstone"}
                 continue
+
+            if prior is not None and "certified_identity" not in prior:
+                try:
+                    prior = self._certify_legacy_previous_entry(
+                        plugin_key,
+                        registry_digest,
+                        prior,
+                    )
+                    previous_plugins[plugin_key] = copy.deepcopy(prior)
+                except Exception as error:
+                    reports[plugin_key] = {
+                        "status": "certification_failed",
+                        "detail": (
+                            "Legacy release cutover failed: " + str(error)
+                        ),
+                        "cache_hit": False,
+                    }
+                    continue
 
             try:
                 owner, repository_name = _registry_coordinates(registry[plugin_key])
@@ -1581,6 +2112,30 @@ class ReleaseIndexGenerator:
                     selected,
                     origins,
                 )
+                artifact, evidence_cache_hit = (
+                    self._certify_migration_evidence(
+                        plugin_key,
+                        registry_digest,
+                        selected,
+                        artifact,
+                        origins,
+                    )
+                )
+                artifact_cache_hit = (
+                    artifact_cache_hit and evidence_cache_hit
+                )
+                expected_domoticz_key = (
+                    registry[plugin_key].get("domoticz_key")
+                    if isinstance(registry[plugin_key], dict)
+                    else None
+                )
+                if expected_domoticz_key is not None and (
+                    artifact["certified_identity"]["domoticz_key"]
+                    != expected_domoticz_key
+                ):
+                    raise ValueError(
+                        "Certified Domoticz key does not match the package registry."
+                    )
             except Exception as error:
                 if prior is not None:
                     plugins[plugin_key] = copy.deepcopy(prior)
@@ -1614,8 +2169,8 @@ class ReleaseIndexGenerator:
                 now + timedelta(seconds=self.validity_seconds)
             ),
             "registry_sha256": registry_digest,
-            "plugins": dict(sorted(plugins.items())),
-            "tombstones": dict(sorted(tombstones.items())),
+            "releases": _release_records(plugins),
+            "tombstones": _tombstone_records(tombstones),
         }
         for plugin_key, provider_name in report_providers.items():
             if plugin_key in reports:

@@ -25,6 +25,12 @@ ARTIFACT_PROVENANCE = {
     "generic_manifest",
     "release_asset",
 }
+MIGRATION_MODES = {"automatic", "blocked", "manual"}
+MIGRATION_EVIDENCE = {
+    "commit_source_archive",
+    "generic_manifest",
+    "unverified_asset",
+}
 WINDOWS_RESERVED_NAMES = {
     "aux",
     "con",
@@ -182,14 +188,14 @@ def _require_sha256(value, allow_empty=False):
     return value
 
 
-def _require_https_url(value):
-    """Validate one credential-free HTTPS artifact URL."""
-    value = _require_string(value, "artifact_url")
+def _require_https_url(value, label="artifact_url"):
+    """Validate one credential-free HTTPS URL."""
+    value = _require_string(value, label)
     try:
         parsed = urllib.parse.urlsplit(value)
         parsed.port
     except ValueError as error:
-        raise ValueError("artifact_url is not a valid URL.") from error
+        raise ValueError(label + " is not a valid URL.") from error
     if (
         parsed.scheme != "https"
         or not parsed.hostname
@@ -199,7 +205,7 @@ def _require_https_url(value):
         or not parsed.path
     ):
         raise ValueError(
-            "artifact_url must be a credential-free HTTPS URL."
+            label + " must be a credential-free HTTPS URL."
         )
     return value
 
@@ -243,10 +249,12 @@ class ReleaseCandidate:
     artifact_kind: str
     artifact_provenance: str
     artifact_url: str
+    source_archive_url: str
     artifact_size: object
     provider_sha256: str
     source_path: str
-    migration_eligible: bool
+    migration_mode: str
+    migration_evidence: str
 
     def __post_init__(self):
         provider = _require_string(self.provider, "provider")
@@ -272,17 +280,52 @@ class ReleaseCandidate:
         if self.artifact_provenance not in ARTIFACT_PROVENANCE:
             raise ValueError("artifact_provenance is unsupported.")
         _require_https_url(self.artifact_url)
+        source_archive_url = _require_string(
+            self.source_archive_url,
+            "source_archive_url",
+            allow_empty=True,
+        )
+        if source_archive_url:
+            _require_https_url(source_archive_url, "source_archive_url")
         if self.artifact_size is not None and (
             type(self.artifact_size) is not int or self.artifact_size <= 0
         ):
             raise ValueError("artifact_size must be a positive integer or null.")
         _require_sha256(self.provider_sha256, allow_empty=True)
         _require_source_path(self.source_path)
-        if type(self.migration_eligible) is not bool:
-            raise ValueError("migration_eligible must be a boolean.")
-        if self.migration_eligible and not commit:
+        migration_mode = _require_string(
+            self.migration_mode, "migration_mode"
+        )
+        migration_evidence = _require_string(
+            self.migration_evidence, "migration_evidence"
+        )
+        if migration_mode not in MIGRATION_MODES:
+            raise ValueError("migration_mode is unsupported.")
+        if migration_evidence not in MIGRATION_EVIDENCE:
+            raise ValueError("migration_evidence is unsupported.")
+        if migration_mode == "automatic" and not commit:
             raise ValueError(
-                "Migration eligibility requires a full Git commit ID."
+                "Automatic migration requires a full Git commit ID."
+            )
+        if migration_mode == "automatic" and not source_archive_url:
+            raise ValueError(
+                "Automatic migration requires an immutable source archive URL."
+            )
+        if provider != "generic" and not source_archive_url:
+            raise ValueError(
+                "Forge candidates require an immutable source archive URL."
+            )
+        if migration_mode == "automatic" and (
+            migration_evidence != "commit_source_archive"
+        ):
+            raise ValueError(
+                "Automatic provider migration requires a commit source archive."
+            )
+        if migration_evidence == "commit_source_archive" and (
+            migration_mode != "automatic"
+        ):
+            raise ValueError(
+                "Commit source archives must use automatic migration mode."
             )
 
 
@@ -590,14 +633,17 @@ class GitHubReleaseAdapter(ReleaseProviderAdapter):
     def _select_artifact(self, release, policy, api_repository_url, commit):
         """Return candidate artifact fields for source or configured asset ZIP."""
         artifact_kind = policy.get("artifact")
+        source_archive_url = api_repository_url + "/zipball/" + commit
         if artifact_kind == "source_zip":
             return {
                 "artifact_kind": "source_zip",
                 "artifact_provenance": "forge_source_archive",
-                "artifact_url": api_repository_url + "/zipball/" + commit,
+                "artifact_url": source_archive_url,
+                "source_archive_url": source_archive_url,
                 "artifact_size": None,
                 "provider_sha256": "",
-                "migration_eligible": True,
+                "migration_mode": "automatic",
+                "migration_evidence": "commit_source_archive",
             }
         if artifact_kind != "asset_zip":
             raise ValueError("GitHub policy artifact must be source_zip or asset_zip.")
@@ -619,9 +665,11 @@ class GitHubReleaseAdapter(ReleaseProviderAdapter):
             "artifact_kind": "asset_zip",
             "artifact_provenance": "attached_asset",
             "artifact_url": asset.get("browser_download_url"),
+            "source_archive_url": source_archive_url,
             "artifact_size": asset_size,
             "provider_sha256": _github_provider_digest(asset.get("digest")),
-            "migration_eligible": False,
+            "migration_mode": "manual",
+            "migration_evidence": "unverified_asset",
         }
 
     def resolve(self, repository, policy, transport, *, now=None):
@@ -764,18 +812,19 @@ class GitLabReleaseAdapter(ReleaseProviderAdapter):
     def _select_artifact(self, release, policy, api_project_url, commit):
         """Return source or reviewed direct-asset candidate fields."""
         artifact_kind = policy.get("artifact")
+        source_archive_url = (
+            api_project_url + "/repository/archive.zip?sha=" + commit
+        )
         if artifact_kind == "source_zip":
             return {
                 "artifact_kind": "source_zip",
                 "artifact_provenance": "forge_source_archive",
-                "artifact_url": (
-                    api_project_url
-                    + "/repository/archive.zip?sha="
-                    + commit
-                ),
+                "artifact_url": source_archive_url,
+                "source_archive_url": source_archive_url,
                 "artifact_size": None,
                 "provider_sha256": "",
-                "migration_eligible": True,
+                "migration_mode": "automatic",
+                "migration_evidence": "commit_source_archive",
             }
         if artifact_kind != "asset_zip":
             raise ValueError("GitLab policy artifact must be source_zip or asset_zip.")
@@ -802,9 +851,11 @@ class GitLabReleaseAdapter(ReleaseProviderAdapter):
             "artifact_url": (
                 asset.get("direct_asset_url") or asset.get("url")
             ),
+            "source_archive_url": source_archive_url,
             "artifact_size": asset_size,
             "provider_sha256": "",
-            "migration_eligible": False,
+            "migration_mode": "manual",
+            "migration_evidence": "unverified_asset",
         }
 
     def resolve(self, repository, policy, transport, *, now=None):
@@ -1038,19 +1089,19 @@ class ForgejoReleaseAdapter(ReleaseProviderAdapter):
     def _select_artifact(self, release, policy, api_repository_url, commit):
         """Return commit source archive or reviewed attached ZIP fields."""
         artifact_kind = policy.get("artifact")
+        source_archive_url = (
+            api_repository_url + "/archive/" + commit + ".zip"
+        )
         if artifact_kind == "source_zip":
             return {
                 "artifact_kind": "source_zip",
                 "artifact_provenance": "forge_source_archive",
-                "artifact_url": (
-                    api_repository_url
-                    + "/archive/"
-                    + commit
-                    + ".zip"
-                ),
+                "artifact_url": source_archive_url,
+                "source_archive_url": source_archive_url,
                 "artifact_size": None,
                 "provider_sha256": "",
-                "migration_eligible": True,
+                "migration_mode": "automatic",
+                "migration_evidence": "commit_source_archive",
             }
         if artifact_kind != "asset_zip":
             raise ValueError("Forgejo policy artifact must be source_zip or asset_zip.")
@@ -1074,9 +1125,11 @@ class ForgejoReleaseAdapter(ReleaseProviderAdapter):
             "artifact_kind": "asset_zip",
             "artifact_provenance": "attached_asset",
             "artifact_url": asset.get("browser_download_url"),
+            "source_archive_url": source_archive_url,
             "artifact_size": asset_size,
             "provider_sha256": "",
-            "migration_eligible": False,
+            "migration_mode": "manual",
+            "migration_evidence": "unverified_asset",
         }
 
     def resolve(self, repository, policy, transport, *, now=None):
@@ -1293,19 +1346,19 @@ class GiteaReleaseAdapter(ReleaseProviderAdapter):
     def _select_artifact(self, release, policy, api_repository_url, commit):
         """Return Gitea commit archive or reviewed attached ZIP fields."""
         artifact_kind = policy.get("artifact")
+        source_archive_url = (
+            api_repository_url + "/archive/" + commit + ".zip"
+        )
         if artifact_kind == "source_zip":
             return {
                 "artifact_kind": "source_zip",
                 "artifact_provenance": "forge_source_archive",
-                "artifact_url": (
-                    api_repository_url
-                    + "/archive/"
-                    + commit
-                    + ".zip"
-                ),
+                "artifact_url": source_archive_url,
+                "source_archive_url": source_archive_url,
                 "artifact_size": None,
                 "provider_sha256": "",
-                "migration_eligible": True,
+                "migration_mode": "automatic",
+                "migration_evidence": "commit_source_archive",
             }
         if artifact_kind != "asset_zip":
             raise ValueError("Gitea policy artifact must be source_zip or asset_zip.")
@@ -1327,9 +1380,11 @@ class GiteaReleaseAdapter(ReleaseProviderAdapter):
             "artifact_kind": "asset_zip",
             "artifact_provenance": "attached_asset",
             "artifact_url": asset.get("browser_download_url"),
+            "source_archive_url": source_archive_url,
             "artifact_size": asset_size,
             "provider_sha256": "",
-            "migration_eligible": False,
+            "migration_mode": "manual",
+            "migration_evidence": "unverified_asset",
         }
 
     def resolve(self, repository, policy, transport, *, now=None):
@@ -1496,8 +1551,10 @@ class GenericManifestAdapter(ReleaseProviderAdapter):
             artifact_kind="asset_zip",
             artifact_provenance="generic_manifest",
             artifact_url=artifact_url,
+            source_archive_url="",
             artifact_size=artifact_size,
             provider_sha256=provider_sha256,
             source_path=source_path,
-            migration_eligible=False,
+            migration_mode="manual",
+            migration_evidence="generic_manifest",
         )

@@ -24,10 +24,12 @@ EXPECTED_CANDIDATE_FIELDS = {
     "artifact_kind",
     "artifact_provenance",
     "artifact_url",
+    "source_archive_url",
     "artifact_size",
     "provider_sha256",
     "source_path",
-    "migration_eligible",
+    "migration_mode",
+    "migration_evidence",
 }
 
 
@@ -330,11 +332,13 @@ def test_forge_adapter_filters_stable_release_and_resolves_exact_commit(
     assert candidate.artifact_kind == "source_zip"
     assert candidate.artifact_provenance == "forge_source_archive"
     assert candidate.artifact_url == expected["source_url"]
+    assert candidate.source_archive_url == expected["source_url"]
     assert "v1.4.0" not in candidate.artifact_url
     assert candidate.artifact_size is None
     assert candidate.provider_sha256 == ""
     assert candidate.source_path == "."
-    assert candidate.migration_eligible is True
+    assert candidate.migration_mode == "automatic"
+    assert candidate.migration_evidence == "commit_source_archive"
     assert transport.requests == expected["requests"]
 
 
@@ -979,11 +983,13 @@ def test_configured_attached_zip_is_selected_by_exact_name(
     )
 
     assert candidate.artifact_url == expected["asset_url"]
+    assert candidate.source_archive_url == expected["source_url"]
     assert candidate.artifact_kind == "asset_zip"
     assert candidate.artifact_provenance == "attached_asset"
     assert candidate.artifact_size == expected["asset_size"]
     assert candidate.provider_sha256 == expected["provider_sha256"]
-    assert candidate.migration_eligible is False
+    assert candidate.migration_mode == "manual"
+    assert candidate.migration_evidence == "unverified_asset"
     assert candidate.commit == expected["commit"]
 
 
@@ -1164,10 +1170,12 @@ def test_generic_https_manifest_normalizes_without_forge_api_calls(
     assert candidate.artifact_kind == "asset_zip"
     assert candidate.artifact_provenance == "generic_manifest"
     assert candidate.artifact_url.endswith("/domoticz-plugin.zip")
+    assert candidate.source_archive_url == ""
     assert candidate.artifact_size == 56789
     assert candidate.provider_sha256 == "b" * 64
     assert candidate.source_path == "plugin"
-    assert candidate.migration_eligible is False
+    assert candidate.migration_mode == "manual"
+    assert candidate.migration_evidence == "generic_manifest"
     assert transport.requests == [policy["manifest_url"]]
 
 
@@ -1319,7 +1327,8 @@ def test_generic_optional_commit_is_provenance_not_migration_approval(
 
     assert candidate.commit == "5" * 40
     assert candidate.source_revision == "release-2026-07-17-v1.4.0"
-    assert candidate.migration_eligible is False
+    assert candidate.migration_mode == "manual"
+    assert candidate.migration_evidence == "generic_manifest"
 
 
 def test_generic_manifest_requests_json_with_standard_headers(
