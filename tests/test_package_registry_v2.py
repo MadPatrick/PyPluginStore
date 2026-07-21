@@ -51,7 +51,9 @@ def package_record(
 def registry_document(packages=None):
     return {
         "schema_version": 2,
-        "packages": list(packages or [package_record()]),
+        "packages": list(
+            [package_record()] if packages is None else packages
+        ),
     }
 
 
@@ -63,6 +65,7 @@ def test_plugin_core_loads_sibling_registry_outside_sys_path(tmp_path):
     plugin_core_path = tmp_path / "plugin_core.py"
     shutil.copy2(REPO_ROOT / "plugin_core.py", plugin_core_path)
     shutil.copy2(REPO_ROOT / "package_registry.py", tmp_path / "package_registry.py")
+    shutil.copy2(REPO_ROOT / "package_identity.py", tmp_path / "package_identity.py")
     script = """
 import importlib.util
 import sys
@@ -77,6 +80,7 @@ module = importlib.util.module_from_spec(specification)
 specification.loader.exec_module(module)
 assert module.PackageRegistry.__module__ == "package_registry"
 assert module.UpdateTimesDocument.__module__ == "package_registry"
+assert module.certify_plugin_py.__module__ == "package_identity"
 """
 
     subprocess.run(
@@ -130,7 +134,10 @@ def release_record(package_id="ExamplePlugin"):
         "artifact": {
             "kind": "source_zip",
             "provenance": "forge_source_archive",
-            "migration_eligible": True,
+            "migration": {
+                "mode": "automatic",
+                "evidence": "commit_source_archive",
+            },
             "url": (
                 "https://gitlab.com/example-group/example-plugin/"
                 "-/archive/" + COMMIT + "/example-plugin.zip"
@@ -162,7 +169,9 @@ def release_index_document(registry_bytes, releases=None, tombstones=None):
         "generated_at": "2026-07-21T09:00:00Z",
         "expires_at": "2026-07-28T09:00:00Z",
         "registry_sha256": hashlib.sha256(registry_bytes).hexdigest(),
-        "releases": list(releases or [release_record()]),
+        "releases": list(
+            [release_record()] if releases is None else releases
+        ),
         "tombstones": list(tombstones or []),
     }
 
@@ -326,28 +335,146 @@ def test_release_index_v2_parses_release_and_tombstone_arrays(
     assert index.tombstones["RetiredPlugin"].package_id == "RetiredPlugin"
 
 
-@pytest.mark.parametrize("collection", ["releases", "tombstones"])
-def test_release_index_v2_rejects_unknown_package_ids(
+def test_release_index_v2_rejects_unknown_active_package_id(
     plugin_core_module,
-    collection,
 ):
     registry_bytes = json_bytes(registry_document())
-    releases = [release_record()]
-    tombstones = []
-    if collection == "releases":
-        releases = [release_record(package_id="UnknownPlugin")]
-    else:
-        tombstones = [tombstone_record(package_id="UnknownPlugin")]
 
     with pytest.raises(ValueError, match="(?i)unknown.*package"):
         plugin_core_module.ReleaseIndex.from_document(
             release_index_document(
                 registry_bytes,
-                releases=releases,
-                tombstones=tombstones,
+                releases=[release_record(package_id="UnknownPlugin")],
             ),
             registry_bytes=registry_bytes,
             now=NOW,
+        )
+
+
+def test_release_index_v2_allows_tombstone_after_registry_removal(
+    plugin_core_module,
+):
+    registry_bytes = json_bytes(registry_document(packages=[]))
+    tombstone = tombstone_record(package_id="RetiredPlugin")
+
+    index = plugin_core_module.ReleaseIndex.from_document(
+        release_index_document(
+            registry_bytes,
+            releases=[],
+            tombstones=[tombstone],
+        ),
+        registry_bytes=registry_bytes,
+        now=NOW,
+    )
+
+    assert index.releases == {}
+    assert index.tombstones["RetiredPlugin"].repository_identity == (
+        tombstone["repository_identity"]
+    )
+
+
+def test_release_index_v2_requires_matching_tombstone_when_package_disappears(
+    plugin_core_module,
+):
+    previous_registry_bytes = json_bytes(
+        {
+            "ExamplePlugin": [
+                "example-group",
+                "example-plugin",
+                "Example plugin",
+                "main",
+            ]
+        }
+    )
+    previous_release = release_record()
+    previous_release.pop("package_id")
+    previous_release.pop("certified_identity")
+    previous_release["provider"] = "github"
+    previous_release["repository_identity"] = (
+        "github.com/example-group/example-plugin"
+    )
+    previous_release["release_id"] = (
+        "github:example-group/example-plugin:v1.0.0"
+    )
+    previous_release["artifact"]["migration_eligible"] = True
+    previous_release["artifact"].pop("migration")
+    previous_document = {
+        "schema_version": 1,
+        "sequence": 42,
+        "generated_at": "2026-07-20T09:00:00Z",
+        "expires_at": "2026-07-27T09:00:00Z",
+        "registry_sha256": hashlib.sha256(
+            previous_registry_bytes
+        ).hexdigest(),
+        "plugins": {"ExamplePlugin": previous_release},
+        "tombstones": {},
+    }
+    previous = plugin_core_module.ReleaseIndex.from_legacy_document(
+        previous_document,
+        registry_bytes=previous_registry_bytes,
+        now=NOW,
+    )
+    current_registry_bytes = json_bytes(registry_document(packages=[]))
+    current_tombstone = {
+        "package_id": "ExamplePlugin",
+        "repository_identity": "github.com/example-group/example-plugin",
+        "last_revision": 1,
+        "release_id": "github:example-group/example-plugin:v1.0.0",
+        "reason": "Package no longer has a valid Domoticz plugin identity.",
+        "removed_at": "2026-07-21T08:00:00Z",
+    }
+
+    current = plugin_core_module.ReleaseIndex.from_document(
+        release_index_document(
+            current_registry_bytes,
+            releases=[],
+            tombstones=[current_tombstone],
+        ),
+        registry_bytes=current_registry_bytes,
+        now=NOW,
+        previous=previous,
+    )
+
+    assert current.releases == {}
+    assert current.tombstones["ExamplePlugin"].last_revision == 1
+
+
+def test_release_index_v2_rejects_reactivation_of_removed_package(
+    plugin_core_module,
+):
+    previous_registry_bytes = json_bytes(registry_document(packages=[]))
+    previous_document = release_index_document(
+        previous_registry_bytes,
+        releases=[],
+        tombstones=[
+            {
+                "package_id": "ExamplePlugin",
+                "repository_identity": (
+                    "gitlab.com/example-group/example-plugin"
+                ),
+                "last_revision": 1,
+                "release_id": (
+                    "gitlab:example-group/example-plugin:v1.0.0"
+                ),
+                "reason": "Package was removed.",
+                "removed_at": "2026-07-20T08:00:00Z",
+            }
+        ],
+    )
+    previous_document["sequence"] = 42
+    previous = plugin_core_module.ReleaseIndex.from_document(
+        previous_document,
+        registry_bytes=previous_registry_bytes,
+        now=NOW,
+    )
+    current_registry_bytes = json_bytes(registry_document())
+
+    with pytest.raises(ValueError, match="reactivated without review"):
+        plugin_core_module.ReleaseIndex.from_document(
+            release_index_document(current_registry_bytes),
+            registry_bytes=current_registry_bytes,
+            now=NOW,
+            previous=previous,
         )
 
 
@@ -366,6 +493,8 @@ def test_v1_documents_require_explicit_normalization_boundary(
     legacy_release = release_record()
     for field in ("package_id", "certified_identity"):
         legacy_release.pop(field)
+    legacy_release["artifact"]["migration_eligible"] = True
+    legacy_release["artifact"].pop("migration")
     legacy_release.update(
         {
             "provider": "github",

@@ -627,6 +627,112 @@ def test_startup_recovery_before_activation_preserves_current_install(
     assert_old_live(recovered)
 
 
+def test_pre_activation_abort_keeps_journal_paths_valid_and_is_idempotent(
+    plugin_core_module,
+    tmp_path,
+):
+    manager, plugins_dir, manager_dir = make_manager(
+        plugin_core_module,
+        tmp_path,
+    )
+    transaction = prepare_transaction(manager, plugins_dir, manager_dir)
+    staging_parent = Path(transaction.paths.staged_code).parent
+    backup_parent = Path(transaction.paths.backup_code).parent
+
+    aborted = manager.abort(transaction.operation_id, "download failed")
+
+    assert aborted.phase == "rolled_back"
+    assert aborted.error == "download failed"
+    assert staging_parent.is_dir()
+    assert backup_parent.is_dir()
+    for leaf in (
+        aborted.paths.staged_code,
+        aborted.paths.staged_dependencies,
+        aborted.paths.backup_code,
+        aborted.paths.backup_dependencies,
+    ):
+        assert not Path(leaf).exists()
+    assert Path(aborted.paths.journal).is_file()
+    assert manager.load_transaction(aborted.operation_id).phase == "rolled_back"
+    assert manager.abort(aborted.operation_id, "retry").phase == "rolled_back"
+    assert_old_live(aborted)
+
+
+def test_created_release_install_abort_cleans_staging_without_losing_journal(
+    plugin_core_module,
+    tmp_path,
+):
+    manager, _plugins_dir, _manager_dir = make_manager(
+        plugin_core_module,
+        tmp_path,
+    )
+    transaction = manager.create_transaction(
+        plugin_key="ExamplePlugin",
+        operation_id="operation-001",
+        operation="release_install",
+        expected_current={"management_mode": "absent"},
+        target=target_release(),
+    )
+    write_marker(transaction.paths.staged_code, "partial download")
+
+    aborted = manager.abort(
+        transaction.operation_id,
+        "staged identity mismatch",
+    )
+
+    assert aborted.phase == "rolled_back"
+    assert Path(aborted.paths.staged_code).parent.is_dir()
+    assert Path(aborted.paths.backup_code).parent.is_dir()
+    assert not Path(aborted.paths.staged_code).exists()
+    assert Path(aborted.paths.journal).is_file()
+    assert manager.load_transaction(aborted.operation_id).phase == "rolled_back"
+
+
+def test_pre_activation_abort_can_retry_after_partial_cleanup(
+    plugin_core_module,
+    tmp_path,
+    monkeypatch,
+):
+    manager, plugins_dir, manager_dir = make_manager(
+        plugin_core_module,
+        tmp_path,
+    )
+    transaction = prepare_transaction(manager, plugins_dir, manager_dir)
+    original_remove = manager._remove_transaction_path
+    calls = []
+
+    def interrupt_second_leaf(path):
+        calls.append(path)
+        if len(calls) == 2:
+            raise OSError("injected cleanup interruption")
+        original_remove(path)
+
+    monkeypatch.setattr(
+        manager,
+        "_remove_transaction_path",
+        interrupt_second_leaf,
+    )
+    with pytest.raises(OSError, match="injected cleanup interruption"):
+        manager.abort(transaction.operation_id, "download failed")
+
+    interrupted = manager.load_transaction(transaction.operation_id)
+    assert interrupted.phase == "rollback_pending"
+    assert interrupted.rollback_from == "dependencies_staged"
+    assert Path(interrupted.paths.staged_code).parent.is_dir()
+    assert Path(interrupted.paths.backup_code).parent.is_dir()
+
+    recovered_manager = new_manager(plugin_core_module)
+    recovered_manager.recover_pending()
+    retried = recovered_manager.load_transaction(transaction.operation_id)
+
+    assert retried.phase == "rolled_back"
+    assert recovered_manager.abort(
+        retried.operation_id,
+        "retry",
+    ).phase == "rolled_back"
+    assert_old_live(retried)
+
+
 def test_activation_rejects_staged_metadata_outside_pinned_target(
     plugin_core_module, tmp_path
 ):

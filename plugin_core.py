@@ -70,6 +70,39 @@ PackageRegistry = _package_registry_module.PackageRegistry
 UpdateTimesDocument = _package_registry_module.UpdateTimesDocument
 
 
+def _load_package_identity_module():
+    """Import the sibling non-executing identity certifier."""
+    try:
+        import package_identity as identity_module
+
+        return identity_module
+    except ModuleNotFoundError as error:
+        if error.name != "package_identity":
+            raise
+
+    module_path = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), "package_identity.py"
+    )
+    specification = importlib.util.spec_from_file_location(
+        "package_identity", module_path
+    )
+    if specification is None or specification.loader is None:
+        raise ImportError("Could not load the package identity certifier.")
+    module = importlib.util.module_from_spec(specification)
+    sys.modules["package_identity"] = module
+    try:
+        specification.loader.exec_module(module)
+    except Exception:
+        if sys.modules.get("package_identity") is module:
+            del sys.modules["package_identity"]
+        raise
+    return module
+
+
+_package_identity_module = _load_package_identity_module()
+certify_plugin_py = _package_identity_module.certify_plugin_py
+
+
 API_PAYLOAD_MAX_LENGTH = 2000
 SELF_UPDATE_STARTUP_DELAY_SECONDS = 5
 DEFAULT_GIT_HOST = "github.com"
@@ -738,7 +771,14 @@ else:
         return result, ""
 
     def validate_self_update_candidate(self, plugin_dir, target_ref):
-        required_paths = ("plugin.py", "plugin_core.py", "pypluginstore.html", "registry.json")
+        required_paths = (
+            "plugin.py",
+            "plugin_core.py",
+            "package_registry.py",
+            "package_identity.py",
+            "pypluginstore.html",
+            "registry.json",
+        )
         for candidate_path in required_paths:
             _, message = self.require_git_success(
                 plugin_dir,
@@ -748,7 +788,12 @@ else:
             if message:
                 return False, message
 
-        for python_path in ("plugin.py", "plugin_core.py"):
+        for python_path in (
+            "plugin.py",
+            "plugin_core.py",
+            "package_registry.py",
+            "package_identity.py",
+        ):
             result, message = self.require_git_success(
                 plugin_dir,
                 ["git", "show", f"{target_ref}:{python_path}"],
@@ -1517,6 +1562,17 @@ RELEASE_ARTIFACT_PROVENANCE = {
     "generic_manifest",
     "release_asset",
 }
+RELEASE_MIGRATION_MODES = {"automatic", "blocked", "manual"}
+RELEASE_MIGRATION_EVIDENCE = {
+    "commit_source_archive",
+    "generic_manifest",
+    "source_equivalent_asset",
+    "unverified_asset",
+}
+AUTOMATIC_RELEASE_MIGRATION_EVIDENCE = {
+    "commit_source_archive",
+    "source_equivalent_asset",
+}
 RELEASE_PREFERRED_MODES = {"git", "release", "release_if_indexed"}
 LOWER_SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 GIT_COMMIT_PATTERN = re.compile(r"^[0-9a-f]{40}(?:[0-9a-f]{24})?$")
@@ -1802,14 +1858,14 @@ class ReleasePolicy:
             raise ValueError("delivery.release.provider is not supported.")
 
         identity_host = str(repository_identity or "").split("/", 1)[0]
-        expected_provider = {
-            "github.com": "github",
-            "gitlab.com": "gitlab",
-            "codeberg.org": "forgejo",
+        expected_providers = {
+            "github.com": {"github"},
+            "gitlab.com": {"gitlab"},
+            "codeberg.org": {"codeberg", "forgejo"},
         }.get(identity_host)
         if (
-            expected_provider
-            and provider not in (expected_provider, "generic")
+            expected_providers
+            and provider not in expected_providers | {"generic"}
         ):
             raise ValueError("Release provider does not match registry host.")
         if (
@@ -1891,13 +1947,14 @@ class ReleasePolicy:
                 "delivery.release.release_page_size must be between 1 and 100."
             )
 
-        if provider in ("forgejo", "gitea"):
+        if provider in ("codeberg", "forgejo", "gitea"):
             if not identity_host:
                 raise ValueError(
                     "Forgejo and Gitea policies require a valid repository identity."
                 )
             codeberg_defaults = (
-                provider == "forgejo" and identity_host == "codeberg.org"
+                provider in ("codeberg", "forgejo")
+                and identity_host == "codeberg.org"
             )
             if not codeberg_defaults and (
                 not api_base or not web_base or not page_size_present
@@ -2061,7 +2118,8 @@ class ReleaseArtifact:
 
     kind: str
     provenance: str
-    migration_eligible: bool
+    migration_mode: str
+    migration_evidence: str
     url: str
     sha256: str
     size: int
@@ -2071,10 +2129,35 @@ class ReleaseArtifact:
 
     @classmethod
     def from_document(cls, document):
-        """Parse a normalized release artifact descriptor."""
+        """Parse a strict schema-v2 release artifact descriptor."""
         document = _require_document(
             document,
             "release artifact",
+            (
+                "kind",
+                "provenance",
+                "migration",
+                "url",
+                "sha256",
+                "size",
+                "tree_sha256",
+                "root_prefix",
+                "source_path",
+            ),
+        )
+        migration = _require_document(
+            document["migration"],
+            "artifact.migration",
+            ("mode", "evidence"),
+        )
+        return cls._from_document(document, migration)
+
+    @classmethod
+    def from_legacy_document(cls, document):
+        """Normalize one explicit schema-v1 migration eligibility flag."""
+        document = _require_document(
+            document,
+            "legacy release artifact",
             (
                 "kind",
                 "provenance",
@@ -2087,6 +2170,29 @@ class ReleaseArtifact:
                 "source_path",
             ),
         )
+        eligible = _require_boolean(
+            document["migration_eligible"],
+            "artifact.migration_eligible",
+        )
+        evidence = (
+            "commit_source_archive"
+            if eligible
+            else (
+                "generic_manifest"
+                if document.get("provenance") == "generic_manifest"
+                else "unverified_asset"
+            )
+        )
+        return cls._from_document(
+            document,
+            {
+                "mode": "automatic" if eligible else "manual",
+                "evidence": evidence,
+            },
+        )
+
+    @classmethod
+    def _from_document(cls, document, migration):
         kind = _require_nonempty_string(document["kind"], "artifact.kind")
         if kind not in RELEASE_ARTIFACT_KINDS:
             raise ValueError("artifact.kind is not supported.")
@@ -2095,6 +2201,24 @@ class ReleaseArtifact:
         )
         if provenance not in RELEASE_ARTIFACT_PROVENANCE:
             raise ValueError("artifact.provenance is not supported.")
+
+        migration_mode = _require_nonempty_string(
+            migration["mode"], "artifact.migration.mode"
+        )
+        migration_evidence = _require_nonempty_string(
+            migration["evidence"], "artifact.migration.evidence"
+        )
+        if migration_mode not in RELEASE_MIGRATION_MODES:
+            raise ValueError("artifact.migration.mode is not supported.")
+        if migration_evidence not in RELEASE_MIGRATION_EVIDENCE:
+            raise ValueError("artifact.migration.evidence is not supported.")
+        automatic_evidence = (
+            migration_evidence in AUTOMATIC_RELEASE_MIGRATION_EVIDENCE
+        )
+        if migration_mode == "automatic" and not automatic_evidence:
+            raise ValueError("Automatic migration evidence is insufficient.")
+        if migration_mode == "manual" and automatic_evidence:
+            raise ValueError("Manual migration evidence is contradictory.")
 
         root_prefix = _require_nonempty_string(
             document["root_prefix"], "artifact.root_prefix"
@@ -2111,9 +2235,8 @@ class ReleaseArtifact:
         return cls(
             kind=kind,
             provenance=provenance,
-            migration_eligible=_require_boolean(
-                document["migration_eligible"], "artifact.migration_eligible"
-            ),
+            migration_mode=migration_mode,
+            migration_evidence=migration_evidence,
             url=_require_https_url(document["url"], "artifact.url"),
             sha256=_require_sha256(document["sha256"], "artifact.sha256"),
             size=_require_positive_integer(document["size"], "artifact.size"),
@@ -2125,6 +2248,18 @@ class ReleaseArtifact:
                 document["source_path"], "artifact.source_path"
             ),
         )
+
+    @property
+    def migration_eligible(self):
+        """Compatibility view for callers that mean automatic migration."""
+        return self.migration_mode == "automatic"
+
+    @property
+    def migration(self):
+        return {
+            "mode": self.migration_mode,
+            "evidence": self.migration_evidence,
+        }
 
 
 @dataclass(frozen=True)
@@ -2172,7 +2307,19 @@ class ReleaseDescriptor:
 
     @classmethod
     def from_document(cls, document):
-        """Parse a normalized release descriptor."""
+        """Parse a strict schema-v2 release descriptor."""
+        return cls._from_document(document, ReleaseArtifact.from_document)
+
+    @classmethod
+    def from_legacy_document(cls, document):
+        """Normalize one explicit schema-v1 release descriptor."""
+        return cls._from_document(
+            document,
+            ReleaseArtifact.from_legacy_document,
+        )
+
+    @classmethod
+    def _from_document(cls, document, artifact_parser):
         document = _require_document(
             document,
             "release descriptor",
@@ -2228,8 +2375,8 @@ class ReleaseDescriptor:
             "release.commit",
             required=provider != "generic",
         )
-        artifact = ReleaseArtifact.from_document(document["artifact"])
-        if not commit and artifact.migration_eligible:
+        artifact = artifact_parser(document["artifact"])
+        if not commit and artifact.migration_mode == "automatic":
             raise ValueError("A release without a commit cannot be migration eligible.")
 
         released_at = _require_nonempty_string(
@@ -2314,8 +2461,10 @@ class ReleaseDescriptor:
             and self.source_revision == other.source_revision
             and self.artifact.kind == other.artifact.kind
             and self.artifact.provenance == other.artifact.provenance
-            and self.artifact.migration_eligible
-            == other.artifact.migration_eligible
+            and self.artifact.migration_mode
+            == other.artifact.migration_mode
+            and self.artifact.migration_evidence
+            == other.artifact.migration_evidence
             and self.artifact.tree_sha256 == other.artifact.tree_sha256
             and self.artifact.source_path == other.artifact.source_path
             and (not other.package_id or self.package_id == other.package_id)
@@ -2583,9 +2732,11 @@ class ReleaseIndex:
                 )
             tombstone_ids.add(collision_id)
             package = packages.get(package_id)
-            if package is None:
-                raise ValueError("Release index contains an unknown package tombstone.")
-            if tombstone.repository_identity != package.repository_identity:
+            if (
+                package is not None
+                and tombstone.repository_identity
+                != package.repository_identity
+            ):
                 raise ValueError("Tombstone repository does not match the registry.")
             tombstones[package_id] = tombstone
 
@@ -2640,7 +2791,7 @@ class ReleaseIndex:
             package = packages.get(package_id)
             if package is None:
                 raise ValueError("Release index contains an unknown package.")
-            descriptor = ReleaseDescriptor.from_document(entry_document)
+            descriptor = ReleaseDescriptor.from_legacy_document(entry_document)
             descriptor.package_id = package_id
             if descriptor.repository_identity != package.repository_identity:
                 raise ValueError("Release repository does not match the registry.")
@@ -5047,6 +5198,7 @@ class ReleaseArtifactValidationService:
 
     def _compile_python(self, selected_files):
         plugin_metadata = None
+        certified_identity = None
         for installed_path, file_record in selected_files:
             if not installed_path.casefold().endswith(".py"):
                 continue
@@ -5070,8 +5222,15 @@ class ReleaseArtifactValidationService:
                     "Python source failed compilation: " + installed_path,
                 ) from error
             if installed_path == "plugin.py":
+                try:
+                    certified_identity = certify_plugin_py(contents)
+                except ValueError as error:
+                    raise self._error(
+                        "identity_mismatch",
+                        "The staged plugin identity could not be certified.",
+                    ) from error
                 plugin_metadata = self._parse_plugin_metadata(contents)
-        return plugin_metadata
+        return plugin_metadata, certified_identity
 
     def _parse_plugin_metadata(self, contents):
         try:
@@ -5089,25 +5248,33 @@ class ReleaseArtifactValidationService:
             source_code,
             re.IGNORECASE | re.DOTALL,
         )
-        if len(plugin_tags) != 1:
+        keyed_metadata = []
+        for plugin_tag in plugin_tags:
+            metadata = {}
+            for match in re.finditer(
+                r"([A-Za-z_][\w:.-]*)\s*=\s*(\"([^\"]*)\"|'([^']*)')",
+                plugin_tag,
+            ):
+                key = match.group(1).lower()
+                if key in metadata:
+                    raise self._error(
+                        "identity_ambiguous",
+                        "The staged plugin metadata contains duplicate attributes.",
+                    )
+                value = (
+                    match.group(3)
+                    if match.group(3) is not None
+                    else match.group(4)
+                )
+                metadata[key] = html.unescape(value or "")
+            if "key" in metadata:
+                keyed_metadata.append(metadata)
+        if len(keyed_metadata) != 1:
             raise self._error(
                 "identity_mismatch",
-                "The staged plugin must contain one Domoticz plugin tag.",
+                "The staged plugin must contain one keyed Domoticz plugin tag.",
             )
-        metadata = {}
-        for match in re.finditer(
-            r"([A-Za-z_][\w:.-]*)\s*=\s*(\"([^\"]*)\"|'([^']*)')",
-            plugin_tags[0],
-        ):
-            key = match.group(1).lower()
-            if key in metadata:
-                raise self._error(
-                    "identity_ambiguous",
-                    "The staged plugin metadata contains duplicate attributes.",
-                )
-            value = match.group(3) if match.group(3) is not None else match.group(4)
-            metadata[key] = html.unescape(value or "")
-        return metadata
+        return keyed_metadata[0]
 
     def _repository_lookup(self):
         lookup = {}
@@ -5154,7 +5321,10 @@ class ReleaseArtifactValidationService:
         source_root,
         plugin_key,
         metadata,
+        certified_identity,
         repository_identity,
+        expected_domoticz_key,
+        expected_plugin_py_sha256,
     ):
         entry = self.plugin.get_registry_entry(plugin_key)
         if entry is None:
@@ -5183,6 +5353,40 @@ class ReleaseArtifactValidationService:
                     "identity_mismatch",
                     "The release repository identity differs from the registry.",
                 )
+
+        registered_domoticz_key = str(
+            getattr(entry, "domoticz_key", "") or ""
+        )
+        if expected_domoticz_key:
+            if (
+                registered_domoticz_key
+                and expected_domoticz_key != registered_domoticz_key
+            ):
+                raise self._error(
+                    "identity_mismatch",
+                    "The release Domoticz identity differs from the registry.",
+                )
+            registered_domoticz_key = expected_domoticz_key
+        if registered_domoticz_key:
+            if (
+                certified_identity is None
+                or certified_identity.domoticz_key
+                != registered_domoticz_key
+            ):
+                raise self._error(
+                    "identity_mismatch",
+                    "The staged Domoticz identity differs from the requested package.",
+                )
+            if (
+                expected_plugin_py_sha256
+                and certified_identity.plugin_py_sha256
+                != expected_plugin_py_sha256
+            ):
+                raise self._error(
+                    "identity_mismatch",
+                    "The staged plugin.py differs from the certified release.",
+                )
+            return "certified plugin.py identity"
 
         try:
             lookups = self.plugin.build_installed_plugin_lookup()
@@ -5285,6 +5489,8 @@ class ReleaseArtifactValidationService:
         plugin_key,
         expected_tree_sha256=None,
         repository_identity=None,
+        expected_domoticz_key=None,
+        expected_plugin_py_sha256=None,
     ):
         """Return canonical identity only after every runtime check succeeds."""
         try:
@@ -5304,6 +5510,26 @@ class ReleaseArtifactValidationService:
                 raise self._error(
                     "tree_mismatch",
                     "The expected artifact tree digest is invalid.",
+                ) from error
+        if bool(expected_domoticz_key) != bool(expected_plugin_py_sha256):
+            raise self._error(
+                "identity_mismatch",
+                "The certified release identity is incomplete.",
+            )
+        if expected_domoticz_key:
+            try:
+                expected_domoticz_key = _require_nonempty_string(
+                    expected_domoticz_key,
+                    "expected_domoticz_key",
+                )
+                expected_plugin_py_sha256 = _require_sha256(
+                    expected_plugin_py_sha256,
+                    "expected_plugin_py_sha256",
+                )
+            except ValueError as error:
+                raise self._error(
+                    "identity_mismatch",
+                    "The certified release identity is invalid.",
                 ) from error
 
         root_path = self._root_layout(extraction_dir, root_prefix)
@@ -5330,8 +5556,8 @@ class ReleaseArtifactValidationService:
                 "plugin_missing",
                 "The selected source tree requires a non-empty root plugin.py.",
             )
-        metadata = self._compile_python(selected_files)
-        if metadata is None:
+        metadata, certified_identity = self._compile_python(selected_files)
+        if metadata is None or certified_identity is None:
             raise self._error(
                 "identity_mismatch",
                 "The staged plugin metadata could not be read.",
@@ -5340,7 +5566,10 @@ class ReleaseArtifactValidationService:
             source_root,
             plugin_key,
             metadata,
+            certified_identity,
             repository_identity,
+            expected_domoticz_key,
+            expected_plugin_py_sha256,
         )
         revalidated_files, _revalidated_directories = self._scan_tree(root_path)
         if self._tree_fingerprint(revalidated_files) != self._tree_fingerprint(
@@ -7036,6 +7265,13 @@ RELEASE_TRANSACTION_FINAL_PHASES = {
     "restart_pending",
     "rolled_back",
     "stale_target",
+}
+RELEASE_TRANSACTION_PREACTIVATION_PHASES = {
+    "created",
+    "staged_verified",
+    "dependency_confirmation_required",
+    "dependencies_staged",
+    "dependency_blocked",
 }
 RELEASE_TRANSACTION_PHASES = RELEASE_TRANSACTION_FINAL_PHASES | {
     "created",
@@ -8816,6 +9052,15 @@ class ReleaseTransactionManager:
             os.unlink(path)
         self._fsync_directory(os.path.dirname(path))
 
+    def _remove_transaction_leaves(self, transaction):
+        for transaction_path in (
+            transaction.paths.staged_code,
+            transaction.paths.staged_dependencies,
+            transaction.paths.backup_code,
+            transaction.paths.backup_dependencies,
+        ):
+            self._remove_transaction_path(transaction_path)
+
     def _restore_component(
         self,
         live,
@@ -8975,14 +9220,11 @@ class ReleaseTransactionManager:
                 error=(error or transaction.error) + " " + rollback_error,
             )
             raise RuntimeError(rollback_error)
-        if transaction.operation == "release_install":
-            for path in (
-                transaction.paths.staged_code,
-                transaction.paths.staged_dependencies,
-                transaction.paths.backup_code,
-                transaction.paths.backup_dependencies,
-            ):
-                self._remove_transaction_path(path)
+        if (
+            transaction.operation == "release_install"
+            or original_phase in RELEASE_TRANSACTION_PREACTIVATION_PHASES
+        ):
+            self._remove_transaction_leaves(transaction)
         return self._set_phase(
             transaction,
             "rolled_back",
@@ -9130,24 +9372,26 @@ class ReleaseTransactionManager:
         error = str(error or "Release operation was aborted.")
         with self.operation_lock():
             transaction = self._load_transaction(operation_id)
-            if transaction.phase in {
-                "code_backup_pending",
-                "code_backed_up",
-                "dependencies_backup_pending",
-                "dependencies_backed_up",
-                "dependencies_activation_pending",
-                "dependencies_activated",
-                "code_activation_pending",
-                "release_activated",
-                "restart_pending",
-                "release_managed",
-                "queued_locked",
-                "rollback_pending",
-            }:
+            resuming_abort = bool(
+                transaction.phase == "rollback_pending"
+                and transaction.rollback_from
+                in RELEASE_TRANSACTION_PREACTIVATION_PHASES
+            )
+            if (
+                transaction.phase
+                not in RELEASE_TRANSACTION_PREACTIVATION_PHASES
+                and not resuming_abort
+                and transaction.phase != "rolled_back"
+            ):
                 raise RuntimeError(
                     "An activation that may have changed live state must be rolled back."
                 )
             if transaction.phase == "rolled_back":
+                if (
+                    transaction.rollback_from
+                    in RELEASE_TRANSACTION_PREACTIVATION_PHASES
+                ):
+                    self._remove_transaction_leaves(transaction)
                 return transaction
             if not self._metadata_matches(transaction) or not self._dependency_tree_matches(
                 transaction.paths.live_dependencies,
@@ -9159,8 +9403,10 @@ class ReleaseTransactionManager:
                     "stale_target",
                     error="Installed state changed before the release operation aborted.",
                 )
-            staging_parent = os.path.dirname(transaction.paths.staged_code)
-            self._remove_transaction_path(staging_parent)
+            if not resuming_abort:
+                transaction.rollback_from = transaction.phase
+                self._set_phase(transaction, "rollback_pending", error=error)
+            self._remove_transaction_leaves(transaction)
             return self._set_phase(
                 transaction,
                 "rolled_back",
@@ -11120,7 +11366,7 @@ class GitInstallUpdateStrategy:
 
 @dataclass(frozen=True)
 class GitMigrationPreflightResult:
-    """Auditable outcome of a strictly read-only Git migration check."""
+    """Auditable outcome of a working-tree-preserving Git migration check."""
 
     allowed: bool = False
     status: str = "unknown"
@@ -11146,7 +11392,7 @@ class GitMigrationPreflightResult:
 
 
 class GitMigrationPreflight:
-    """Inspect a local checkout without fetching or changing Git state."""
+    """Inspect a checkout, fetching only a verified release commit if needed."""
 
     TRIGGERS = {"automatic", "manual"}
     OPERATION_MARKERS = (
@@ -11218,17 +11464,52 @@ class GitMigrationPreflight:
         for remote_name in remote_names:
             result = self._run(
                 plugin_dir,
-                "remote",
-                "get-url",
-                "--all",
-                remote_name,
+                "config",
+                "--get-all",
+                "remote." + remote_name + ".url",
             )
             if result is None or result.returncode != 0:
                 continue
             urls = [line.strip() for line in result.stdout.splitlines() if line.strip()]
             if urls:
-                return urls[0]
-        return ""
+                return remote_name, urls[0]
+        return "", ""
+
+    def _fetch_release_commit(self, plugin_dir, remote_name, release_commit):
+        """Fetch one SHA from a previously verified configured remote."""
+        if (
+            not remote_name
+            or remote_name == "."
+            or remote_name.startswith("-")
+            or not re.fullmatch(r"[A-Za-z0-9._/-]+", remote_name)
+        ):
+            return False
+        result = self.plugin.get_host().run_git(
+            [
+                "git",
+                "-c",
+                "gc.auto=0",
+                "-c",
+                "protocol.ext.allow=never",
+                "fetch",
+                "--quiet",
+                "--no-tags",
+                "--no-recurse-submodules",
+                remote_name,
+                release_commit,
+            ],
+            plugin_dir,
+            timeout=60,
+        )
+        if result is None or result.returncode != 0:
+            return False
+        available = self._run(
+            plugin_dir,
+            "cat-file",
+            "-e",
+            release_commit + "^{commit}",
+        )
+        return available is not None and available.returncode == 0
 
     def _index(self, plugin_dir):
         result = self._run(plugin_dir, "ls-files", "--stage", "-z", "--")
@@ -11321,7 +11602,7 @@ class GitMigrationPreflight:
         trigger,
         mutable_paths,
     ):
-        """Return a migration decision using local Git objects only."""
+        """Return a migration decision without changing HEAD, index, or files."""
         if trigger not in self.TRIGGERS:
             raise ValueError("Migration trigger must be manual or automatic.")
         plugin_key = _require_plugin_key(plugin_key)
@@ -11423,7 +11704,7 @@ class GitMigrationPreflight:
             ).lower()
             == "true"
         )
-        installed_remote = self._authoritative_remote(plugin_dir)
+        remote_name, installed_remote = self._authoritative_remote(plugin_dir)
         installed_identity = normalize_repository_identity(installed_remote)
         identified = {
             "installed_commit": installed_commit,
@@ -11498,11 +11779,21 @@ class GitMigrationPreflight:
                 "-e",
                 release_commit + "^{commit}",
             )
-            if available is None or available.returncode != 0:
+            if (
+                available is None
+                or available.returncode != 0
+            ) and not self._fetch_release_commit(
+                plugin_dir,
+                remote_name,
+                release_commit,
+            ):
                 return self._result(
                     status="migration_waiting_for_release",
                     reason="ancestry_unavailable",
-                    message="Release ancestry is unavailable locally; no fetch was attempted.",
+                    message=(
+                        "Release ancestry could not be fetched from the "
+                        "verified repository."
+                    ),
                     tracked_changes=tracked_changes,
                     untracked_files=untracked_files,
                     **identified,
@@ -11521,7 +11812,7 @@ class GitMigrationPreflight:
                 return self._result(
                     status="migration_waiting_for_release",
                     reason="ancestry_unavailable",
-                    message="Release ancestry is unavailable locally; no fetch was attempted.",
+                    message="Release ancestry could not be verified.",
                     tracked_changes=tracked_changes,
                     untracked_files=untracked_files,
                     **identified,
@@ -11550,7 +11841,7 @@ class GitMigrationPreflight:
                     return self._result(
                         status="migration_waiting_for_release",
                         reason="ancestry_unavailable",
-                        message="Release ancestry is unavailable locally; no fetch was attempted.",
+                        message="Release ancestry could not be verified.",
                         tracked_changes=tracked_changes,
                         untracked_files=untracked_files,
                         **identified,
@@ -12053,6 +12344,10 @@ class ReleaseInstallUpdateStrategy:
                 plugin_key=entry.key,
                 expected_tree_sha256=release.artifact.tree_sha256,
                 repository_identity=release.repository_identity,
+                expected_domoticz_key=(release.domoticz_key or None),
+                expected_plugin_py_sha256=(
+                    release.plugin_py_sha256 or None
+                ),
             )
             self._move_validated_source(
                 validation.source_root,
@@ -12165,16 +12460,25 @@ class ReleaseInstallUpdateStrategy:
         )
 
     def preflight_migration(self, entry, release, trigger):
-        """Evaluate one Git checkout without fetching or changing it."""
+        """Evaluate one Git checkout under the release migration policy."""
         if trigger not in ReleaseManagementCoordinator.TRIGGERS:
             raise ValueError(
                 "Migration trigger must be manual or automatic."
             )
         if not isinstance(release, ReleaseDescriptor):
             raise ValueError("A validated release target is required.")
-        if not release.artifact.migration_eligible or not release.commit:
+        migration_mode = release.artifact.migration_mode
+        if migration_mode == "blocked":
             raise ValueError(
                 "The selected release is not migration eligible."
+            )
+        if trigger == "automatic" and migration_mode != "automatic":
+            raise ValueError(
+                "The selected release requires manual migration."
+            )
+        if not release.commit:
+            raise ValueError(
+                "The selected release has no commit for migration ancestry."
             )
         plugin_dir = self.plugin.resolve_installed_plugin_dir(entry.key)
         release_policy = getattr(entry.delivery, "release", None)
@@ -12718,11 +13022,19 @@ class ReleaseManagementCoordinator:
             )
 
         if installed_mode == "git":
-            if not release.artifact.migration_eligible:
+            migration_mode = release.artifact.migration_mode
+            if not release.commit or migration_mode == "blocked":
                 return self._decision(
                     "blocked",
                     "migration_waiting_for_release",
                     reason="release_not_migration_eligible",
+                    trigger=trigger,
+                )
+            if trigger == "automatic" and migration_mode != "automatic":
+                return self._decision(
+                    "blocked",
+                    "migration_waiting_for_release",
+                    reason="release_requires_manual_migration",
                     trigger=trigger,
                 )
             return self._decision(
