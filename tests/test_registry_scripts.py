@@ -164,6 +164,62 @@ def mark_repo_certified(module, repo, domoticz_key="TEST"):
     }
 
 
+def cleanup_release_index(active_repositories=(), tombstoned_repositories=()):
+    commit = "b" * 40
+    releases = []
+    for package_id, repository_identity in active_repositories:
+        releases.append({
+            "package_id": package_id,
+            "certified_identity": {
+                "domoticz_key": package_id.upper(),
+                "plugin_py_sha256": "c" * 64,
+            },
+            "revision": 1,
+            "release_id": f"github:{repository_identity}:v1.0.0",
+            "supersedes": [],
+            "provider": "github",
+            "repository_identity": repository_identity,
+            "version": "1.0.0",
+            "tag": "v1.0.0",
+            "released_at": "2026-07-01T00:00:00Z",
+            "commit": commit,
+            "artifact": {
+                "kind": "source_zip",
+                "provenance": "forge_source_archive",
+                "migration": {
+                    "mode": "automatic",
+                    "evidence": "commit_source_archive",
+                },
+                "url": "https://api.github.com/repos/owner/plugin/zipball/" + commit,
+                "sha256": "d" * 64,
+                "size": 1,
+                "tree_sha256": "e" * 64,
+                "root_prefix": "owner-plugin-bbbbbbb",
+                "source_path": ".",
+            },
+        })
+    tombstones = [
+        {
+            "package_id": package_id,
+            "repository_identity": repository_identity,
+            "last_revision": 1,
+            "release_id": f"github:{repository_identity}:v0.9.0",
+            "reason": "Previously removed.",
+            "removed_at": "2026-07-01T00:00:00Z",
+        }
+        for package_id, repository_identity in tombstoned_repositories
+    ]
+    return {
+        "schema_version": 2,
+        "sequence": 1,
+        "generated_at": "2026-07-01T00:00:00Z",
+        "expires_at": "2026-07-08T00:00:00Z",
+        "registry_sha256": "f" * 64,
+        "releases": releases,
+        "tombstones": tombstones,
+    }
+
+
 def patch_scanner_paths(scan_plugins_module, monkeypatch, registry_file, update_times_file, metadata_file):
     upgrade_fixture_files(registry_file, update_times_file, metadata_file)
     monkeypatch.setattr(scan_plugins_module, "REGISTRY_FILE", str(registry_file))
@@ -700,6 +756,8 @@ def test_cleanup_registry_dry_run_does_not_remove_entries(cleanup_registry_modul
     update_times_file.write_text(json.dumps(update_times))
     metadata_file.write_text(json.dumps(metadata))
     upgrade_fixture_files(registry_file, update_times_file, metadata_file)
+    tombstone_requests_file = tmp_path / "tombstone-requests.json"
+    tombstone_requests_file.write_text("sentinel", encoding="utf-8")
 
     class FakeResponse:
         def __init__(self, content):
@@ -737,6 +795,8 @@ def test_cleanup_registry_dry_run_does_not_remove_entries(cleanup_registry_modul
         apply_changes=False,
         sleep_seconds=0,
         opener=fake_urlopen,
+        release_index_file=str(tmp_path / "not-read-in-dry-run.json"),
+        tombstone_requests_output=str(tombstone_requests_file),
     )
 
     assert stats == {
@@ -756,6 +816,130 @@ def test_cleanup_registry_dry_run_does_not_remove_entries(cleanup_registry_modul
     assert set(saved_platform_entries(metadata_file)) == set(
         metadata["entries"]
     )
+    assert tombstone_requests_file.read_text(encoding="utf-8") == "sentinel"
+
+
+def test_cleanup_registry_requests_tombstones_only_for_active_removed_releases(
+    cleanup_registry_module,
+    tmp_path,
+):
+    registry_file = tmp_path / "registry.json"
+    update_times_file = tmp_path / "update_times.json"
+    metadata_file = tmp_path / "platform_detection.json"
+    release_index_file = tmp_path / "release_index.json"
+    tombstone_requests_file = tmp_path / "tombstone-requests.json"
+    package_repositories = {
+        "Good": "good",
+        "MissingActiveZ": "missing-active-z",
+        "MissingActiveA": "missing-active-a",
+        "MissingUnindexed": "missing-unindexed",
+        "EmptyTombstoned": "empty-tombstoned",
+    }
+    registry_file.write_text(json.dumps({
+        package_id: ["owner", repository, "description", "main"]
+        for package_id, repository in package_repositories.items()
+    }))
+    update_times_file.write_text(json.dumps({
+        package_id: "2026-06-14T15:10:03Z"
+        for package_id in package_repositories
+    }))
+    metadata_file.write_text(json.dumps({
+        "version": 1,
+        "entries": {
+            package_id: {"registry_platforms": ["linux"]}
+            for package_id in package_repositories
+        },
+    }))
+    upgrade_fixture_files(registry_file, update_times_file, metadata_file)
+    release_index_file.write_text(json.dumps(cleanup_release_index(
+        active_repositories=(
+            ("MissingActiveZ", "github.com/owner/missing-active-z"),
+            ("MissingActiveA", "github.com/owner/missing-active-a"),
+            ("RemovedBeforeCleanup", "github.com/owner/removed-before-cleanup"),
+        ),
+        tombstoned_repositories=(
+            ("EmptyTombstoned", "github.com/owner/empty-tombstoned"),
+        ),
+    )))
+
+    class FakeResponse:
+        def __init__(self, content):
+            self.content = content
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc_value, traceback):
+            return False
+
+        def read(self, size=-1):
+            return self.content
+
+    def fake_urlopen(request, timeout=0):
+        url = request.full_url
+        if "/good/" in url:
+            return FakeResponse(
+                b'"""<plugin key="GOOD" name="Good"></plugin>"""\n'
+            )
+        if "/empty-tombstoned/" in url:
+            return FakeResponse(b"")
+        if "/missing-" in url:
+            raise urllib.error.HTTPError(url, 404, "Not Found", {}, None)
+        raise AssertionError(f"Unexpected URL: {url}")
+
+    stats = cleanup_registry_module.cleanup_registry_files(
+        str(registry_file),
+        str(update_times_file),
+        str(metadata_file),
+        apply_changes=True,
+        sleep_seconds=0,
+        opener=fake_urlopen,
+        release_index_file=str(release_index_file),
+        tombstone_requests_output=str(tombstone_requests_file),
+    )
+
+    assert stats["removed"] == 4
+    requests = json.loads(tombstone_requests_file.read_text(encoding="utf-8"))
+    assert list(requests) == [
+        "MissingActiveA",
+        "MissingActiveZ",
+        "RemovedBeforeCleanup",
+    ]
+    assert requests == {
+        **{
+            package_id: {
+                "reason": (
+                    "Registry cleanup removed this package because its configured "
+                    "root plugin.py is missing (HTTP 404)."
+                )
+            }
+            for package_id in ("MissingActiveA", "MissingActiveZ")
+        },
+        "RemovedBeforeCleanup": {
+            "reason": (
+                "Weekly registry maintenance removed this package before "
+                "release-index generation."
+            )
+        },
+    }
+    assert tombstone_requests_file.read_bytes().endswith(b"\n")
+
+
+def test_cleanup_registry_rejects_non_v2_release_index(
+    cleanup_registry_module,
+    tmp_path,
+):
+    release_index_file = tmp_path / "release_index.json"
+    release_index_file.write_text(json.dumps({
+        "schema_version": 1,
+        "plugins": {},
+    }))
+
+    with pytest.raises(ValueError, match="v2"):
+        cleanup_registry_module.load_active_release_package_ids(
+            release_index_file,
+            {},
+        )
 
 
 def test_cleanup_registry_apply_removes_missing_entries_from_sidecars(cleanup_registry_module, tmp_path):

@@ -95,3 +95,20 @@ def test_release_publish_job_can_finalize_the_release_pull_request():
     publish = _job_block(workflow, "publish-release")
 
     assert "permissions:\n      contents: write\n      pull-requests: write\n" in publish
+
+
+def test_weekly_cleanup_shares_temp_tombstone_requests_with_both_index_passes():
+    workflow = _workflow_text("scan_plugins.yml")
+    request_path = '${{ runner.temp }}/release-tombstone-requests.json'
+
+    assert workflow.count(f'"{request_path}"') == 3
+    assert "--tombstone-requests-output" in workflow
+    assert workflow.count("--tombstone-requests\n") == 2
+    cleanup_position = workflow.index("--tombstone-requests-output")
+    preview_position = workflow.index(
+        "python .github/scripts/generate_release_index.py --report-only"
+    )
+    update_position = workflow.index(
+        "python .github/scripts/generate_release_index.py --update"
+    )
+    assert cleanup_position < preview_position < update_position
