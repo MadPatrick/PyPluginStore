@@ -1,5 +1,52 @@
 # Maintainer Runs
 
+## 2026-07-22 - ISSUE:117 reply and ISSUE:111 local-override hardening
+
+Scope:
+- Reviewed current repository and GitHub state for `adrighem/PyPluginStore`.
+- Active public items:
+  - Open issues: `ISSUE:87`, `ISSUE:111`, `ISSUE:117`.
+  - Open pull requests: none.
+- Posted the approved `ISSUE:117` restart/hard-refresh reply after confirming its
+  screenshot showed an older deployed custom page.
+- Reproduced `ISSUE:111` against the code before `PR:116`: one legacy transaction
+  with a missing staging root caused lifecycle lookup for an unrelated package to
+  raise `Release transaction path must be a real directory.` Current `master`
+  isolates the malformed transaction and returns an empty unrelated lifecycle.
+- Added local-registry hardening so a valid local override ignores persisted
+  Release preferences/targets, an invalid existing local registry pauses Release
+  management, and Local cards cannot offer **Switch to Release**.
+- Created focused local commit `0ad164b` with a `Refs #111` footer.
+- Removed the public **Use Git** action from the UI and executable API. Stale
+  clients receive guidance to create a Local registry override instead.
+- Preserved legacy and rollback-created `keep_git` safety holds so restoring a
+  Git backup cannot immediately reinstall the same Release.
+- Updated user and contributor documentation for the Local override path,
+  including verified Rollback or remove/reinstall for an existing Release folder.
+- Created focused policy commit `691ea74` with a `Refs #111` footer.
+
+Verification:
+- Full sanitized suite: 1,314 tests passed.
+- Focused Release policy, lifecycle, management, migration, and UI suite: 126
+  tests passed.
+- Generated runtime parity, Python compilation, `git diff --check`, and live
+  validation of all 257 registry entries passed.
+- Current `master` validation, generated-runtime verification, CodeQL, weekly
+  scan, and release workflows are green.
+- Dependabot, code scanning, and secret scanning alerts are clear.
+
+Notes:
+- Public action was limited to the approved `ISSUE:117` comment:
+  `https://github.com/adrighem/PyPluginStore/issues/117#issuecomment-5042788930`.
+- No `ISSUE:111` comment or pull request was created. The user approved pushing
+  the completed branch; final push status is recorded after pipeline monitoring.
+- The installed maintainer skill still lacks its referenced guidance and triage
+  script, so this run used the documented manual fallback with `gh-helper`,
+  direct `gh`, standalone reproduction, tests, and repository analysis.
+- The three pre-existing untracked notes remain untouched.
+- Recommended next public action is to publish the validated `ISSUE:111` fix
+  after review, then request reporter confirmation. Await the `ISSUE:117` reply.
+
 ## 2026-07-18 - Release-first implementation and multi-forge pilot
 
 Scope:

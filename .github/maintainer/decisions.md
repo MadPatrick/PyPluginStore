@@ -1,5 +1,93 @@
 # Maintainer Decisions
 
+## 2026-07-22 - Use local overrides for intentional Git management
+
+Decision: remove the public **Use Git** / `use_git` channel switch. Once a
+certified Release is selected, ongoing branch-based Git management requires an
+explicit local registry override.
+
+Rationale:
+- Certified Releases are the reviewed, pinned, and more stable delivery path for
+  public packages.
+- A local override makes the user's alternate repository/branch intent explicit
+  instead of storing a hidden public-package channel choice.
+- Removing only the user-selectable writer preserves upgrade compatibility and
+  rollback safety without immediately remigrating a restored Git backup to the
+  same Release.
+
+Implementation notes:
+- Removed `use_git` from the UI, confirmation payloads, backend executor, and
+  normal API dispatch. Stale clients receive local-override guidance.
+- Existing `keep_git` values remain honored, and rollback to a Git backup still
+  writes that internal safety hold. No new public action can create one.
+- Documentation directs ongoing Git users to the Local registry dialog and
+  explains that an existing Release folder needs verified Rollback or
+  remove/reinstall before it becomes a Git checkout.
+
+Verification:
+- Full sanitized suite: 1,314 tests passed.
+- Focused Release policy, lifecycle, management, migration, and UI suite: 126
+  tests passed.
+- Generated runtime parity and `git diff --check` passed.
+
+Public action:
+- The user approved committing and pushing local commits `0ad164b` and
+  `691ea74`; push and pipeline monitoring are in progress.
+
+## 2026-07-22 - Keep local overrides outside Release management
+
+Decision: treat a valid local registry entry as authoritative Git-only intent,
+and fail closed for Release actions while an existing local registry cannot be
+loaded.
+
+Rationale:
+- A saved public-package Release preference must not override the user's current
+  local registry entry.
+- Falling back to public Release metadata when `registry_local.json` exists but
+  is malformed or unreadable can offer a destructive channel switch that ignores
+  the intended local source.
+- A missing local registry remains normal; only an existing file that cannot be
+  loaded pauses Release management.
+
+Implementation notes:
+- Local entries no longer read persisted Release preferences or public Release
+  targets.
+- An invalid existing local registry makes Release metadata effectively
+  unauthorized until a later successful/missing-file reload clears the error.
+- Local cards cannot render a **Switch to Release** action, while ordinary Git
+  updates and verified rollback recovery remain available.
+
+Verification:
+- The original `ISSUE:111` lifecycle fan-out was reproduced before `PR:116` and
+  confirmed fixed on current `master`.
+- Full sanitized suite: 1,314 tests passed; generated runtime, compilation,
+  registry validation, and diff checks passed.
+
+Public action:
+- None taken on `ISSUE:111`; publishing the local fix remains approval-gated.
+
+## 2026-07-22 - Verify custom-page deployment before changing local-registry UX
+
+Decision: treat `ISSUE:117` first as a stale deployed custom page and request a
+Domoticz restart plus browser hard refresh before changing product code.
+
+Rationale:
+- The screenshot reports installed version `v2.21.0` but lacks the **Local
+  registry** action present in the tagged `v2.21.0` page.
+- Installed plugin files can advance before Domoticz restarts and copies
+  `pypluginstore.html` into `www/templates`.
+- The reported repository mismatch is already served by the global Local registry
+  dialog, and focused tests confirm public-package overrides remain Git-managed.
+
+Verification:
+- Inspected the issue screenshot, tagged page, startup copy path, and current
+  local-registry/release-action tests.
+- Focused tests and the full 1,314-test suite passed.
+
+Public action:
+- Posted the approved diagnostic reply at
+  `https://github.com/adrighem/PyPluginStore/issues/117#issuecomment-5042788930`.
+
 ## 2026-07-18 - Minimize GitHub Actions authority
 
 Decision: keep workflow defaults read-only, grant write permissions only to the
