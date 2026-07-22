@@ -34,18 +34,21 @@ Verification:
 - Current `master` validation, generated-runtime verification, CodeQL, weekly
   scan, and release workflows are green.
 - Dependabot, code scanning, and secret scanning alerts are clear.
+- The branch push produced no GitHub Actions runs or check runs because current
+  workflows trigger only for `master`, pull requests, schedules, or manual runs.
 
 Notes:
-- Public action was limited to the approved `ISSUE:117` comment:
+- Approved public actions were the `ISSUE:117` comment and the branch push:
   `https://github.com/adrighem/PyPluginStore/issues/117#issuecomment-5042788930`.
-- No `ISSUE:111` comment or pull request was created. The user approved pushing
-  the completed branch; final push status is recorded after pipeline monitoring.
+- Pushed `fix/issue-111-local-overrides` with commits `0ad164b`, `691ea74`, and
+  `db0f85d`. No `ISSUE:111` comment or pull request was created.
 - The installed maintainer skill still lacks its referenced guidance and triage
   script, so this run used the documented manual fallback with `gh-helper`,
   direct `gh`, standalone reproduction, tests, and repository analysis.
 - The three pre-existing untracked notes remain untouched.
-- Recommended next public action is to publish the validated `ISSUE:111` fix
-  after review, then request reporter confirmation. Await the `ISSUE:117` reply.
+- Recommended next public action is to open a pull request from the pushed branch
+  after approval, monitor its required checks, then request reporter confirmation.
+  Await the `ISSUE:117` reply.
 
 ## 2026-07-18 - Release-first implementation and multi-forge pilot
 

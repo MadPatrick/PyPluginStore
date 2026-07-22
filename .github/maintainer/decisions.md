@@ -31,8 +31,9 @@ Verification:
 - Generated runtime parity and `git diff --check` passed.
 
 Public action:
-- The user approved committing and pushing local commits `0ad164b` and
-  `691ea74`; push and pipeline monitoring are in progress.
+- Pushed commits `0ad164b`, `691ea74`, and the maintainer record to
+  `fix/issue-111-local-overrides` with user approval. Branch-only pushes do not
+  match this repository's workflow triggers, so GitHub created no pipeline.
 
 ## 2026-07-22 - Keep local overrides outside Release management
 
@@ -64,7 +65,8 @@ Verification:
   registry validation, and diff checks passed.
 
 Public action:
-- None taken on `ISSUE:111`; publishing the local fix remains approval-gated.
+- The validated fix was pushed to `fix/issue-111-local-overrides`; no issue
+  comment or pull request was created.
 
 ## 2026-07-22 - Verify custom-page deployment before changing local-registry UX
 

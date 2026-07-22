@@ -1,7 +1,7 @@
 # ISSUE:111 - Use release function is giving errorr
 
 Status: open; original failure fixed in `v2.21.0`, with additional local-registry
-safeguards validated locally.
+safeguards pushed on `fix/issue-111-local-overrides`.
 
 Author:
 - `MadPatrick` opened the issue on 2026-07-21 with repeated release lifecycle
@@ -42,8 +42,10 @@ Verification:
 
 Recommended next step:
 - Keep open.
-- Publish commits `0ad164b` and `691ea74`, monitor the branch pipelines, then ask
-  the reporter to verify the intended local override after restarting Domoticz.
+- Open a pull request from the pushed branch after approval, monitor its required
+  checks, then ask the reporter to verify the intended local override after
+  restarting Domoticz.
 
 Public action:
-- None taken on `ISSUE:111`.
+- Pushed `fix/issue-111-local-overrides`; no issue comment or pull request was
+  created.
