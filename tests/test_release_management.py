@@ -1,3 +1,4 @@
+import json
 import os
 from datetime import datetime, timezone
 from types import SimpleNamespace
@@ -5,6 +6,7 @@ from types import SimpleNamespace
 import pytest
 
 from plugin_core_helpers import configure_home
+from test_release_transactions import install_metadata_document
 
 
 COMMIT_1 = "1" * 40
@@ -1231,6 +1233,96 @@ def test_local_override_ignores_persisted_release_preference(
     assert management["updateable"] is True
     assert management["release_available"] is False
     assert management["migration_action_state"] == "blocked"
+
+
+def test_local_override_on_release_install_requires_git_checkout(
+    plugin_core_module,
+    tmp_path,
+    monkeypatch,
+):
+    plugins_dir, _manager_dir = configure_home(
+        plugin_core_module, tmp_path
+    )
+    plugin = plugin_core_module.BasePlugin()
+    public_registry = {
+        "ExamplePlugin": [
+            "owner",
+            "example-plugin",
+            "Public package",
+            "main",
+        ]
+    }
+    local_registry = {
+        "ExamplePlugin": {
+            "package_id": "ExamplePlugin",
+            "domoticz_key": "EXAMPLE",
+            "description": "Local override",
+            "repository": {
+                "url": "https://github.com/owner/example-plugin.git",
+                "branch": "main",
+            },
+            "platforms": ["linux"],
+        }
+    }
+    plugin.apply_registry_sources(public_registry, local_registry)
+    entry = plugin.get_registry_entry("ExamplePlugin")
+    plugin_dir = plugins_dir / entry.key
+    plugin_dir.mkdir(parents=True)
+    plugin_dir.joinpath(".pypluginstore.json").write_text(
+        json.dumps(
+            install_metadata_document(
+                COMMIT_1,
+                TREE_1,
+                7,
+                "github:owner/example-plugin:v1.4.0",
+            )
+        ),
+        encoding="utf-8",
+    )
+    plugin.installed_plugin_folders[entry.key] = entry.key
+    selection = runtime_selection(
+        plugin_core_module,
+        release_descriptor(plugin_core_module),
+    )
+    monkeypatch.setattr(
+        plugin,
+        "getCurrentReleaseMetadataSelection",
+        lambda: selection,
+    )
+
+    management = plugin.getPluginManagementMap(
+        [entry.key],
+        {entry.key: "current"},
+        {},
+        str(plugins_dir),
+    )[entry.key]
+    update_calls = []
+    responses = []
+
+    def record_update(*args, **kwargs):
+        update_calls.append((args, kwargs))
+        return True, "unexpected"
+
+    monkeypatch.setattr(
+        plugin,
+        "UpdatePythonPlugin",
+        record_update,
+    )
+    monkeypatch.setattr(plugin, "sendApiResponse", responses.append)
+
+    plugin.handleApiCommand(
+        {"action": "update", "plugin_key": entry.key}
+    )
+
+    assert management["channel"] == "release"
+    assert management["status"] == "local_override_requires_git_checkout"
+    assert management["updateable"] is False
+    assert "rollback" in management["verification_message"].lower()
+    assert update_calls == []
+    assert responses[0]["status"] == "error"
+    assert responses[0]["action"] == "update"
+    assert responses[0]["plugin_key"] == entry.key
+    assert "local registry override" in responses[0]["message"].lower()
 
 
 def test_invalid_local_registry_pauses_public_release_migration(

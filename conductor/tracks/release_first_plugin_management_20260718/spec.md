@@ -2,6 +2,12 @@
 
 Issue: https://github.com/adrighem/PyPluginStore/issues/64
 
+> Historical note (2026-07-22): The public **Use Git** action and explicit
+> fallback choice described below were superseded by the current product
+> policy. Intentional ongoing Git management now requires a Local registry
+> override; legacy and rollback-created keep-Git holds remain internal safety
+> state.
+
 ## Objective
 
 Make stable release archives the preferred way to install and update plugins.

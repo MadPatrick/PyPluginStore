@@ -644,6 +644,13 @@ def test_release_status_text_surfaces_versions_verification_migration_and_restar
             "fragments": ["Release metadata unavailable", "expired"],
         },
         {
+            "state": release_management_state(
+                status="local_override_requires_git_checkout",
+                updateable=False,
+            ),
+            "fragments": ["Local override requires Rollback or reinstall"],
+        },
+        {
             "state": release_management_state(restart_pending=True),
             "fragments": ["Restart required"],
         },
@@ -786,6 +793,15 @@ def test_release_action_model_keeps_release_non_git_install_updateable():
             "state": release_management_state(restart_pending=True),
             "context": {"installed": True, "isGit": False, "isManager": False},
             "expected": ["rollback"],
+        },
+        {
+            "state": release_management_state(
+                status="local_override_requires_git_checkout",
+                updateable=False,
+                rollback_available=False,
+            ),
+            "context": {"installed": True, "isGit": False, "isManager": False},
+            "expected": [],
         },
         {
             "state": None,

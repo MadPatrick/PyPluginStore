@@ -294,9 +294,15 @@ def test_use_git_action_is_unsupported_and_does_not_touch_checkout(
     before = (plugin_dir / "plugin.py").read_bytes()
 
     response = call_action(plugin, monkeypatch, "use_git")
+    direct_response = plugin.executeReleaseManagementAction(
+        action="use_git",
+        plugin_key=PLUGIN_KEY,
+    )
 
     assert response["status"] == "error"
     assert "local registry override" in response["message"].lower()
+    assert direct_response["status"] == "error"
+    assert "unsupported" in direct_response["message"].lower()
     assert plugin.channel_preference_service.get(REPOSITORY_IDENTITY) is None
     assert (plugin_dir / "plugin.py").read_bytes() == before
     assert (plugin_dir / ".git").is_dir()

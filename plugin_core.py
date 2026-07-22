@@ -14533,6 +14533,24 @@ class BasePlugin:
             )
         return selection.release_authorized, selection.reason
 
+    def getLocalOverrideGitCheckoutError(self, entry, plugin_dir):
+        """Explain why a Release install cannot follow a Local override."""
+        if not entry.local:
+            return ""
+        metadata_path = os.path.join(
+            plugin_dir, InstallMetadataService.FILE_NAME
+        )
+        if not os.path.lexists(metadata_path):
+            return ""
+        git_dir = os.path.join(plugin_dir, ".git")
+        if os.path.isdir(git_dir) and not os.path.islink(git_dir):
+            return ""
+        return (
+            "This Local registry override requires a Git checkout. "
+            "Restore a verified Git backup with Rollback, or remove and "
+            "reinstall the plugin."
+        )
+
     def load_update_times_file(self, update_times_file, label):
         if not os.path.isfile(update_times_file):
             Domoticz.Debug("No " + label + " update_times file found.")
@@ -15056,6 +15074,9 @@ class BasePlugin:
             is_release = metadata is not None or bool(metadata_invalid)
             is_git = os.path.isdir(os.path.join(plugin_dir, ".git"))
             channel = "release" if is_release else "git"
+            local_override_git_error = (
+                self.getLocalOverrideGitCheckoutError(entry, plugin_dir)
+            )
             preference = None
             identity = normalize_repository_identity(
                 entry.author, entry.repository
@@ -15100,6 +15121,9 @@ class BasePlugin:
             if metadata_invalid:
                 status = "verification_failed"
                 reason = "Installed release metadata is invalid: " + metadata_invalid
+            elif local_override_git_error:
+                status = "local_override_requires_git_checkout"
+                reason = local_override_git_error
             else:
                 status_context = dict(decision_context)
                 status_context.pop("index_sequence")
@@ -15173,6 +15197,7 @@ class BasePlugin:
             release_blocked = status in {
                 "release_metadata_unavailable",
                 "verification_failed",
+                "local_override_requires_git_checkout",
                 "migration_blocked_local_changes",
                 "migration_blocked_local_files",
                 "migration_waiting_for_release",
@@ -16344,6 +16369,23 @@ class BasePlugin:
             plugin_key = payload.get("plugin_key")
             entry = self.get_registry_entry(plugin_key)
             if entry is not None:
+                try:
+                    plugin_dir = self.resolve_installed_plugin_dir(plugin_key)
+                    local_override_git_error = (
+                        self.getLocalOverrideGitCheckoutError(
+                            entry, plugin_dir
+                        )
+                    )
+                except ValueError:
+                    local_override_git_error = ""
+                if local_override_git_error:
+                    self.sendApiResponse({
+                        "status": "error",
+                        "action": action,
+                        "plugin_key": plugin_key,
+                        "message": local_override_git_error,
+                    })
+                    return
                 if self._manual_update_uses_release_migration(entry):
                     confirmation_token = payload.get(
                         "confirmation_token",
