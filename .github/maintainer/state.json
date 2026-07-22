@@ -2,11 +2,11 @@
   "last_run": "2026-07-22",
   "repository": "adrighem/PyPluginStore",
   "active_items": {
-    "issues": [87, 111, 117],
+    "issues": [87, 111],
     "pull_requests": []
   },
   "recently_closed": {
-    "issues": [41, 44, 46, 52, 53, 54, 55, 56, 57, 60, 61, 62, 64, 65, 69, 70, 73, 74, 91, 95, 98],
+    "issues": [41, 44, 46, 52, 53, 54, 55, 56, 57, 60, 61, 62, 64, 65, 69, 70, 73, 74, 91, 95, 98, 117],
     "pull_requests": [42, 43, 45, 47, 49, 51, 58, 59, 63, 66, 68, 71, 72, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 112, 113, 114, 115, 116]
   },
   "last_shipped_commit": "b378dbd",
@@ -14,7 +14,7 @@
   "pending_public_actions": {
     "issues": [],
     "pull_requests": [],
-    "summary": "Branch fix/issue-111-local-overrides is pushed with the validated ISSUE:111 safeguards and Release-only public channel policy. No branch workflow was applicable; opening a PR and posting reporter follow-up remain approval-gated. Await the ISSUE:117 response to the posted restart/hard-refresh guidance."
+    "summary": "Branch fix/issue-111-local-overrides is pushed with the validated ISSUE:111 safeguards and Release-only public channel policy. No branch workflow was applicable; opening a PR and posting reporter follow-up remain approval-gated. ISSUE:117 was resolved by restart/refresh and closed by the reporter."
   },
   "last_verification": {
     "pytest": "1314 passed in a sanitized environment; 126 focused Release policy/lifecycle/management/migration/UI tests passed",

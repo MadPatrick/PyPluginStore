@@ -1,6 +1,6 @@
 # ISSUE:117 - no option for local registry
 
-Status: open; diagnostic reply posted, awaiting reporter confirmation.
+Status: closed; restart and browser refresh resolved the stale custom page.
 
 Author:
 - `Eddie-BS` opened the issue on 2026-07-22 after upgrading a remote Domoticz
@@ -27,13 +27,13 @@ Verification:
   dialog.
 - Local public-package overrides remain supported and explicitly Git-managed.
 - Five focused UI, local-registry, and release-action tests passed on 2026-07-22.
+- The reporter confirmed after restarting and refreshing that the Local registry
+  action appeared, then closed the issue:
+  `https://github.com/adrighem/PyPluginStore/issues/117#issuecomment-5042855586`.
 
 Recommended next step:
-- Await confirmation after a Domoticz restart and browser hard refresh.
-- If it remains absent, request only the relevant log line containing `Custom UI
-  autoinstalled/updated`, `Custom UI is already up to date`, or `Custom UI
-  autoinstall failed`; then inspect source/destination page freshness and write
-  permissions.
+- None. Reopen only if a future restart still fails to deploy the current custom
+  page, with the narrow custom-UI autoinstall log line.
 
 Public action:
 - Posted the approved diagnostic reply:

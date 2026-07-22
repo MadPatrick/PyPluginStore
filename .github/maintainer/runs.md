@@ -5,10 +5,11 @@
 Scope:
 - Reviewed current repository and GitHub state for `adrighem/PyPluginStore`.
 - Active public items:
-  - Open issues: `ISSUE:87`, `ISSUE:111`, `ISSUE:117`.
+  - Open issues: `ISSUE:87`, `ISSUE:111`.
   - Open pull requests: none.
 - Posted the approved `ISSUE:117` restart/hard-refresh reply after confirming its
   screenshot showed an older deployed custom page.
+- The reporter confirmed restart/refresh resolved `ISSUE:117` and closed it.
 - Reproduced `ISSUE:111` against the code before `PR:116`: one legacy transaction
   with a missing staging root caused lifecycle lookup for an unrelated package to
   raise `Release transaction path must be a real directory.` Current `master`
@@ -41,14 +42,15 @@ Notes:
 - Approved public actions were the `ISSUE:117` comment and the branch push:
   `https://github.com/adrighem/PyPluginStore/issues/117#issuecomment-5042788930`.
 - Pushed `fix/issue-111-local-overrides` with commits `0ad164b`, `691ea74`, and
-  `db0f85d`. No `ISSUE:111` comment or pull request was created.
+  `db0f85d`; final maintainer-state commits followed. No `ISSUE:111` comment or
+  pull request was created.
 - The installed maintainer skill still lacks its referenced guidance and triage
   script, so this run used the documented manual fallback with `gh-helper`,
   direct `gh`, standalone reproduction, tests, and repository analysis.
 - The three pre-existing untracked notes remain untouched.
 - Recommended next public action is to open a pull request from the pushed branch
   after approval, monitor its required checks, then request reporter confirmation.
-  Await the `ISSUE:117` reply.
+  `ISSUE:117` needs no further action.
 
 ## 2026-07-18 - Release-first implementation and multi-forge pilot
 

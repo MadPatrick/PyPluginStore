@@ -90,6 +90,9 @@ Public action:
 - Posted the approved diagnostic reply at
   `https://github.com/adrighem/PyPluginStore/issues/117#issuecomment-5042788930`.
 
+Outcome:
+- The reporter confirmed restart/refresh resolved the issue and closed it.
+
 ## 2026-07-18 - Minimize GitHub Actions authority
 
 Decision: keep workflow defaults read-only, grant write permissions only to the
