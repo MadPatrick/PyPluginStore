@@ -3,7 +3,7 @@
   "repository": "adrighem/PyPluginStore",
   "active_items": {
     "issues": [87, 111],
-    "pull_requests": []
+    "pull_requests": [118]
   },
   "recently_closed": {
     "issues": [41, 44, 46, 52, 53, 54, 55, 56, 57, 60, 61, 62, 64, 65, 69, 70, 73, 74, 91, 95, 98, 117],
@@ -14,13 +14,13 @@
   "pending_public_actions": {
     "issues": [],
     "pull_requests": [],
-    "summary": "Branch fix/issue-111-local-overrides is pushed with the validated ISSUE:111 safeguards and Release-only public channel policy. No branch workflow was applicable; opening a PR and posting reporter follow-up remain approval-gated. ISSUE:117 was resolved by restart/refresh and closed by the reporter."
+    "summary": "PR:118 is open with the validated ISSUE:111 local-override safeguards and Release-only public channel policy; its checks are running. Reporter follow-up on ISSUE:111 remains pending. ISSUE:117 was resolved by restart/refresh and closed by the reporter."
   },
   "last_verification": {
-    "pytest": "1314 passed in a sanitized environment; 126 focused Release policy/lifecycle/management/migration/UI tests passed",
+    "pytest": "1315 passed in a sanitized environment; focused Local-override management, lifecycle, API, and UI regressions passed",
     "generator_parity": "passed; Python compilation passed",
     "registry_validation": "all 257 registry entries passed live validation",
-    "workflows": "branch push created no runs because workflows target master, pull requests, schedules, or manual dispatch; current master workflows are green",
+    "workflows": "PR:118 started Validate Plugins on Ubuntu and Windows, generated-runtime verification, and CodeQL; the maintainer-record push will restart final head checks",
     "dependabot_alerts": "0",
     "code_scanning_alerts": "0",
     "secret_scanning_alerts": "0"

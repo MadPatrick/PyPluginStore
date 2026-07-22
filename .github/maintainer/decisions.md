@@ -14,6 +14,9 @@ Rationale:
 - Removing only the user-selectable writer preserves upgrade compatibility and
   rollback safety without immediately remigrating a restored Git backup to the
   same Release.
+- Applying a Local override does not transform an existing Release folder into
+  a Git checkout, so updates must remain blocked until Rollback or reinstall
+  provides one.
 
 Implementation notes:
 - Removed `use_git` from the UI, confirmation payloads, backend executor, and
@@ -23,9 +26,13 @@ Implementation notes:
 - Documentation directs ongoing Git users to the Local registry dialog and
   explains that an existing Release folder needs verified Rollback or
   remove/reinstall before it becomes a Git checkout.
+- Release-installed Local overrides now expose an actionable blocked status and
+  reject direct update requests before the Git updater is called.
+- Current Conductor product guidance reflects the Local-override policy; older
+  completed specs are annotated as historical where they describe **Use Git**.
 
 Verification:
-- Full sanitized suite: 1,314 tests passed.
+- Full sanitized suite: 1,315 tests passed.
 - Focused Release policy, lifecycle, management, migration, and UI suite: 126
   tests passed.
 - Generated runtime parity and `git diff --check` passed.
@@ -34,6 +41,7 @@ Public action:
 - Pushed commits `0ad164b`, `691ea74`, and the maintainer record to
   `fix/issue-111-local-overrides` with user approval. Branch-only pushes do not
   match this repository's workflow triggers, so GitHub created no pipeline.
+- Pushed review fix `185d62a` and opened `PR:118`; PR checks were started.
 
 ## 2026-07-22 - Keep local overrides outside Release management
 

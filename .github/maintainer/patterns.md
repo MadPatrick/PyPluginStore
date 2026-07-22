@@ -10,6 +10,9 @@
 - A local registry override is Git-only intent: do not consult a persisted public
   Release preference, attach a public Release target, or render a Release switch
   for that entry.
+- A Local override over a Release-installed folder is intent, not a channel
+  conversion. Block Git updates until verified Rollback or remove/reinstall
+  provides a real Git checkout.
 - Public packages do not expose a Release-to-Git switch. Direct users who want
   ongoing branch-based Git updates to use a local override instead.
 - Preserve legacy and rollback-created `keep_git` values as internal safety

@@ -25,9 +25,16 @@ Scope:
 - Updated user and contributor documentation for the Local override path,
   including verified Rollback or remove/reinstall for an existing Release folder.
 - Created focused policy commit `691ea74` with a `Refs #111` footer.
+- Final review found that a Local override over an existing Release folder could
+  still offer Update and then invoke Git without `.git`. Added an actionable
+  blocked state at both management-map and direct API boundaries.
+- Aligned current Conductor product policy with the removal of the public Git
+  switch and annotated the completed specs that describe the superseded choice.
+- Created review-fix commit `185d62a` with a `Refs #111` footer and opened
+  `PR:118`.
 
 Verification:
-- Full sanitized suite: 1,314 tests passed.
+- Full sanitized suite: 1,315 tests passed.
 - Focused Release policy, lifecycle, management, migration, and UI suite: 126
   tests passed.
 - Generated runtime parity, Python compilation, `git diff --check`, and live
@@ -41,16 +48,15 @@ Verification:
 Notes:
 - Approved public actions were the `ISSUE:117` comment and the branch push:
   `https://github.com/adrighem/PyPluginStore/issues/117#issuecomment-5042788930`.
-- Pushed `fix/issue-111-local-overrides` with commits `0ad164b`, `691ea74`, and
-  `db0f85d`; final maintainer-state commits followed. No `ISSUE:111` comment or
-  pull request was created.
+- Pushed `fix/issue-111-local-overrides` and opened
+  `https://github.com/adrighem/PyPluginStore/pull/118`. No `ISSUE:111` comment
+  was posted.
 - The installed maintainer skill still lacks its referenced guidance and triage
   script, so this run used the documented manual fallback with `gh-helper`,
   direct `gh`, standalone reproduction, tests, and repository analysis.
 - The three pre-existing untracked notes remain untouched.
-- Recommended next public action is to open a pull request from the pushed branch
-  after approval, monitor its required checks, then request reporter confirmation.
-  `ISSUE:117` needs no further action.
+- Next action is to monitor `PR:118` to completion, then request reporter
+  confirmation after merge. `ISSUE:117` needs no further action.
 
 ## 2026-07-18 - Release-first implementation and multi-forge pilot
 

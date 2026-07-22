@@ -1,7 +1,7 @@
 # ISSUE:111 - Use release function is giving errorr
 
 Status: open; original failure fixed in `v2.21.0`, with additional local-registry
-safeguards pushed on `fix/issue-111-local-overrides`.
+safeguards proposed in `PR:118`.
 
 Author:
 - `MadPatrick` opened the issue on 2026-07-21 with repeated release lifecycle
@@ -32,20 +32,22 @@ Assessment:
 - Public Release cards no longer offer **Use Git**. Ongoing Git management now
   requires a local override; legacy and rollback-created keep-Git holds remain
   internal safety state so a restored backup is not immediately remigrated.
+- A Local override placed over an existing Release install is not yet a Git
+  checkout. `PR:118` now blocks its update action and directs the user to verified
+  Rollback or remove/reinstall instead of invoking Git in a folder without
+  `.git`.
 
 Verification:
 - Standalone legacy-journal reproduction failed on pre-`PR:116` code and passed
   on current `master` with the expected empty unrelated-package lifecycle state.
-- Full sanitized suite: 1,314 tests passed.
+- Full sanitized suite: 1,315 tests passed.
 - Generated runtime parity, Python compilation, registry validation for all 257
   entries, and `git diff --check` passed.
 
 Recommended next step:
 - Keep open.
-- Open a pull request from the pushed branch after approval, monitor its required
-  checks, then ask the reporter to verify the intended local override after
-  restarting Domoticz.
+- Monitor `PR:118` to completion, then ask the reporter to verify the intended
+  local override after merge and a Domoticz restart.
 
 Public action:
-- Pushed `fix/issue-111-local-overrides`; no issue comment or pull request was
-  created.
+- Opened `PR:118`; no `ISSUE:111` comment was posted.
