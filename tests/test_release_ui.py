@@ -316,7 +316,6 @@ def test_release_update_action_does_not_require_dot_git(
 @pytest.mark.parametrize(
     ("action", "challenge_kind"),
     [
-        ("use_git", "channel_switch"),
         ("use_release", "channel_switch"),
         ("rollback", "rollback"),
     ],
@@ -375,7 +374,7 @@ def test_release_management_actions_return_opaque_confirmation_challenge(
     assert "confirmed" not in response
 
 
-@pytest.mark.parametrize("action", ["use_git", "use_release", "rollback"])
+@pytest.mark.parametrize("action", ["use_release", "rollback"])
 def test_release_management_confirmation_passes_only_opaque_token(
     plugin_core_module, tmp_path, monkeypatch, action
 ):
@@ -421,6 +420,29 @@ def test_release_management_confirmation_passes_only_opaque_token(
         "action": action,
         "plugin_key": PLUGIN_KEY,
     }
+
+
+def test_use_git_api_action_is_rejected_with_local_override_guidance(
+    plugin_core_module, tmp_path, monkeypatch
+):
+    plugin, _ = configure_api_plugin(plugin_core_module, tmp_path)
+    responses = []
+    monkeypatch.setattr(plugin, "sendApiResponse", responses.append)
+
+    plugin.handleApiCommand(
+        {"action": "use_git", "plugin_key": PLUGIN_KEY}
+    )
+
+    assert responses == [
+        {
+            "status": "error",
+            "action": "use_git",
+            "message": (
+                "Switch to Git is no longer available. Add a Local "
+                "registry override to use Git management."
+            ),
+        }
+    ]
 
 
 def test_confirmation_request_round_trip_remains_below_2000_byte_api_bound(
@@ -622,6 +644,13 @@ def test_release_status_text_surfaces_versions_verification_migration_and_restar
             "fragments": ["Release metadata unavailable", "expired"],
         },
         {
+            "state": release_management_state(
+                status="local_override_requires_git_checkout",
+                updateable=False,
+            ),
+            "fragments": ["Local override requires Rollback or reinstall"],
+        },
+        {
             "state": release_management_state(restart_pending=True),
             "fragments": ["Restart required"],
         },
@@ -699,7 +728,7 @@ def test_release_action_model_keeps_release_non_git_install_updateable():
         {
             "state": release_management_state(),
             "context": {"installed": True, "isGit": False, "isManager": False},
-            "expected": ["rollback", "update", "use_git"],
+            "expected": ["rollback", "update"],
         },
         {
             "state": release_management_state(
@@ -745,9 +774,34 @@ def test_release_action_model_keeps_release_non_git_install_updateable():
             "expected": ["update", "use_release"],
         },
         {
+            "state": release_management_state(
+                channel="git",
+                status="git_available",
+                updateable=True,
+                rollback_available=False,
+                migration_action_state="available",
+            ),
+            "context": {
+                "installed": True,
+                "isGit": True,
+                "isLocal": True,
+                "isManager": False,
+            },
+            "expected": ["update"],
+        },
+        {
             "state": release_management_state(restart_pending=True),
             "context": {"installed": True, "isGit": False, "isManager": False},
             "expected": ["rollback"],
+        },
+        {
+            "state": release_management_state(
+                status="local_override_requires_git_checkout",
+                updateable=False,
+                rollback_available=False,
+            ),
+            "context": {"installed": True, "isGit": False, "isManager": False},
+            "expected": [],
         },
         {
             "state": None,
@@ -815,9 +869,10 @@ def test_ui_renders_explicit_channel_and_rollback_actions():
     assert ".btn-channel" in html
     assert ".btn-rollback" in html
     assert "releaseManagementActions(management" in script
+    assert "isLocal: isLocal" in script
     assert "data-action" in script
-    assert "use_git" in script
-    assert "Use Git" in script
+    assert "use_git" not in script
+    assert "Use Git" not in script
     assert "use_release" in script
     assert "Switch to Release" in script
     assert "rollback" in script
@@ -861,6 +916,15 @@ try {
 }
 if (!rejected) {
     throw new Error('oversized confirmation token was accepted');
+}
+rejected = false;
+try {
+    buildReleaseConfirmationPayload('use_git', 'ExamplePlugin', 'opaque-token-123');
+} catch (error) {
+    rejected = true;
+}
+if (!rejected) {
+    throw new Error('removed use_git action was accepted');
 }
 """
     )

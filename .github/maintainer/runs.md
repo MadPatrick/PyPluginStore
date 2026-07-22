@@ -1,5 +1,63 @@
 # Maintainer Runs
 
+## 2026-07-22 - ISSUE:117 reply and ISSUE:111 local-override hardening
+
+Scope:
+- Reviewed current repository and GitHub state for `adrighem/PyPluginStore`.
+- Active public items:
+  - Open issues: `ISSUE:87`, `ISSUE:111`.
+  - Open pull requests: none.
+- Posted the approved `ISSUE:117` restart/hard-refresh reply after confirming its
+  screenshot showed an older deployed custom page.
+- The reporter confirmed restart/refresh resolved `ISSUE:117` and closed it.
+- Reproduced `ISSUE:111` against the code before `PR:116`: one legacy transaction
+  with a missing staging root caused lifecycle lookup for an unrelated package to
+  raise `Release transaction path must be a real directory.` Current `master`
+  isolates the malformed transaction and returns an empty unrelated lifecycle.
+- Added local-registry hardening so a valid local override ignores persisted
+  Release preferences/targets, an invalid existing local registry pauses Release
+  management, and Local cards cannot offer **Switch to Release**.
+- Created focused local commit `0ad164b` with a `Refs #111` footer.
+- Removed the public **Use Git** action from the UI and executable API. Stale
+  clients receive guidance to create a Local registry override instead.
+- Preserved legacy and rollback-created `keep_git` safety holds so restoring a
+  Git backup cannot immediately reinstall the same Release.
+- Updated user and contributor documentation for the Local override path,
+  including verified Rollback or remove/reinstall for an existing Release folder.
+- Created focused policy commit `691ea74` with a `Refs #111` footer.
+- Final review found that a Local override over an existing Release folder could
+  still offer Update and then invoke Git without `.git`. Added an actionable
+  blocked state at both management-map and direct API boundaries.
+- Aligned current Conductor product policy with the removal of the public Git
+  switch and annotated the completed specs that describe the superseded choice.
+- Created review-fix commit `185d62a` with a `Refs #111` footer and opened
+  `PR:118`.
+
+Verification:
+- Full sanitized suite: 1,315 tests passed.
+- Focused Release policy, lifecycle, management, migration, and UI suite: 126
+  tests passed.
+- Generated runtime parity, Python compilation, `git diff --check`, and live
+  validation of all 257 registry entries passed.
+- Current `master` validation, generated-runtime verification, CodeQL, weekly
+  scan, and release workflows are green.
+- Dependabot, code scanning, and secret scanning alerts are clear.
+- The branch push produced no GitHub Actions runs or check runs because current
+  workflows trigger only for `master`, pull requests, schedules, or manual runs.
+
+Notes:
+- Approved public actions were the `ISSUE:117` comment and the branch push:
+  `https://github.com/adrighem/PyPluginStore/issues/117#issuecomment-5042788930`.
+- Pushed `fix/issue-111-local-overrides` and opened
+  `https://github.com/adrighem/PyPluginStore/pull/118`. No `ISSUE:111` comment
+  was posted.
+- The installed maintainer skill still lacks its referenced guidance and triage
+  script, so this run used the documented manual fallback with `gh-helper`,
+  direct `gh`, standalone reproduction, tests, and repository analysis.
+- The three pre-existing untracked notes remain untouched.
+- Next action is to monitor `PR:118` to completion, then request reporter
+  confirmation after merge. `ISSUE:117` needs no further action.
+
 ## 2026-07-18 - Release-first implementation and multi-forge pilot
 
 Scope:

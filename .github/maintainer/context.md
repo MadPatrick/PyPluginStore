@@ -6,7 +6,9 @@ Priorities:
 - Preserve remote registry loading with bundled fallback behavior.
 - Keep `plugin_core.py` as the source for runtime logic and regenerate `plugin.py` after core edits.
 - Avoid committing local runtime data such as `update_times.cache.json` or private registry overlays.
-- Treat external PRs as intent and design input; implement final changes locally with focused tests.
+- Prefer a reviewed external PR as the source of its change when its intent,
+  implementation, provenance, and validation are sound. Implement separately only
+  when merging the PR is not viable, and record why.
 
 Tone:
 - Be direct and appreciative with contributors.

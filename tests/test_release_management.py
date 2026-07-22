@@ -1,3 +1,4 @@
+import json
 import os
 from datetime import datetime, timezone
 from types import SimpleNamespace
@@ -5,6 +6,7 @@ from types import SimpleNamespace
 import pytest
 
 from plugin_core_helpers import configure_home
+from test_release_transactions import install_metadata_document
 
 
 COMMIT_1 = "1" * 40
@@ -1148,6 +1150,248 @@ def test_management_map_rechecks_expiry_before_status_decisions(
     assert management["release_available"] is False
     assert management["migration_action_state"] == "blocked"
     assert "expired" in management["verification_message"].lower()
+
+
+def test_local_override_ignores_persisted_release_preference(
+    plugin_core_module,
+    tmp_path,
+    monkeypatch,
+):
+    plugins_dir, _manager_dir = configure_home(
+        plugin_core_module, tmp_path
+    )
+    plugin = plugin_core_module.BasePlugin()
+    public_registry = {
+        "ExamplePlugin": [
+            "owner",
+            "example-plugin",
+            "Public package",
+            "main",
+        ]
+    }
+    local_registry = {
+        "ExamplePlugin": {
+            "package_id": "ExamplePlugin",
+            "domoticz_key": "EXAMPLE",
+            "description": "Local override",
+            "repository": {
+                "url": "https://github.com/owner/example-plugin.git",
+                "branch": "main",
+            },
+            "platforms": ["linux"],
+        }
+    }
+    plugin.apply_registry_sources(public_registry, local_registry)
+    entry = plugin.get_registry_entry("ExamplePlugin")
+    plugin_dir = plugins_dir / entry.key
+    plugin_dir.joinpath(".git").mkdir(parents=True)
+    plugin.installed_plugin_folders[entry.key] = entry.key
+    release = release_descriptor(plugin_core_module)
+    selection = runtime_selection(plugin_core_module, release)
+    monkeypatch.setattr(
+        plugin,
+        "getCurrentReleaseMetadataSelection",
+        lambda: selection,
+    )
+    preference_lookups = []
+
+    def release_preference(repository_identity):
+        preference_lookups.append(repository_identity)
+        return "release"
+
+    monkeypatch.setattr(
+        plugin.channel_preference_service,
+        "get",
+        release_preference,
+    )
+
+    context = plugin.getReleaseManagementContext(
+        entry,
+        operation="update",
+        trigger="manual",
+    )
+    decision = plugin.install_update_strategy._runtime_decision(
+        entry,
+        "update",
+        "manual",
+    )
+    management = plugin.getPluginManagementMap(
+        [entry.key],
+        {entry.key: "current"},
+        {},
+        str(plugins_dir),
+    )[entry.key]
+
+    assert entry.local is True
+    assert entry.delivery.preferred == "git"
+    assert preference_lookups == []
+    assert context["channel_preference"] is None
+    assert context["release"] is None
+    assert decision.route == "git_update"
+    assert management["channel"] == "git"
+    assert management["status"] == "git_current"
+    assert management["updateable"] is True
+    assert management["release_available"] is False
+    assert management["migration_action_state"] == "blocked"
+
+
+def test_local_override_on_release_install_requires_git_checkout(
+    plugin_core_module,
+    tmp_path,
+    monkeypatch,
+):
+    plugins_dir, _manager_dir = configure_home(
+        plugin_core_module, tmp_path
+    )
+    plugin = plugin_core_module.BasePlugin()
+    public_registry = {
+        "ExamplePlugin": [
+            "owner",
+            "example-plugin",
+            "Public package",
+            "main",
+        ]
+    }
+    local_registry = {
+        "ExamplePlugin": {
+            "package_id": "ExamplePlugin",
+            "domoticz_key": "EXAMPLE",
+            "description": "Local override",
+            "repository": {
+                "url": "https://github.com/owner/example-plugin.git",
+                "branch": "main",
+            },
+            "platforms": ["linux"],
+        }
+    }
+    plugin.apply_registry_sources(public_registry, local_registry)
+    entry = plugin.get_registry_entry("ExamplePlugin")
+    plugin_dir = plugins_dir / entry.key
+    plugin_dir.mkdir(parents=True)
+    plugin_dir.joinpath(".pypluginstore.json").write_text(
+        json.dumps(
+            install_metadata_document(
+                COMMIT_1,
+                TREE_1,
+                7,
+                "github:owner/example-plugin:v1.4.0",
+            )
+        ),
+        encoding="utf-8",
+    )
+    plugin.installed_plugin_folders[entry.key] = entry.key
+    selection = runtime_selection(
+        plugin_core_module,
+        release_descriptor(plugin_core_module),
+    )
+    monkeypatch.setattr(
+        plugin,
+        "getCurrentReleaseMetadataSelection",
+        lambda: selection,
+    )
+
+    management = plugin.getPluginManagementMap(
+        [entry.key],
+        {entry.key: "current"},
+        {},
+        str(plugins_dir),
+    )[entry.key]
+    update_calls = []
+    responses = []
+
+    def record_update(*args, **kwargs):
+        update_calls.append((args, kwargs))
+        return True, "unexpected"
+
+    monkeypatch.setattr(
+        plugin,
+        "UpdatePythonPlugin",
+        record_update,
+    )
+    monkeypatch.setattr(plugin, "sendApiResponse", responses.append)
+
+    plugin.handleApiCommand(
+        {"action": "update", "plugin_key": entry.key}
+    )
+
+    assert management["channel"] == "release"
+    assert management["status"] == "local_override_requires_git_checkout"
+    assert management["updateable"] is False
+    assert "rollback" in management["verification_message"].lower()
+    assert update_calls == []
+    assert responses[0]["status"] == "error"
+    assert responses[0]["action"] == "update"
+    assert responses[0]["plugin_key"] == entry.key
+    assert "local registry override" in responses[0]["message"].lower()
+
+
+def test_invalid_local_registry_pauses_public_release_migration(
+    plugin_core_module,
+    tmp_path,
+    monkeypatch,
+):
+    plugins_dir, manager_dir = configure_home(
+        plugin_core_module, tmp_path
+    )
+    plugin = plugin_core_module.BasePlugin()
+    manager_dir.joinpath("registry_local.json").write_text(
+        "{broken",
+        encoding="utf-8",
+    )
+
+    assert plugin.load_local_registry() is None
+    assert plugin.local_registry_error
+
+    public_registry = {
+        "ExamplePlugin": [
+            "owner",
+            "example-plugin",
+            "Public package",
+            "main",
+        ]
+    }
+    plugin.apply_registry_sources(public_registry, None)
+    entry = plugin.get_registry_entry("ExamplePlugin")
+    plugin_dir = plugins_dir / entry.key
+    plugin_dir.joinpath(".git").mkdir(parents=True)
+    plugin.installed_plugin_folders[entry.key] = entry.key
+    release = release_descriptor(plugin_core_module)
+    selection = runtime_selection(plugin_core_module, release)
+    monkeypatch.setattr(
+        plugin,
+        "getCurrentReleaseMetadataSelection",
+        lambda: selection,
+    )
+
+    context = plugin.getReleaseManagementContext(
+        entry,
+        operation="status",
+        trigger="manual",
+    )
+    management = plugin.getPluginManagementMap(
+        [entry.key],
+        {entry.key: "current"},
+        {},
+        str(plugins_dir),
+    )[entry.key]
+    action = plugin.executeReleaseManagementAction(
+        action="use_release",
+        plugin_key=entry.key,
+    )
+
+    assert context["metadata_authorized"] is False
+    assert "local registry" in context["metadata_reason"].lower()
+    assert context["release"] is None
+    assert management["channel"] == "git"
+    assert management["release_available"] is False
+    assert management["migration_action_state"] == "blocked"
+    assert "local registry" in management["verification_message"].lower()
+    assert action["status"] == "error"
+    assert "no authorized release" in action["message"].lower()
+
+    manager_dir.joinpath("registry_local.json").unlink()
+    assert plugin.load_local_registry() is None
+    assert plugin.local_registry_error == ""
 
 
 def test_update_and_status_wrappers_carry_explicit_trigger_without_changing_git_seam(

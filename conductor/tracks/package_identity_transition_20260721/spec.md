@@ -1,5 +1,11 @@
 # Track Specification: Explicit Package Identities and Release Transitions
 
+> Historical note (2026-07-22): The public **Use Git** action and explicit
+> fallback choice described below were superseded by the current product
+> policy. Intentional ongoing Git management now requires a Local registry
+> override; legacy and rollback-created keep-Git holds remain internal safety
+> state.
+
 ## Overview
 
 Replace package-keyed public metadata with explicit, versioned `package_id`

@@ -7,9 +7,27 @@
 - Registry source order: remote public registry, bundled fallback, local ignored overlay.
 - Installed detection is tiered: matching git remote, recognized `plugin.py` externallink, exact registry key, unique repo/archive folder name with flexible and Domoticz-affix-stripped normalization, then unique `plugin.py` key/name metadata.
 - Local registry entries are explicit user intent and should win when they collide with public registry repository aliases.
+- A local registry override is Git-only intent: do not consult a persisted public
+  Release preference, attach a public Release target, or render a Release switch
+  for that entry.
+- A Local override over a Release-installed folder is intent, not a channel
+  conversion. Block Git updates until verified Rollback or remove/reinstall
+  provides a real Git checkout.
+- Public packages do not expose a Release-to-Git switch. Direct users who want
+  ongoing branch-based Git updates to use a local override instead.
+- Preserve legacy and rollback-created `keep_git` values as internal safety
+  holds until a release-ID-scoped replacement exists; otherwise Rollback can be
+  undone by the next automatic migration.
+- When `registry_local.json` exists but cannot be loaded, fail closed for Release
+  management until it is repaired. A genuinely missing local file remains the
+  normal public-registry path.
 - Local registry writes must use backend-owned per-entry CRUD, exact-byte revisions, and atomic replacement; never let the browser replace the whole registry document or overwrite malformed/stale data.
 - Keep plugin folder matching and UI plugin-name cleanup aligned. When changing flexible folder-name matching in the plugin, review/update the UI cleanup logic too, and vice versa, so the visible names users compare match the install-detection names PyPluginStore accepts.
 - Custom UI bridge device discovery must include hidden Domoticz devices because users may hide the text payload device from normal overviews.
+- The installed plugin version can advance before Domoticz reloads the custom
+  page copied into `www/templates`. When a screenshot reports a current version
+  but lacks current controls, first verify a Domoticz restart, browser hard
+  refresh, and the narrow custom-UI autoinstall log result.
 - The custom UI bridge shares one text device for request and response data; always clear stale responses and treat response-looking payloads as stale bridge data, not inbound commands.
 - API bridge error responses may omit `action`; accept them by matching `status: "error"` plus the same `tx_id`, then clear the bridge payload.
 - Domoticz Python plugin APIs vary across supported Domoticz versions; optional APIs such as native notifications must be guarded with `hasattr`/`callable` checks.

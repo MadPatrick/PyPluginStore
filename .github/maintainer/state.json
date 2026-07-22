@@ -1,26 +1,26 @@
 {
-  "last_run": "2026-07-18",
+  "last_run": "2026-07-22",
   "repository": "adrighem/PyPluginStore",
   "active_items": {
-    "issues": [64, 87],
-    "pull_requests": []
+    "issues": [87, 111],
+    "pull_requests": [118]
   },
   "recently_closed": {
-    "issues": [41, 44, 46, 52, 53, 54, 55, 56, 57, 60, 61, 62, 65, 69, 70, 73, 74, 95, 98],
-    "pull_requests": [42, 43, 45, 47, 49, 51, 58, 59, 63, 66, 68, 71, 72, 100, 101]
+    "issues": [41, 44, 46, 52, 53, 54, 55, 56, 57, 60, 61, 62, 64, 65, 69, 70, 73, 74, 91, 95, 98, 117],
+    "pull_requests": [42, 43, 45, 47, 49, 51, 58, 59, 63, 66, 68, 71, 72, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 112, 113, 114, 115, 116]
   },
-  "last_shipped_commit": "e3995b9",
-  "last_release": "v2.18.0",
+  "last_shipped_commit": "b378dbd",
+  "last_release": "v2.21.0",
   "pending_public_actions": {
     "issues": [],
     "pull_requests": [],
-    "summary": "Local commits are ready for review and push. After pinned workflows reach master, enable full-SHA action enforcement and evaluate the documented default-branch ruleset before activation."
+    "summary": "PR:118 is open with the validated ISSUE:111 local-override safeguards and Release-only public channel policy; its checks are running. Reporter follow-up on ISSUE:111 remains pending. ISSUE:117 was resolved by restart/refresh and closed by the reporter."
   },
   "last_verification": {
-    "pytest": "1118 passed; 839 release-focused",
-    "generator_parity": "passed",
-    "registry_validation": "schema and release-index binding passed for 256 managed records; prior rollout validation covered 257 registry records",
-    "workflows": "YAML parsed and workflow security tests passed; plain yamllint reports pre-existing style violations",
+    "pytest": "1315 passed in a sanitized environment; focused Local-override management, lifecycle, API, and UI regressions passed",
+    "generator_parity": "passed; Python compilation passed",
+    "registry_validation": "all 257 registry entries passed live validation",
+    "workflows": "PR:118 started Validate Plugins on Ubuntu and Windows, generated-runtime verification, and CodeQL; the maintainer-record push will restart final head checks",
     "dependabot_alerts": "0",
     "code_scanning_alerts": "0",
     "secret_scanning_alerts": "0"

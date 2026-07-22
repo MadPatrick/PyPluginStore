@@ -13397,6 +13397,7 @@ class BasePlugin:
         self.registry_entries = {}
         self.public_registry_data = None
         self.local_plugin_keys = []
+        self.local_registry_error = ""
         self.update_times = {}
         self.update_status = {}
         self.plugin_platforms = {}
@@ -13564,9 +13565,12 @@ class BasePlugin:
                 "Release management trigger must be manual or automatic."
             )
         selection = self.getCurrentReleaseMetadataSelection()
+        metadata_authorized, metadata_reason = (
+            self.getReleaseMetadataAuthorization(selection)
+        )
         release_index = (
             selection.release_index
-            if selection.release_authorized
+            if metadata_authorized
             else None
         )
         release = None
@@ -13638,7 +13642,7 @@ class BasePlugin:
         repository_identity = normalize_repository_identity(
             entry.author, entry.repository
         )
-        if repository_identity:
+        if repository_identity and not entry.local:
             try:
                 preference = self.channel_preference_service.get(
                     repository_identity
@@ -13654,8 +13658,8 @@ class BasePlugin:
             "installed_mode": installed_mode,
             "release": release,
             "tombstone": tombstone,
-            "metadata_authorized": selection.release_authorized,
-            "metadata_reason": selection.reason,
+            "metadata_authorized": metadata_authorized,
+            "metadata_reason": metadata_reason,
             "installed_release": installed_release,
             "channel_preference": preference,
             "downgrade_confirmed": False,
@@ -14504,16 +14508,48 @@ class BasePlugin:
 
     def load_local_registry(self):
         document = self.local_registry_service.read_document()
+        self.local_registry_error = ""
         if not document.exists:
             Domoticz.Debug("No local registry file found.")
             return None
         if not document.writable:
+            self.local_registry_error = (
+                document.message or "Local registry could not be loaded."
+            )
             Domoticz.Error(
                 "Error reading local registry file: " + document.message
             )
             return None
         Domoticz.Log("Loaded local plugin registry schema v2.")
         return document.entries
+
+    def getReleaseMetadataAuthorization(self, selection):
+        """Pause Release changes while an existing local registry is invalid."""
+        if self.local_registry_error:
+            return (
+                False,
+                "Local registry could not be loaded; Release management is "
+                "paused until registry_local.json is repaired.",
+            )
+        return selection.release_authorized, selection.reason
+
+    def getLocalOverrideGitCheckoutError(self, entry, plugin_dir):
+        """Explain why a Release install cannot follow a Local override."""
+        if not entry.local:
+            return ""
+        metadata_path = os.path.join(
+            plugin_dir, InstallMetadataService.FILE_NAME
+        )
+        if not os.path.lexists(metadata_path):
+            return ""
+        git_dir = os.path.join(plugin_dir, ".git")
+        if os.path.isdir(git_dir) and not os.path.islink(git_dir):
+            return ""
+        return (
+            "This Local registry override requires a Git checkout. "
+            "Restore a verified Git backup with Rollback, or remove and "
+            "reinstall the plugin."
+        )
 
     def load_update_times_file(self, update_times_file, label):
         if not os.path.isfile(update_times_file):
@@ -15001,9 +15037,12 @@ class BasePlugin:
             if entry is None:
                 continue
             selection = self.getCurrentReleaseMetadataSelection()
+            metadata_authorized, metadata_reason = (
+                self.getReleaseMetadataAuthorization(selection)
+            )
             release_index = (
                 selection.release_index
-                if selection.release_authorized
+                if metadata_authorized
                 else None
             )
             try:
@@ -15035,11 +15074,14 @@ class BasePlugin:
             is_release = metadata is not None or bool(metadata_invalid)
             is_git = os.path.isdir(os.path.join(plugin_dir, ".git"))
             channel = "release" if is_release else "git"
+            local_override_git_error = (
+                self.getLocalOverrideGitCheckoutError(entry, plugin_dir)
+            )
             preference = None
             identity = normalize_repository_identity(
                 entry.author, entry.repository
             )
-            if identity:
+            if identity and not entry.local:
                 try:
                     preference = self.channel_preference_service.get(identity)
                 except ValueError:
@@ -15067,8 +15109,8 @@ class BasePlugin:
                 "installed_mode": ("release" if is_release else "git"),
                 "release": release,
                 "tombstone": tombstone,
-                "metadata_authorized": selection.release_authorized,
-                "metadata_reason": selection.reason,
+                "metadata_authorized": metadata_authorized,
+                "metadata_reason": metadata_reason,
                 "installed_release": metadata,
                 "channel_preference": preference,
                 "downgrade_confirmed": False,
@@ -15079,6 +15121,9 @@ class BasePlugin:
             if metadata_invalid:
                 status = "verification_failed"
                 reason = "Installed release metadata is invalid: " + metadata_invalid
+            elif local_override_git_error:
+                status = "local_override_requires_git_checkout"
+                reason = local_override_git_error
             else:
                 status_context = dict(decision_context)
                 status_context.pop("index_sequence")
@@ -15152,6 +15197,7 @@ class BasePlugin:
             release_blocked = status in {
                 "release_metadata_unavailable",
                 "verification_failed",
+                "local_override_requires_git_checkout",
                 "migration_blocked_local_changes",
                 "migration_blocked_local_files",
                 "migration_waiting_for_release",
@@ -15897,7 +15943,6 @@ class BasePlugin:
             if action not in {
                 "rollback",
                 "update",
-                "use_git",
                 "use_release",
             }:
                 raise ValueError("Release management action is unsupported.")
@@ -15968,39 +16013,6 @@ class BasePlugin:
             installed_mode = context.get("installed_mode")
             if installed_mode == "absent":
                 raise RuntimeError("Plugin is not installed.")
-
-            if action == "use_git":
-                if not entry.delivery.git_supported:
-                    raise RuntimeError(
-                        "The registry does not permit Git management."
-                    )
-                target = self._channel_action_target(entry, context, "git")
-                confirmation, _approved_digest = (
-                    self._release_action_confirmation(
-                    kind="channel_switch",
-                    action=action,
-                    plugin_key=plugin_key,
-                    target=target,
-                    confirmation_token=confirmation_token,
-                    )
-                )
-                if confirmation is not None:
-                    return confirmation
-                plugin_dir = self.resolve_installed_plugin_dir(plugin_key)
-                git_dir = os.path.join(plugin_dir, ".git")
-                if (
-                    not os.path.isdir(git_dir)
-                    or os.path.islink(git_dir)
-                ):
-                    raise RuntimeError(
-                        "A safe release-to-Git channel switch is not available."
-                    )
-                self.channel_preference_service.set(identity, "keep_git")
-                return {
-                    "status": "success",
-                    "message": "Git management selected.",
-                    "restart_pending": False,
-                }
 
             release = context.get("release")
             if (
@@ -16318,7 +16330,16 @@ class BasePlugin:
                 "action": action,
                 "self_update": self.getSelfUpdateState()
             })
-        elif action in ("use_git", "use_release", "rollback"):
+        elif action == "use_git":
+            self.sendApiResponse({
+                "status": "error",
+                "action": action,
+                "message": (
+                    "Switch to Git is no longer available. Add a Local "
+                    "registry override to use Git management."
+                ),
+            })
+        elif action in ("use_release", "rollback"):
             plugin_key = str(payload.get("plugin_key") or "")
             confirmation_token = payload.get("confirmation_token", "")
             if not isinstance(confirmation_token, str):
@@ -16348,6 +16369,23 @@ class BasePlugin:
             plugin_key = payload.get("plugin_key")
             entry = self.get_registry_entry(plugin_key)
             if entry is not None:
+                try:
+                    plugin_dir = self.resolve_installed_plugin_dir(plugin_key)
+                    local_override_git_error = (
+                        self.getLocalOverrideGitCheckoutError(
+                            entry, plugin_dir
+                        )
+                    )
+                except ValueError:
+                    local_override_git_error = ""
+                if local_override_git_error:
+                    self.sendApiResponse({
+                        "status": "error",
+                        "action": action,
+                        "plugin_key": plugin_key,
+                        "message": local_override_git_error,
+                    })
+                    return
                 if self._manual_update_uses_release_migration(entry):
                     confirmation_token = payload.get(
                         "confirmation_token",
