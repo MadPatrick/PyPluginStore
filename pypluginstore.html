@@ -3297,7 +3297,8 @@
             if (state.rollback_available) actions.push('rollback');
             return actions;
         }
-        const releaseSwitchAvailable = state.channel === 'git' &&
+        const releaseSwitchAvailable = !(context && context.isLocal) &&
+            state.channel === 'git' &&
             ['available', 'confirmation_required'].includes(state.migration_action_state);
         const migrationIsActiveRoute = state.channel === 'git' &&
             String(state.status || '').startsWith('migration_');
@@ -3535,6 +3536,7 @@
                 const managementActions = releaseManagementActions(management, {
                     installed: isInstalled,
                     isGit: isGit,
+                    isLocal: isLocal,
                     isManager: isManager
                 });
                 const updateButton = document.createElement('button');

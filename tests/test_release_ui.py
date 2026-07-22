@@ -745,6 +745,22 @@ def test_release_action_model_keeps_release_non_git_install_updateable():
             "expected": ["update", "use_release"],
         },
         {
+            "state": release_management_state(
+                channel="git",
+                status="git_available",
+                updateable=True,
+                rollback_available=False,
+                migration_action_state="available",
+            ),
+            "context": {
+                "installed": True,
+                "isGit": True,
+                "isLocal": True,
+                "isManager": False,
+            },
+            "expected": ["update"],
+        },
+        {
             "state": release_management_state(restart_pending=True),
             "context": {"installed": True, "isGit": False, "isManager": False},
             "expected": ["rollback"],
@@ -815,6 +831,7 @@ def test_ui_renders_explicit_channel_and_rollback_actions():
     assert ".btn-channel" in html
     assert ".btn-rollback" in html
     assert "releaseManagementActions(management" in script
+    assert "isLocal: isLocal" in script
     assert "data-action" in script
     assert "use_git" in script
     assert "Use Git" in script

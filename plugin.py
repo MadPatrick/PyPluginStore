@@ -13438,6 +13438,7 @@ class BasePlugin:
         self.registry_entries = {}
         self.public_registry_data = None
         self.local_plugin_keys = []
+        self.local_registry_error = ""
         self.update_times = {}
         self.update_status = {}
         self.plugin_platforms = {}
@@ -13605,9 +13606,12 @@ class BasePlugin:
                 "Release management trigger must be manual or automatic."
             )
         selection = self.getCurrentReleaseMetadataSelection()
+        metadata_authorized, metadata_reason = (
+            self.getReleaseMetadataAuthorization(selection)
+        )
         release_index = (
             selection.release_index
-            if selection.release_authorized
+            if metadata_authorized
             else None
         )
         release = None
@@ -13679,7 +13683,7 @@ class BasePlugin:
         repository_identity = normalize_repository_identity(
             entry.author, entry.repository
         )
-        if repository_identity:
+        if repository_identity and not entry.local:
             try:
                 preference = self.channel_preference_service.get(
                     repository_identity
@@ -13695,8 +13699,8 @@ class BasePlugin:
             "installed_mode": installed_mode,
             "release": release,
             "tombstone": tombstone,
-            "metadata_authorized": selection.release_authorized,
-            "metadata_reason": selection.reason,
+            "metadata_authorized": metadata_authorized,
+            "metadata_reason": metadata_reason,
             "installed_release": installed_release,
             "channel_preference": preference,
             "downgrade_confirmed": False,
@@ -14545,16 +14549,30 @@ class BasePlugin:
 
     def load_local_registry(self):
         document = self.local_registry_service.read_document()
+        self.local_registry_error = ""
         if not document.exists:
             Domoticz.Debug("No local registry file found.")
             return None
         if not document.writable:
+            self.local_registry_error = (
+                document.message or "Local registry could not be loaded."
+            )
             Domoticz.Error(
                 "Error reading local registry file: " + document.message
             )
             return None
         Domoticz.Log("Loaded local plugin registry schema v2.")
         return document.entries
+
+    def getReleaseMetadataAuthorization(self, selection):
+        """Pause Release changes while an existing local registry is invalid."""
+        if self.local_registry_error:
+            return (
+                False,
+                "Local registry could not be loaded; Release management is "
+                "paused until registry_local.json is repaired.",
+            )
+        return selection.release_authorized, selection.reason
 
     def load_update_times_file(self, update_times_file, label):
         if not os.path.isfile(update_times_file):
@@ -15042,9 +15060,12 @@ class BasePlugin:
             if entry is None:
                 continue
             selection = self.getCurrentReleaseMetadataSelection()
+            metadata_authorized, metadata_reason = (
+                self.getReleaseMetadataAuthorization(selection)
+            )
             release_index = (
                 selection.release_index
-                if selection.release_authorized
+                if metadata_authorized
                 else None
             )
             try:
@@ -15080,7 +15101,7 @@ class BasePlugin:
             identity = normalize_repository_identity(
                 entry.author, entry.repository
             )
-            if identity:
+            if identity and not entry.local:
                 try:
                     preference = self.channel_preference_service.get(identity)
                 except ValueError:
@@ -15108,8 +15129,8 @@ class BasePlugin:
                 "installed_mode": ("release" if is_release else "git"),
                 "release": release,
                 "tombstone": tombstone,
-                "metadata_authorized": selection.release_authorized,
-                "metadata_reason": selection.reason,
+                "metadata_authorized": metadata_authorized,
+                "metadata_reason": metadata_reason,
                 "installed_release": metadata,
                 "channel_preference": preference,
                 "downgrade_confirmed": False,
