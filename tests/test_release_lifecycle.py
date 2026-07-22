@@ -3,8 +3,11 @@ import shutil
 import sys
 from pathlib import Path
 
+import pytest
+
 from plugin_core_helpers import configure_home, write_plugin_py
 from test_release_transactions import (
+    GIT,
     NEW_COMMIT,
     NEW_TREE,
     artifact_inventory,
@@ -12,6 +15,7 @@ from test_release_transactions import (
     dependency_snapshot,
     install_metadata_document,
     make_manager,
+    prepare_migration_transaction,
     prepare_transaction,
     read_marker,
     write_marker,
@@ -212,6 +216,41 @@ def test_rollback_api_uses_latest_verified_backup_and_requires_restart(
     assert_old_live(manager.load_transaction(transaction.operation_id))
 
 
+@pytest.mark.skipif(GIT is None, reason="Git is required")
+def test_rollback_to_git_preserves_internal_safety_hold(
+    plugin_core_module, tmp_path, monkeypatch
+):
+    manager, plugins_dir, manager_dir = make_manager(
+        plugin_core_module,
+        tmp_path,
+    )
+    transaction, _live_code, _installed_commit, _preflight = (
+        prepare_migration_transaction(
+            plugin_core_module,
+            manager,
+            plugins_dir,
+            manager_dir,
+        )
+    )
+    manager.activate(transaction.operation_id)
+    manager.mark_release_managed(transaction.operation_id)
+    plugin = manager.plugin
+    configure_registry_entry(plugin_core_module, plugin)
+
+    challenge_response = call_action(plugin, monkeypatch, "rollback")
+    response = call_action(
+        plugin,
+        monkeypatch,
+        "rollback",
+        challenge_response["challenge"]["token"],
+    )
+
+    assert response["status"] == "success"
+    assert plugin.channel_preference_service.get(
+        REPOSITORY_IDENTITY
+    ) == "keep_git"
+
+
 def test_older_backup_is_pruned_only_after_newer_release_is_managed(
     plugin_core_module, tmp_path
 ):
@@ -238,7 +277,7 @@ def test_older_backup_is_pruned_only_after_newer_release_is_managed(
     assert Path(second.paths.backup_dependencies).is_dir()
 
 
-def test_use_git_on_git_checkout_persists_preference_only_after_confirmation(
+def test_use_git_action_is_unsupported_and_does_not_touch_checkout(
     plugin_core_module, tmp_path, monkeypatch
 ):
     plugins_dir, _manager_dir = configure_home(plugin_core_module, tmp_path)
@@ -254,20 +293,11 @@ def test_use_git_on_git_checkout_persists_preference_only_after_confirmation(
     (plugin_dir / ".git").mkdir()
     before = (plugin_dir / "plugin.py").read_bytes()
 
-    challenge_response = call_action(plugin, monkeypatch, "use_git")
+    response = call_action(plugin, monkeypatch, "use_git")
 
-    assert challenge_response["status"] == "confirmation_required"
+    assert response["status"] == "error"
+    assert "local registry override" in response["message"].lower()
     assert plugin.channel_preference_service.get(REPOSITORY_IDENTITY) is None
-    response = call_action(
-        plugin,
-        monkeypatch,
-        "use_git",
-        challenge_response["challenge"]["token"],
-    )
-    assert response["status"] == "success"
-    assert plugin.channel_preference_service.get(REPOSITORY_IDENTITY) == (
-        "keep_git"
-    )
     assert (plugin_dir / "plugin.py").read_bytes() == before
     assert (plugin_dir / ".git").is_dir()
 

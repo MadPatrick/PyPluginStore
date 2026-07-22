@@ -15959,7 +15959,6 @@ class BasePlugin:
             if action not in {
                 "rollback",
                 "update",
-                "use_git",
                 "use_release",
             }:
                 raise ValueError("Release management action is unsupported.")
@@ -16030,39 +16029,6 @@ class BasePlugin:
             installed_mode = context.get("installed_mode")
             if installed_mode == "absent":
                 raise RuntimeError("Plugin is not installed.")
-
-            if action == "use_git":
-                if not entry.delivery.git_supported:
-                    raise RuntimeError(
-                        "The registry does not permit Git management."
-                    )
-                target = self._channel_action_target(entry, context, "git")
-                confirmation, _approved_digest = (
-                    self._release_action_confirmation(
-                    kind="channel_switch",
-                    action=action,
-                    plugin_key=plugin_key,
-                    target=target,
-                    confirmation_token=confirmation_token,
-                    )
-                )
-                if confirmation is not None:
-                    return confirmation
-                plugin_dir = self.resolve_installed_plugin_dir(plugin_key)
-                git_dir = os.path.join(plugin_dir, ".git")
-                if (
-                    not os.path.isdir(git_dir)
-                    or os.path.islink(git_dir)
-                ):
-                    raise RuntimeError(
-                        "A safe release-to-Git channel switch is not available."
-                    )
-                self.channel_preference_service.set(identity, "keep_git")
-                return {
-                    "status": "success",
-                    "message": "Git management selected.",
-                    "restart_pending": False,
-                }
 
             release = context.get("release")
             if (
@@ -16380,7 +16346,16 @@ class BasePlugin:
                 "action": action,
                 "self_update": self.getSelfUpdateState()
             })
-        elif action in ("use_git", "use_release", "rollback"):
+        elif action == "use_git":
+            self.sendApiResponse({
+                "status": "error",
+                "action": action,
+                "message": (
+                    "Switch to Git is no longer available. Add a Local "
+                    "registry override to use Git management."
+                ),
+            })
+        elif action in ("use_release", "rollback"):
             plugin_key = str(payload.get("plugin_key") or "")
             confirmation_token = payload.get("confirmation_token", "")
             if not isinstance(confirmation_token, str):

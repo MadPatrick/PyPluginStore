@@ -142,9 +142,10 @@ manual unless a stronger reviewed source-continuity contract authorizes them.
 Do not hand forge API responses directly to the runtime or silently fall back
 to Git after a release failure. A release-managed installation with unavailable
 metadata remains blocked; a `release_if_indexed` package that has never
-activated Release continues on Git. Keep-Git preferences, notify-only mode,
-dirty or diverged checkouts, repository mismatches, and insufficient migration
-evidence must all prevent automatic channel changes.
+activated Release continues on Git. Existing compatibility/rollback safety
+holds, notify-only mode, dirty or diverged checkouts, repository mismatches, and
+insufficient migration evidence must all prevent automatic channel changes. New
+intentional Git use for a public package requires a local registry override.
 
 For the v2 deployment cutover, first release a manager that reads both legacy
 and strict v2 metadata while public metadata remains on the old shape. Publish

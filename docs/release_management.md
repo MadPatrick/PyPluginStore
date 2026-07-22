@@ -2,8 +2,10 @@
 
 PyPluginStore is release-first when a package has a fresh, certified entry in
 `release_index.json`. Git remains a supported channel: it is used while no
-release is indexed, when the package policy selects Git, or when an existing
-checkout has an explicit keep-Git preference.
+release is indexed, when the package policy selects Git, or when a local registry
+override explicitly selects a different source. Existing keep-Git state remains
+honored for upgrade and rollback safety, but no public action creates a new
+general Git-channel preference.
 
 ## Package identity
 
@@ -131,7 +133,9 @@ Automatic migration requires all of the following:
 - every preserved path is permitted by the reviewed mutable-path policy.
 
 Dirty, ahead, diverged, mismatched, locked, or insufficiently proven checkouts
-stay on Git and show the reason. A keep-Git preference always wins.
+stay on Git and show the reason. A matching local registry override keeps the
+package Git-managed, while an existing safety hold prevents an immediate repeat
+of a rolled-back migration.
 Notification-only mode reports the available transition without changing files.
 Automatic-update mode executes only a fully proven transition; evidence marked
 manual requires an explicit, content-bound approval.
@@ -140,14 +144,19 @@ Release operations stage code and a complete dependency snapshot, activate them
 atomically, retain the previous state for rollback, and then require a Domoticz
 restart. Local executable changes are never silently carried into a release.
 
-## Choosing Git explicitly
+## Using Git through a local override
 
-Use **Use Git** for an existing checkout when the registry permits Git and you
-want branch-based updates. This records a keep-Git preference in manager state
-outside the checkout. A release-managed folder has no `.git` directory, so a
-preference change alone cannot recreate one. Use a verified migration backup
-through **Rollback** when available; otherwise PyPluginStore leaves the release
-installation untouched.
+Public registry packages do not offer a Release-to-Git channel switch. To use
+branch-based Git updates, add a matching `registry_local.json` override through
+the **Local registry** dialog. The local entry becomes the authoritative source
+and remains Git-managed.
+
+A verified migration backup may still be restored through **Rollback**. Rollback
+records an internal keep-Git safety hold so the same Release is not immediately
+reapplied; it is not the general way to choose Git. Add the local override for
+ongoing Git updates. The override does not recreate `.git` in an existing
+Release installation: restore a verified Git backup first, or remove and
+reinstall the plugin after adding the override.
 
 Private repositories, forks, local/LAN repositories, and `registry_local.json`
 entries stay Git-managed. See [`registry_local.json` How-To](registry_local.md).
