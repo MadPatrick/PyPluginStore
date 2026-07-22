@@ -1,5 +1,23 @@
 # Changelog
 
+## [2.21.1](https://github.com/adrighem/PyPluginStore/compare/v2.21.0...v2.21.1) (2026-07-22)
+
+
+### Bug Fixes
+
+* **releases:** block local updates without Git checkout ([185d62a](https://github.com/adrighem/PyPluginStore/commit/185d62a4b4f6ff9de33b0fc88bc9fffb4b6760a8)), closes [#111](https://github.com/adrighem/PyPluginStore/issues/111)
+* **releases:** enforce local override channel policy ([7945ce2](https://github.com/adrighem/PyPluginStore/commit/7945ce244835adaedcac1017332d81350cc5e65d))
+* **releases:** honor local registry overrides ([0ad164b](https://github.com/adrighem/PyPluginStore/commit/0ad164b3483a173e746b80f0a8495b3ba70afb83)), closes [#111](https://github.com/adrighem/PyPluginStore/issues/111)
+* **releases:** remove public Git channel switch ([691ea74](https://github.com/adrighem/PyPluginStore/commit/691ea741132742dd5a74c9908c9f46b4e369b212)), closes [#111](https://github.com/adrighem/PyPluginStore/issues/111)
+
+
+### Documentation
+
+* **maintainer:** record issue 111 branch push ([737bfb1](https://github.com/adrighem/PyPluginStore/commit/737bfb101ac8736cfc45b32414a9065011f2e7bf)), closes [#111](https://github.com/adrighem/PyPluginStore/issues/111)
+* **maintainer:** record issue 111 investigation ([db0f85d](https://github.com/adrighem/PyPluginStore/commit/db0f85d08d212fccbc93425cc487268a60c2908d)), closes [#111](https://github.com/adrighem/PyPluginStore/issues/111) [#117](https://github.com/adrighem/PyPluginStore/issues/117)
+* **maintainer:** record issue 111 pull request ([41beefb](https://github.com/adrighem/PyPluginStore/commit/41beefbde80716f36599e1b9df059acb67d56142)), closes [#111](https://github.com/adrighem/PyPluginStore/issues/111)
+* **maintainer:** record issue 117 resolution ([a2bd39e](https://github.com/adrighem/PyPluginStore/commit/a2bd39e65273f085380a820eefda4fafe92f28d6)), closes [#117](https://github.com/adrighem/PyPluginStore/issues/117)
+
 ## [2.21.0](https://github.com/adrighem/PyPluginStore/compare/v2.20.0...v2.21.0) (2026-07-21)
 
 
