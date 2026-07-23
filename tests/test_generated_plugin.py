@@ -5,6 +5,14 @@ import sys
 from conftest import REPO_ROOT
 
 
+SELF_UPDATE_CANDIDATE_PYTHON_FILES = (
+    "plugin.py",
+    "plugin_core.py",
+    "package_registry.py",
+    "package_identity.py",
+)
+
+
 def test_generated_plugin_py_is_current():
     plugin_file = REPO_ROOT / "plugin.py"
     original = plugin_file.read_bytes()
@@ -52,3 +60,16 @@ def test_generated_plugin_uses_one_release_version_source():
     assert generator.count("x-release-please-version") == 1
     assert generated.count("x-release-please-version") == 2
     assert generator_version == runtime_version == metadata_version
+
+
+def test_self_update_candidate_python_sources_remain_ascii_compatible():
+    for filename in SELF_UPDATE_CANDIDATE_PYTHON_FILES:
+        contents = (REPO_ROOT / filename).read_bytes()
+        try:
+            contents.decode("ascii")
+        except UnicodeDecodeError as error:
+            raise AssertionError(
+                filename
+                + " must remain ASCII-decodable so legacy self-updaters can "
+                "bootstrap; use Python Unicode escapes for non-ASCII text."
+            ) from error

@@ -123,6 +123,27 @@ def deploy_runtime_frontend(service, plugin):
     return destination
 
 
+def test_identity_label_renders_unicode_separators_from_ascii_source(
+    plugin_core_module,
+    tmp_path,
+    monkeypatch,
+):
+    _, service, _, _, runtime_identity = make_identity_service(
+        plugin_core_module,
+        tmp_path,
+        monkeypatch,
+    )
+
+    assert service._identity_label(runtime_identity) == (
+        "PyPluginStore v"
+        + runtime_identity["product_version"]
+        + " \u00b7 build "
+        + runtime_identity["build_id"][:12]
+        + " \u00b7 git "
+        + runtime_identity["git_commit"][:8]
+    )
+
+
 def test_build_id_is_deterministic_order_independent_and_framed(
     plugin_core_module,
 ):

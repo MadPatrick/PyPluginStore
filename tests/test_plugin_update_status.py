@@ -206,6 +206,37 @@ def test_run_git_does_not_use_safe_directory_for_plugins_root_clone(plugin_core_
     scenario.assert_complete()
 
 
+def test_git_runners_decode_captured_output_as_utf8(
+    plugin_core_module,
+    tmp_path,
+    monkeypatch,
+):
+    _, manager_dir = configure_home(plugin_core_module, tmp_path)
+    runtime = plugin_core_module.LinuxHostRuntime(plugin_core_module.Parameters)
+    run_options = []
+
+    def fake_run(command, cwd=None, **kwargs):
+        run_options.append(kwargs)
+        return FakeGitResult(stdout="PyPluginStore \u00b7 build\n")
+
+    monkeypatch.setattr(plugin_core_module.subprocess, "run", fake_run)
+
+    regular = runtime.run_git(
+        ["git", "show", "HEAD:plugin.py"],
+        manager_dir,
+    )
+    read_only = runtime.run_git_read_only(
+        ["git", "show", "HEAD:plugin.py"],
+        manager_dir,
+    )
+
+    assert "\u00b7" in regular.stdout
+    assert "\u00b7" in read_only.stdout
+    assert len(run_options) == 2
+    assert all(options["text"] is True for options in run_options)
+    assert all(options["encoding"] == "utf-8" for options in run_options)
+
+
 def test_run_git_skips_ownership_repair_by_default_when_safe_directory_fails(plugin_core_module, tmp_path, monkeypatch):
     _, manager_dir = configure_home(plugin_core_module, tmp_path)
     (manager_dir / ".git").mkdir()
@@ -677,6 +708,7 @@ def test_self_update_command_schedules_detached_helper(plugin_core_module, tmp_p
     assert 'git_command("merge", "--ff-only", upstream_ref)' in helper
     assert "startup_delay = 5" in helper
     assert "safe.directory=" in helper
+    assert 'encoding="utf-8"' in helper
     assert '["git", "reset", "--hard", "HEAD"]' not in helper
     assert '["git", "pull", "--force"]' not in helper
     assert any("Starting PyPluginStore self-update pre-flight" in message for message in recorded_messages(plugin_core_module, "Log"))

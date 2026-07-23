@@ -485,6 +485,7 @@ class HostRuntime:
                 env=self.get_git_env(),
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
                 timeout=timeout
             )
         except subprocess.TimeoutExpired:
@@ -597,6 +598,7 @@ class HostRuntime:
                 env=environment,
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
                 timeout=timeout,
             )
         except subprocess.TimeoutExpired:
@@ -1102,6 +1104,7 @@ def run_command(command, timeout):
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
+            encoding="utf-8",
             timeout=timeout
         )
         write_log("return code: {}".format(result.returncode))
@@ -13903,11 +13906,11 @@ class ManagerIdentityService:
         label = (
             "PyPluginStore v"
             + identity["product_version"]
-            + " · build "
+            + " \u00b7 build "
             + identity["build_id"][:12]
         )
         if identity.get("git_commit"):
-            label += " · git " + identity["git_commit"][:8]
+            label += " \u00b7 git " + identity["git_commit"][:8]
         return label
 
     def get_verdict(self, frontend_identity=None, self_update_state=None):
@@ -13937,7 +13940,7 @@ class ManagerIdentityService:
             coherent = False
             message = (
                 label
-                + " · runtime identity could not be verified. Repair or reinstall "
+                + " \u00b7 runtime identity could not be verified. Repair or reinstall "
                 "PyPluginStore before making changes."
             )
         elif active_update:
@@ -13945,7 +13948,7 @@ class ManagerIdentityService:
             coherent = runtime_installed_match and deployed_match and frontend_match
             message = (
                 label
-                + " · self-update is in progress. Changes are temporarily read-only."
+                + " \u00b7 self-update is in progress. Changes are temporarily read-only."
             )
         elif not runtime_installed_match:
             state = "restart_required"
@@ -13960,7 +13963,7 @@ class ManagerIdentityService:
             coherent = False
             message = (
                 label
-                + " · the Domoticz custom page is not synchronized. Check template "
+                + " \u00b7 the Domoticz custom page is not synchronized. Check template "
                 "permissions, restart Domoticz, then reload this page."
             )
         elif frontend_identity is None:
@@ -13968,7 +13971,7 @@ class ManagerIdentityService:
             coherent = False
             message = (
                 label
-                + " · this browser page has no runtime identity. Hard-refresh the "
+                + " \u00b7 this browser page has no runtime identity. Hard-refresh the "
                 "page to enable changes."
             )
         elif not frontend_match:
@@ -13976,7 +13979,7 @@ class ManagerIdentityService:
             coherent = False
             message = (
                 label
-                + " · this browser page is from a different build. Hard-refresh "
+                + " \u00b7 this browser page is from a different build. Hard-refresh "
                 "the page before making changes."
             )
         else:
@@ -13984,7 +13987,7 @@ class ManagerIdentityService:
             coherent = True
             message = (
                 label
-                + " · frontend, backend, and installed files match."
+                + " \u00b7 frontend, backend, and installed files match."
             )
 
         verdict = {
