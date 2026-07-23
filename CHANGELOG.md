@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.22.1](https://github.com/adrighem/PyPluginStore/compare/v2.22.0...v2.22.1) (2026-07-23)
+
+
+### Bug Fixes
+
+* **notifications:** clarify release channel choices ([40faa50](https://github.com/adrighem/PyPluginStore/commit/40faa502781b82f46b50cbb397a0ac7a6d8316a8))
+* **notifications:** clarify release channel choices ([295b3dd](https://github.com/adrighem/PyPluginStore/commit/295b3dd80d8d87981b9f95839f7eb674b7a2a54d)), closes [#122](https://github.com/adrighem/PyPluginStore/issues/122)
+
 ## [2.22.0](https://github.com/adrighem/PyPluginStore/compare/v2.21.1...v2.22.0) (2026-07-23)
 
 
