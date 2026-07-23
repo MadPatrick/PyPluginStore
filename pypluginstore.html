@@ -1102,11 +1102,6 @@
         border-color: var(--pps-warning);
     }
 
-    #pypluginstore-container .self-update-detail {
-        color: var(--pps-text-muted);
-        font-weight: 600;
-    }
-
     #pypluginstore-container .btn-update-disabled {
         background: var(--pps-card-button-bg) !important;
         color: var(--pps-text-muted) !important;
@@ -1242,6 +1237,8 @@
     let platformCache = {};
     let installedMatchDetailsCache = {};
     let managerKey = null;
+    let managerIdentityVerdict = null;
+    let managerStatusDetail = '';
     let selfUpdateState = null;
     let localRegistryEntries = [];
     let localRegistryRevision = '';
@@ -1297,6 +1294,117 @@
         console.log("PyPluginStore Status: " + msg);
         const el = document.getElementById('pypluginstore-status');
         if (el) el.innerText = msg;
+    }
+
+    function managerIdentityAllowsMutations(verdict) {
+        return Boolean(
+            verdict &&
+            verdict.state === 'consistent' &&
+            verdict.mutations_allowed === true
+        );
+    }
+
+    function managerActionIsMutating(action) {
+        return [
+            'install',
+            'update',
+            'remove',
+            'rollback',
+            'use_release',
+            'upsert_local_registry_entry',
+            'delete_local_registry_entry'
+        ].includes(String(action || ''));
+    }
+
+    function setManagerIdentityDisabled(control, disabled) {
+        if (!control) return;
+        if (disabled) {
+            if (control.dataset.managerIdentityDisabled !== 'true') {
+                control.dataset.managerIdentityWasDisabled = control.disabled ? 'true' : 'false';
+                control.dataset.managerIdentityTitle = control.title || '';
+            }
+            control.dataset.managerIdentityDisabled = 'true';
+            control.disabled = true;
+            control.title = managerIdentityVerdict && managerIdentityVerdict.message
+                ? managerIdentityVerdict.message
+                : 'PyPluginStore is read-only until its versions match.';
+            return;
+        }
+        if (control.dataset.managerIdentityDisabled === 'true') {
+            control.disabled = control.dataset.managerIdentityWasDisabled === 'true';
+            control.title = control.dataset.managerIdentityTitle || '';
+            delete control.dataset.managerIdentityDisabled;
+            delete control.dataset.managerIdentityWasDisabled;
+            delete control.dataset.managerIdentityTitle;
+        }
+    }
+
+    function updateManagerMutationControls() {
+        const disabled = !managerIdentityAllowsMutations(managerIdentityVerdict);
+        document.querySelectorAll('button[data-action]').forEach(control => {
+            if (managerActionIsMutating(control.dataset.action)) {
+                setManagerIdentityDisabled(control, disabled);
+            }
+        });
+        const localRegistryControls = [
+            document.getElementById('local-registry-add'),
+            document.getElementById('local-registry-save')
+        ];
+        document.querySelectorAll(
+            '.local-registry-edit, .local-registry-delete'
+        ).forEach(control => localRegistryControls.push(control));
+        localRegistryControls.forEach(control => {
+            setManagerIdentityDisabled(control, disabled);
+            if (control && localRegistryReadOnly) control.disabled = true;
+        });
+    }
+
+    function renderManagerStatus(detailMessage) {
+        if (typeof detailMessage === 'string') {
+            managerStatusDetail = detailMessage.trim();
+        }
+        const parts = [];
+        if (managerIdentityVerdict) {
+            const runtime = managerIdentityVerdict.runtime || {};
+            let runtimeLabel = '';
+            if (runtime.product_version && runtime.build_id) {
+                runtimeLabel = 'PyPluginStore v' + runtime.product_version +
+                    ' · build ' + String(runtime.build_id).slice(0, 12);
+                if (runtime.git_commit) {
+                    runtimeLabel += ' · git ' + String(runtime.git_commit).slice(0, 8);
+                }
+            }
+            const verdictMessage = String(managerIdentityVerdict.message || '').trim();
+            parts.push(verdictMessage || runtimeLabel);
+        }
+        if (selfUpdateIsVisible(selfUpdateState)) {
+            const selfUpdateMessage = String(
+                selfUpdateState.message || selfUpdatePhaseLabel(selfUpdateState)
+            ).trim();
+            const combined = parts.join(' · ');
+            if (selfUpdateMessage && !combined.includes(selfUpdateMessage)) {
+                parts.push('Self-update: ' + selfUpdateMessage);
+            }
+        }
+        if (managerStatusDetail && !parts.join(' · ').includes(managerStatusDetail)) {
+            parts.push(managerStatusDetail);
+        }
+        setStatus(parts.filter(Boolean).join(' · ') || 'Initializing...');
+    }
+
+    function applyManagerIdentityVerdict(verdict) {
+        managerIdentityVerdict = verdict && typeof verdict === 'object'
+            ? verdict
+            : {
+                schema_version: 1,
+                state: 'unverifiable',
+                coherent: false,
+                mutations_allowed: false,
+                message: 'PyPluginStore backend does not report a runtime identity. Restart or update PyPluginStore, then hard-refresh this page.',
+                runtime: {}
+            };
+        updateManagerMutationControls();
+        renderManagerStatus();
     }
 
     function readStoredInstalledFilter() {
@@ -2456,12 +2564,12 @@
             filterAndRender();
         };
 
-        setStatus("Finding API bridge...");
+        renderManagerStatus("Finding API bridge...");
         try {
             await findApiBridgeDevices();
 
             if (!payloadIdx || !triggerIdx) {
-                setStatus("Error: PyPluginStore devices not found (" + (payloadIdx ? 'Y' : 'N') + "/" + (triggerIdx ? 'Y' : 'N') + "). Please ensure the plugin is added in Hardware.");
+                renderManagerStatus("Error: PyPluginStore devices not found (" + (payloadIdx ? 'Y' : 'N') + "/" + (triggerIdx ? 'Y' : 'N') + "). Please ensure the plugin is added in Hardware.");
                 return;
             }
 
@@ -2469,7 +2577,7 @@
             loadPlugins();
         } catch (e) {
             console.error("Init Error:", e);
-            setStatus("Failed to connect to Domoticz API: " + e.message);
+            renderManagerStatus("Failed to connect to Domoticz API: " + e.message);
         }
     }
 
@@ -2509,6 +2617,24 @@
     }
 
     async function sendCommand(action, data, options = {}) {
+        if (
+            managerActionIsMutating(action) &&
+            !managerIdentityAllowsMutations(managerIdentityVerdict)
+        ) {
+            renderManagerStatus(
+                managerIdentityVerdict && managerIdentityVerdict.message
+                    ? managerIdentityVerdict.message
+                    : 'PyPluginStore is read-only until its versions match.'
+            );
+            return {
+                status: 'error',
+                action,
+                code: 'manager_identity_mismatch',
+                message: managerIdentityVerdict && managerIdentityVerdict.message
+                    ? managerIdentityVerdict.message
+                    : 'PyPluginStore versions do not match.'
+            };
+        }
         if (isLoading) {
             alert("An operation is already in progress. Please wait.");
             return null;
@@ -2518,7 +2644,15 @@
         try {
             await clearApiBridgePayload();
             const txId = Date.now().toString();
-            const payload = JSON.stringify({ action, tx_id: txId, ...data });
+            const payload = JSON.stringify({
+                action,
+                tx_id: txId,
+                ...data,
+                frontend_identity: MANAGER_FRONTEND_IDENTITY
+            });
+            if (payload.length > LOCAL_REGISTRY_PAYLOAD_MAX_LENGTH) {
+                throw new Error("Request is too large for the Domoticz API bridge.");
+            }
 
             console.log("Sending command: " + action, payload);
             await fetch(`json.htm?type=command&param=udevice&idx=${payloadIdx}&nvalue=0&svalue=${encodeURIComponent(payload)}`);
@@ -2557,6 +2691,9 @@
                         if (isExpectedActionResponse || isExpectedErrorResponse) {
                             console.log("Received response:", data);
                             await clearApiBridgePayload();
+                            if (typeof applyManagerIdentityVerdict === 'function') {
+                                applyManagerIdentityVerdict(data.manager_identity);
+                            }
                             return data;
                         }
                     } catch (e) {}
@@ -2569,10 +2706,11 @@
     }
 
     async function loadPlugins() {
-        setStatus("Loading plugins from registry...");
+        renderManagerStatus("Loading plugins from registry...");
         try {
             const response = await sendCommand('list_plugins', {});
             if (response && response.status === 'success') {
+                applyManagerIdentityVerdict(response.manager_identity);
                 pluginCache = response.data;
                 installedCache = response.installed;
                 localCache = response.local_plugins || [];
@@ -2583,13 +2721,14 @@
                 installedMatchDetailsCache = response.installed_match_details || {};
                 managerKey = response.manager_key || null;
                 selfUpdateState = response.self_update || null;
+                renderManagerStatus();
                 filterAndRender();
-                setStatus(`Loaded ${Object.keys(response.data).length} plugins.`);
+                renderManagerStatus(`Loaded ${Object.keys(response.data).length} plugins.`);
             } else {
-                setStatus("Error loading plugins: " + (response ? response.message : "Unknown error"));
+                renderManagerStatus("Error loading plugins: " + (response ? response.message : "Unknown error"));
             }
         } catch (e) {
-            setStatus(e.message);
+            renderManagerStatus(e.message);
         }
     }
 
@@ -2679,8 +2818,13 @@
     }
 
     function updateLocalRegistryMutationState() {
-        document.getElementById('local-registry-add').disabled = localRegistryReadOnly;
-        document.getElementById('local-registry-save').disabled = localRegistryReadOnly;
+        const mutationsBlocked = (
+            localRegistryReadOnly ||
+            !managerIdentityAllowsMutations(managerIdentityVerdict)
+        );
+        document.getElementById('local-registry-add').disabled = mutationsBlocked;
+        document.getElementById('local-registry-save').disabled = mutationsBlocked;
+        updateManagerMutationControls();
     }
 
     function renderLocalRegistryEntries() {
@@ -2740,16 +2884,23 @@
                 actions.className = 'local-registry-entry-actions';
                 const editButton = document.createElement('button');
                 editButton.type = 'button';
+                editButton.className = 'local-registry-edit';
                 editButton.textContent = 'Edit';
-                editButton.disabled = localRegistryReadOnly;
+                editButton.disabled = (
+                    localRegistryReadOnly ||
+                    !managerIdentityAllowsMutations(managerIdentityVerdict)
+                );
                 editButton.onclick = function() {
                     showLocalRegistryForm(entry);
                 };
                 const deleteButton = document.createElement('button');
                 deleteButton.type = 'button';
-                deleteButton.className = 'local-registry-danger';
+                deleteButton.className = 'local-registry-danger local-registry-delete';
                 deleteButton.textContent = 'Delete';
-                deleteButton.disabled = localRegistryReadOnly;
+                deleteButton.disabled = (
+                    localRegistryReadOnly ||
+                    !managerIdentityAllowsMutations(managerIdentityVerdict)
+                );
                 deleteButton.onclick = function() {
                     localRegistryPendingDeleteKey = entry.key;
                     renderLocalRegistryEntries();
@@ -2786,8 +2937,9 @@
         };
         const deleteButton = document.createElement('button');
         deleteButton.type = 'button';
-        deleteButton.className = 'local-registry-danger';
+        deleteButton.className = 'local-registry-danger local-registry-delete';
         deleteButton.textContent = 'Delete override';
+        deleteButton.disabled = !managerIdentityAllowsMutations(managerIdentityVerdict);
         deleteButton.onclick = function() {
             deleteLocalRegistryEntry(entry.key);
         };
@@ -2901,7 +3053,8 @@
             tx_id: '0000000000000',
             expected_revision: localRegistryRevision,
             original_key: localRegistryOriginalKey,
-            entry
+            entry,
+            frontend_identity: MANAGER_FRONTEND_IDENTITY
         };
         return JSON.stringify(request).length <= LOCAL_REGISTRY_PAYLOAD_MAX_LENGTH;
     }
@@ -2929,7 +3082,7 @@
                 await loadLocalRegistry();
                 await loadPlugins();
                 showLocalRegistryList();
-                setStatus('Local registry entry saved.');
+                renderManagerStatus('Local registry entry saved.');
                 return;
             }
 
@@ -2960,7 +3113,7 @@
                 await loadLocalRegistry();
                 await loadPlugins();
                 showLocalRegistryList();
-                setStatus('Local registry override deleted.');
+                renderManagerStatus('Local registry override deleted.');
                 return;
             }
             setLocalRegistryAlert(
@@ -3203,21 +3356,6 @@
         return 'Self-update';
     }
 
-    function renderSelfUpdateState(meta) {
-        if (!selfUpdateIsVisible(selfUpdateState)) return;
-
-        const phase = selfUpdatePhase(selfUpdateState);
-        const message = selfUpdateState.message || selfUpdatePhaseLabel(selfUpdateState);
-        const detail = document.createElement('span');
-        detail.className = 'self-update-detail self-update-detail-' + phase;
-        detail.textContent = 'Self-update: ' + message;
-        if (selfUpdateState.log_file && (phase === 'failed' || phase === 'preflight_failed' || phase === 'stale_unknown')) {
-            detail.title = 'Details: ' + selfUpdateState.log_file;
-        }
-        meta.appendChild(document.createElement('br'));
-        meta.appendChild(detail);
-    }
-
     function appendSelfUpdateBadge(statusBadges) {
         if (!selfUpdateIsVisible(selfUpdateState)) return;
 
@@ -3225,9 +3363,6 @@
         const badge = document.createElement('span');
         badge.className = 'self-update-badge self-update-badge-' + phase;
         badge.textContent = selfUpdatePhaseLabel(selfUpdateState);
-        if (selfUpdateState.log_file) {
-            badge.title = 'Details: ' + selfUpdateState.log_file;
-        }
         statusBadges.appendChild(badge);
     }
 
@@ -3509,10 +3644,6 @@
                 }
             }
 
-            if (isManager) {
-                renderSelfUpdateState(meta);
-            }
-
             if (isInstalled && hasRepoMismatch) {
                 const installedRepo = String(matchDetails.installed_repo || 'unknown repo');
                 const installedBranch = String(matchDetails.installed_branch || '');
@@ -3629,14 +3760,26 @@
                 handleAction(this.getAttribute('data-action'), this.getAttribute('data-key'));
             };
         });
+        updateManagerMutationControls();
     }
 
     async function handleAction(action, pluginKey) {
+        if (
+            managerActionIsMutating(action) &&
+            !managerIdentityAllowsMutations(managerIdentityVerdict)
+        ) {
+            renderManagerStatus(
+                managerIdentityVerdict && managerIdentityVerdict.message
+                    ? managerIdentityVerdict.message
+                    : 'PyPluginStore is read-only until its versions match.'
+            );
+            return;
+        }
         if (action === 'remove' && !confirm(`Are you sure you want to remove ${pluginKey}?`)) {
             return;
         }
 
-        setStatus(`Executing ${action} for ${pluginKey}... This may take a moment.`);
+        renderManagerStatus(`Executing ${action} for ${pluginKey}... This may take a moment.`);
         try {
             const isReleaseManagementAction = ['update', 'use_release', 'rollback'].includes(action);
             const response = isReleaseManagementAction ?
@@ -3645,9 +3788,10 @@
             if (response && response.status === 'success') {
                 const successMessage = response.message || `Successfully completed ${action} for ${pluginKey}. Domoticz restart may be required.`;
                 alert(successMessage);
-                setStatus(successMessage);
+                renderManagerStatus(successMessage);
                 if (response.operation === 'self_update') {
                     selfUpdateState = response.self_update || selfUpdateState;
+                    renderManagerStatus();
                     filterAndRender();
                     pollSelfUpdateStatus();
                 } else if (!(action === 'update' && pluginKey === managerKey)) {
@@ -3655,11 +3799,11 @@
                 }
             } else {
                 alert(`Error during ${action}: ` + (response ? response.message : "Unknown error"));
-                setStatus("Operation failed.");
+                renderManagerStatus("Operation failed.");
             }
         } catch (e) {
             alert("Error: " + e.message);
-            setStatus("Operation failed.");
+            renderManagerStatus("Operation failed.");
         }
     }
 
@@ -3670,9 +3814,10 @@
                 const response = await sendCommand('self_update_status', {}, { retries: 10 });
                 if (response && response.status === 'success') {
                     selfUpdateState = response.self_update || selfUpdateState;
+                    renderManagerStatus();
                     filterAndRender();
                     if (!selfUpdateIsActive(selfUpdateState)) {
-                        setStatus(selfUpdateState && selfUpdateState.message ? selfUpdateState.message : "Self-update status refreshed.");
+                        renderManagerStatus(selfUpdateState && selfUpdateState.message ? selfUpdateState.message : "Self-update status refreshed.");
                         return;
                     }
                 }
@@ -3685,7 +3830,7 @@
     async function refreshUpdateStatus() {
         if (!pluginCache) return;
 
-        setStatus("Refreshing update status...");
+        renderManagerStatus("Refreshing update status...");
         try {
             const response = await sendCommand('refresh_update_status', {});
             if (response && response.status === 'success') {
@@ -3699,15 +3844,16 @@
                 installedMatchDetailsCache = response.installed_match_details || installedMatchDetailsCache;
                 managerKey = response.manager_key || managerKey;
                 selfUpdateState = response.self_update || selfUpdateState;
+                renderManagerStatus();
                 filterAndRender();
-                setStatus("Update status refreshed.");
+                renderManagerStatus("Update status refreshed.");
             } else {
                 alert("Refresh failed: " + (response ? response.message : "Unknown error"));
-                setStatus("Refresh failed.");
+                renderManagerStatus("Refresh failed.");
             }
         } catch (e) {
             alert("Refresh failed: " + e.message);
-            setStatus("Refresh failed.");
+            renderManagerStatus("Refresh failed.");
         }
     }
 
@@ -3716,18 +3862,18 @@
             return;
         }
 
-        setStatus("Requesting Domoticz restart...");
+        renderManagerStatus("Requesting Domoticz restart...");
         try {
             const response = await sendCommand('restart_domoticz', {});
             if (response && response.status === 'success') {
-                setStatus("Domoticz restart requested. Reconnect after the service comes back online.");
+                renderManagerStatus("Domoticz restart requested. Reconnect after the service comes back online.");
             } else {
                 alert("Restart request failed: " + (response ? response.message : "Unknown error"));
-                setStatus("Restart request failed.");
+                renderManagerStatus("Restart request failed.");
             }
         } catch (e) {
             alert("Restart request failed: " + e.message);
-            setStatus("Restart request failed.");
+            renderManagerStatus("Restart request failed.");
         }
     }
 
