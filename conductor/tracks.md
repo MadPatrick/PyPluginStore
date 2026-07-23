@@ -29,5 +29,5 @@ This file tracks all major tracks for the project. Each track has its own detail
 
 ---
 
-## [~] Track: Verify frontend, backend, and installed PyPluginStore identities
+## [x] Track: Verify frontend, backend, and installed PyPluginStore identities
 *Link: [./conductor/tracks/manager_runtime_identity_20260723/](./conductor/tracks/manager_runtime_identity_20260723/)*
