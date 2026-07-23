@@ -307,6 +307,10 @@ def test_installed_head_ahead_of_release_never_migrates_silently(
     assert result.release_commit == release_commit
     assert result.trigger == trigger
     assert result.requires_confirmation is requires_confirmation
+    assert result.message == (
+        "The installed Git checkout contains commits newer than the available "
+        "Release."
+    )
     assert repository_snapshot(repository) == before
 
 
@@ -363,6 +367,10 @@ def test_diverged_history_never_migrates_silently(
     assert result.installed_commit == installed_commit
     assert result.release_commit == release_commit
     assert result.requires_confirmation is requires_confirmation
+    assert result.message == (
+        "The installed Git checkout contains commits that differ from the "
+        "available Release."
+    )
     assert repository_snapshot(repository) == before
 
 

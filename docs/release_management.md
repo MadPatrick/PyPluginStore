@@ -67,7 +67,8 @@ previous run. When a maintainer later publishes a stable release that matches
 the package policy, automation resolves and downloads it, certifies its archive
 and identities, and proposes the updated index in the weekly pull request.
 After review and merge, no registry identity change is needed: new installs use
-the release, and existing Git installs receive a migration decision.
+the release, and existing Git installs can choose **Use Release channel**
+instead of continuing with Git commits.
 
 Publishing a ZIP therefore can cause an automatic channel transition on a later
 weekly scan, but it never bypasses certification or pull-request review. A
@@ -116,12 +117,13 @@ and extracted, checked by canonical tree digest, compiled, and checked against
 the registered package and Domoticz identities. A release failure never falls
 back to a branch update.
 
-## Migrating an existing Git installation
+## Using the Release channel for an existing Git installation
 
-Migration is part of the normal **Update** flow. PyPluginStore may fetch object
-metadata only from the configured remote so it can inspect a newly released
-commit; it does not reset, clean, stash, switch, or rewrite the working branch
-during preflight.
+The channel change appears as **Use Release channel**, separate from a normal
+plugin update. Internally, PyPluginStore runs a migration preflight. It may fetch
+object metadata only from the configured remote so it can inspect a newly
+released commit; it does not reset, clean, stash, switch, or rewrite the working
+branch during preflight.
 
 Automatic migration requires all of the following:
 
@@ -136,7 +138,8 @@ Dirty, ahead, diverged, mismatched, locked, or insufficiently proven checkouts
 stay on Git and show the reason. A matching local registry override keeps the
 package Git-managed, while an existing safety hold prevents an immediate repeat
 of a rolled-back migration.
-Notification-only mode reports the available transition without changing files.
+Notification-only mode announces that the Release channel is available instead
+of reporting a newer plugin version, and it does not change files.
 Automatic-update mode executes only a fully proven transition; evidence marked
 manual requires an explicit, content-bound approval.
 

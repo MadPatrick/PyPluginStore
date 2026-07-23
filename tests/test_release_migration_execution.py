@@ -157,9 +157,10 @@ def test_management_map_exposes_confirmable_release_switch_not_artifact_only(
     assert management["migration_action_state"] == "confirmation_required"
     assert management["release_available"] is True
     assert management["updateable"] is False
-    assert "does not contain the installed commit" in management[
-        "migration_message"
-    ].lower()
+    assert management["migration_message"] == (
+        "The installed Git checkout contains commits newer than the available "
+        "Release."
+    )
 
 
 @pytest.mark.parametrize(
