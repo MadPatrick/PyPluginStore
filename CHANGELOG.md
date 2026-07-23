@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.22.2](https://github.com/adrighem/PyPluginStore/compare/v2.22.1...v2.22.2) (2026-07-23)
+
+
+### Bug Fixes
+
+* **self-update:** decode git output as UTF-8 ([ea42d20](https://github.com/adrighem/PyPluginStore/commit/ea42d2060118b8e4d76fd91d5aaaa57a07f4e667)), closes [#123](https://github.com/adrighem/PyPluginStore/issues/123)
+
 ## [2.22.1](https://github.com/adrighem/PyPluginStore/compare/v2.22.0...v2.22.1) (2026-07-23)
 
 
