@@ -1,4 +1,6 @@
+import hashlib
 import json
+import os
 import re
 from pathlib import Path
 
@@ -229,6 +231,48 @@ def test_runtime_snapshot_detects_same_version_installed_disk_change(
     assert "restart" in verdict["message"].lower()
 
 
+def test_cached_support_module_cannot_masquerade_as_loaded_disk_source(
+    plugin_core_module,
+    tmp_path,
+    monkeypatch,
+):
+    _, manager_dir = configure_home(plugin_core_module, tmp_path)
+    documents = bundle_documents()
+    write_bundle(manager_dir, documents)
+    monkeypatch.setattr(
+        plugin_core_module,
+        "__file__",
+        str(manager_dir / "plugin.py"),
+    )
+
+    def fingerprint(contents):
+        return (len(contents), hashlib.sha256(contents).hexdigest())
+
+    monkeypatch.setattr(
+        plugin_core_module,
+        "_MANAGER_LOADED_PLUGIN_SOURCE_FINGERPRINT",
+        fingerprint(documents["plugin.py"]),
+    )
+    monkeypatch.setattr(
+        plugin_core_module,
+        "_MANAGER_LOADED_PACKAGE_REGISTRY_FINGERPRINT",
+        (1, "f" * 64),
+    )
+    monkeypatch.setattr(
+        plugin_core_module,
+        "_MANAGER_LOADED_PACKAGE_IDENTITY_FINGERPRINT",
+        fingerprint(documents["package_identity.py"]),
+    )
+
+    plugin = plugin_core_module.BasePlugin()
+    service = plugin_core_module.ManagerIdentityService(plugin)
+
+    runtime_identity = service.capture_runtime()
+
+    assert runtime_identity["build_id"] == ""
+    assert "loaded" in service.runtime_error.lower()
+
+
 def test_deployed_template_byte_mismatch_is_reported_even_with_matching_identity(
     plugin_core_module,
     tmp_path,
@@ -249,6 +293,61 @@ def test_deployed_template_byte_mismatch_is_reported_even_with_matching_identity
     assert verdict["mutations_allowed"] is False
     assert verdict["deployed"]["identity"] == runtime_identity
     assert verdict["deployed"]["exact_match"] is False
+
+
+def test_deployment_replaces_stale_bytes_even_when_destination_mtime_is_newer(
+    plugin_core_module,
+    tmp_path,
+    monkeypatch,
+):
+    plugin, service, manager_dir, _commit, _runtime_identity = (
+        make_identity_service(plugin_core_module, tmp_path, monkeypatch)
+    )
+    destination = Path(plugin.get_host().ui_html_destination())
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    destination.write_bytes(b"stale custom page\n")
+    future_mtime = (
+        (manager_dir / "pypluginstore.html").stat().st_mtime + 3600
+    )
+    os.utime(destination, (future_mtime, future_mtime))
+
+    changed = service.deploy_runtime_frontend()
+
+    assert changed is True
+    assert destination.read_bytes() == service.render_runtime_frontend()
+    assert service.deploy_runtime_frontend() is False
+
+
+def test_atomic_deployment_failure_preserves_destination_and_cleans_temp_file(
+    plugin_core_module,
+    tmp_path,
+    monkeypatch,
+):
+    plugin, service, _manager_dir, _commit, _runtime_identity = (
+        make_identity_service(plugin_core_module, tmp_path, monkeypatch)
+    )
+    destination = Path(plugin.get_host().ui_html_destination())
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    previous_contents = b"previous complete custom page\n"
+    destination.write_bytes(previous_contents)
+    real_replace = plugin_core_module.os.replace
+
+    def fail_destination_replace(source, target):
+        if Path(target) == destination:
+            raise OSError("simulated atomic replace failure")
+        return real_replace(source, target)
+
+    monkeypatch.setattr(
+        plugin_core_module.os,
+        "replace",
+        fail_destination_replace,
+    )
+
+    with pytest.raises(OSError, match="simulated atomic replace failure"):
+        service.deploy_runtime_frontend()
+
+    assert destination.read_bytes() == previous_contents
+    assert list(destination.parent.glob(".pypluginstore-*.tmp")) == []
 
 
 @pytest.mark.parametrize(
@@ -333,6 +432,80 @@ def test_missing_or_symlinked_installed_identity_input_is_unverifiable(
     assert verdict["coherent"] is False
     assert verdict["mutations_allowed"] is False
     assert "verif" in verdict["message"].lower()
+
+
+@pytest.mark.parametrize("failure_kind", ["oversized", "unreadable"])
+def test_oversized_or_unreadable_installed_input_is_unverifiable(
+    plugin_core_module,
+    tmp_path,
+    monkeypatch,
+    failure_kind,
+):
+    plugin, service, manager_dir, _commit, runtime_identity = (
+        make_identity_service(plugin_core_module, tmp_path, monkeypatch)
+    )
+    deploy_runtime_frontend(service, plugin)
+    identity_module = manager_dir / "package_identity.py"
+
+    if failure_kind == "oversized":
+        with identity_module.open("wb") as identity_file:
+            identity_file.truncate(
+                plugin_core_module.MANAGER_IDENTITY_MAX_FILE_BYTES + 1
+            )
+    else:
+        real_open = plugin_core_module.os.open
+        identity_path = os.path.abspath(identity_module)
+
+        def deny_identity_open(path, flags, *args, **kwargs):
+            if os.path.abspath(os.fspath(path)) == identity_path:
+                raise PermissionError("simulated unreadable identity input")
+            return real_open(path, flags, *args, **kwargs)
+
+        monkeypatch.setattr(
+            plugin_core_module.os,
+            "open",
+            deny_identity_open,
+        )
+
+    verdict = service.get_verdict(frontend_identity=runtime_identity)
+
+    assert verdict["state"] == "unverifiable"
+    assert verdict["coherent"] is False
+    assert verdict["mutations_allowed"] is False
+    assert "verif" in verdict["message"].lower()
+
+
+@pytest.mark.parametrize("git_failure", ["nonzero", "exception"])
+def test_git_head_failure_is_optional_and_does_not_break_bundle_coherence(
+    plugin_core_module,
+    tmp_path,
+    monkeypatch,
+    git_failure,
+):
+    plugin, service, _manager_dir, _commit, runtime_identity = (
+        make_identity_service(plugin_core_module, tmp_path, monkeypatch)
+    )
+    deploy_runtime_frontend(service, plugin)
+    host = plugin.get_host()
+
+    def unavailable_git(*args, **kwargs):
+        if git_failure == "exception":
+            raise OSError("git unavailable")
+        return FakeGitResult(stderr="fatal: no HEAD\n", returncode=128)
+
+    monkeypatch.setattr(host, "run_git", unavailable_git)
+
+    verdict = service.get_verdict(
+        frontend_identity=runtime_identity,
+        self_update_state={"phase": "applied_needs_reload"},
+    )
+
+    assert verdict["state"] == "consistent"
+    assert verdict["coherent"] is True
+    assert verdict["mutations_allowed"] is True
+    assert verdict["runtime"]["build_id"] == verdict["installed"]["build_id"]
+    assert "git_commit" in verdict["runtime"]
+    assert "git_commit" not in verdict["installed"]
 
 
 def identity_verdict(

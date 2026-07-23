@@ -9,6 +9,22 @@ import unicodedata
 from dataclasses import dataclass
 
 
+def _capture_loaded_source_fingerprint():
+    try:
+        with open(__file__, "rb") as source_file:
+            contents = source_file.read(4 * 1024 * 1024 + 1)
+        if not contents or len(contents) > 4 * 1024 * 1024:
+            return None
+        return (len(contents), hashlib.sha256(contents).hexdigest())
+    except OSError:
+        return None
+
+
+PYPLUGINSTORE_LOADED_SOURCE_FINGERPRINT = (
+    _capture_loaded_source_fingerprint()
+)
+
+
 MAX_PLUGIN_SOURCE_BYTES = 4 * 1024 * 1024
 PLUGIN_TAG = re.compile(r"<plugin\b([^>]*)>", re.IGNORECASE | re.DOTALL)
 PLUGIN_ATTRIBUTE = re.compile(

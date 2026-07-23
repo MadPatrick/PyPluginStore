@@ -3,6 +3,8 @@ import os
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 CORE_FILE = os.path.join(SCRIPT_DIR, '../../plugin_core.py')
 OUTPUT_FILE = os.path.join(SCRIPT_DIR, '../../plugin.py')
+PLUGIN_VERSION = "2.21.1"  # x-release-please-version
+RELEASE_VERSION_MARKER = "x-release-please-" + "version"
 
 def generate_plugin():
     xml_header = f'''# PyPluginStore - PyPluginStore
@@ -12,9 +14,10 @@ def generate_plugin():
 #  Since (2018-02-23): Initial Version
 #
 
+PYPLUGINSTORE_VERSION = "{PLUGIN_VERSION}"  # {RELEASE_VERSION_MARKER}
 
 """
-<plugin key="PP-MANAGER" name="PyPluginStore" author="adrighem" version="2.21.1" externallink="https://forum.domoticz.com/viewtopic.php?t=44626"> <!-- x-release-please-version -->
+<plugin key="PP-MANAGER" name="PyPluginStore" author="adrighem" version="{PLUGIN_VERSION}" externallink="https://forum.domoticz.com/viewtopic.php?t=44626"> <!-- {RELEASE_VERSION_MARKER} -->
     <description>
         <h2>PyPluginStore</h2><br/>
         This plugin manages other Domoticz Python plugins.<br/><br/>

@@ -3,7 +3,11 @@ import os
 from datetime import datetime
 from pathlib import Path
 
-from plugin_core_helpers import configure_home, write_plugin_py
+from plugin_core_helpers import (
+    configure_home,
+    write_manager_identity_bundle,
+    write_plugin_py,
+)
 
 
 class FakeGitResult:
@@ -952,6 +956,7 @@ def test_self_update_status_command_returns_persisted_state(plugin_core_module, 
 
 def test_finalize_self_update_state_confirms_applied_target(plugin_core_module, tmp_path, monkeypatch):
     _, manager_dir = configure_home(plugin_core_module, tmp_path)
+    write_manager_identity_bundle(manager_dir)
     plugin = plugin_core_module.BasePlugin()
     host = plugin.get_host()
     host.write_self_update_state(

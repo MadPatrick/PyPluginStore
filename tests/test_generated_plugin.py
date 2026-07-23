@@ -1,3 +1,4 @@
+import re
 import subprocess
 import sys
 
@@ -25,3 +26,29 @@ def test_generated_plugin_py_is_current():
     finally:
         if plugin_file.read_bytes() != original:
             plugin_file.write_bytes(original)
+
+
+def test_generated_plugin_uses_one_release_version_source():
+    generator = (
+        REPO_ROOT / ".github" / "scripts" / "generate_plugin.py"
+    ).read_text(encoding="utf-8")
+    generated = (REPO_ROOT / "plugin.py").read_text(encoding="utf-8")
+
+    generator_version = re.search(
+        r'^PLUGIN_VERSION = "([^"]+)"',
+        generator,
+        flags=re.MULTILINE,
+    ).group(1)
+    runtime_version = re.search(
+        r'^PYPLUGINSTORE_VERSION = "([^"]+)"',
+        generated,
+        flags=re.MULTILINE,
+    ).group(1)
+    metadata_version = re.search(
+        r'<plugin\b[^>]*\bversion="([^"]+)"',
+        generated,
+    ).group(1)
+
+    assert generator.count("x-release-please-version") == 1
+    assert generated.count("x-release-please-version") == 2
+    assert generator_version == runtime_version == metadata_version
