@@ -26,3 +26,8 @@ This file tracks all major tracks for the project. Each track has its own detail
 
 ## [x] Track: Explicit package identities and automatic Git-to-release transitions
 *Link: [./conductor/tracks/package_identity_transition_20260721/](./conductor/tracks/package_identity_transition_20260721/)*
+
+---
+
+## [~] Track: Verify frontend, backend, and installed PyPluginStore identities
+*Link: [./conductor/tracks/manager_runtime_identity_20260723/](./conductor/tracks/manager_runtime_identity_20260723/)*

@@ -9,3 +9,4 @@
 - Keep Git available for plugins without validated releases, Local registry overrides, and verified rollback recovery. Do not expose a public Release-to-Git switch or silently fall back after release verification fails.
 - Resolve forge-specific releases in repository automation and publish normalized metadata so the Domoticz runtime remains forge-neutral and does not depend on hosted API availability or rate limits.
 - Migrate existing Git checkouts only through the normal upgrade flow, with dirty-tree detection, local-file preservation, rollback, and clear blocked states.
+- Show whether the browser page, loaded manager backend, deployed custom page, and installed manager files are coherent; block mutations on an identity-aware mismatch and put recovery guidance in the main page status.
