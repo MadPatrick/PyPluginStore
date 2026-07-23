@@ -64,8 +64,9 @@ content identity.
   switch release channel, or mutate the Local registry.
 - Read-only operations, self-update status, and Domoticz restart remain
   available for diagnosis and recovery.
-- Legacy clients without an identity remain compatible during rollout, but the
-  response identifies them as legacy.
+- Legacy clients without an identity remain compatible for read-only status and
+  restart recovery during rollout, but mutations are rejected and the response
+  identifies them as legacy.
 
 ### Frontend behavior
 
@@ -84,7 +85,10 @@ content identity.
 ### Self-update integration
 
 - Scheduled or running self-update is reported as update in progress.
-- After the helper changes disk files, the old backend reports restart required.
+- After the helper changes runtime bundle files, the old backend reports restart
+  required.
+- When a helper update changes only Git provenance or other non-runtime files,
+  the matching runtime and installed build IDs remain coherent without restart.
 - After backend reload and template deployment, an old browser page reports
   hard-refresh required.
 - Final self-update confirmation does not claim full coherence until the loaded
@@ -113,4 +117,3 @@ content identity.
 - Automatically restarting Domoticz or force-reloading the browser.
 - Treating documentation, registry data, or development scripts as runtime
   identity inputs.
-
