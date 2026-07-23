@@ -1,5 +1,20 @@
 # Changelog
 
+## [2.22.0](https://github.com/adrighem/PyPluginStore/compare/v2.21.1...v2.22.0) (2026-07-23)
+
+
+### Features
+
+* **manager:** integrate coherence recovery ([6782866](https://github.com/adrighem/PyPluginStore/commit/6782866f22144da80b8071dece1a45e1958d2b71))
+* **manager:** verify runtime identity coherence ([6fde83e](https://github.com/adrighem/PyPluginStore/commit/6fde83e82641ebbeaf3b0d710a0d3558d26aa6fd))
+* **ui:** enforce manager identity handshake ([4e2a2bd](https://github.com/adrighem/PyPluginStore/commit/4e2a2bd863a1d27d939eec9dd7156d74248d2401))
+* verify manager runtime identity coherence ([88b6de8](https://github.com/adrighem/PyPluginStore/commit/88b6de8aee1a1c9f6482df6f6c1e884bce2a7cf0))
+
+
+### Bug Fixes
+
+* **manager:** preserve stale-state recovery ([fb3ff4e](https://github.com/adrighem/PyPluginStore/commit/fb3ff4e9199656f2a29e66d0f42ee8633f3c3116))
+
 ## [2.21.1](https://github.com/adrighem/PyPluginStore/compare/v2.21.0...v2.21.1) (2026-07-22)
 
 
