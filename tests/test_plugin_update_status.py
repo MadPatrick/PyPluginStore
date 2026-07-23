@@ -3,7 +3,11 @@ import os
 from datetime import datetime
 from pathlib import Path
 
-from plugin_core_helpers import configure_home, write_plugin_py
+from plugin_core_helpers import (
+    configure_home,
+    write_manager_identity_bundle,
+    write_plugin_py,
+)
 
 
 class FakeGitResult:
@@ -952,6 +956,7 @@ def test_self_update_status_command_returns_persisted_state(plugin_core_module, 
 
 def test_finalize_self_update_state_confirms_applied_target(plugin_core_module, tmp_path, monkeypatch):
     _, manager_dir = configure_home(plugin_core_module, tmp_path)
+    write_manager_identity_bundle(manager_dir)
     plugin = plugin_core_module.BasePlugin()
     host = plugin.get_host()
     host.write_self_update_state(
@@ -963,7 +968,7 @@ def test_finalize_self_update_state_confirms_applied_target(plugin_core_module, 
 
     monkeypatch.setattr(
         host,
-        "run_git",
+        "run_git_read_only",
         lambda command, cwd, timeout=15: FakeGitResult(stdout="def2222\n"),
     )
 
@@ -990,7 +995,7 @@ def test_finalize_self_update_state_reports_unknown_when_head_cannot_be_verified
 
     monkeypatch.setattr(
         host,
-        "run_git",
+        "run_git_read_only",
         lambda command, cwd, timeout=15: FakeGitResult(stderr="fatal: no head\n", returncode=128),
     )
 

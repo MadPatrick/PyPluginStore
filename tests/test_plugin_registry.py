@@ -2,7 +2,11 @@ import json
 
 import pytest
 
-from plugin_core_helpers import configure_home, write_plugin_py
+from plugin_core_helpers import (
+    configure_home,
+    write_manager_identity_bundle,
+    write_plugin_py,
+)
 
 
 def self_hosted_release_entry(provider="gitea"):
@@ -48,7 +52,7 @@ def test_add_self_to_registry_uses_installed_folder(plugin_core_module, tmp_path
 
 def test_on_start_installs_custom_ui_and_icon_image(plugin_core_module, tmp_path, monkeypatch):
     _, manager_dir = configure_home(plugin_core_module, tmp_path)
-    (manager_dir / "pypluginstore.html").write_text("<div>Plugin Store</div>")
+    write_manager_identity_bundle(manager_dir)
     (manager_dir / "pypluginstore-icon.png").write_bytes(b"icon")
     plugin_core_module.Devices = {}
 
@@ -65,7 +69,11 @@ def test_on_start_installs_custom_ui_and_icon_image(plugin_core_module, tmp_path
     plugin_core_module.BasePlugin().onStart()
 
     domoticz_dir = tmp_path / "domoticz"
-    assert (domoticz_dir / "www" / "templates" / "pypluginstore.html").read_text() == "<div>Plugin Store</div>"
+    deployed_html = (
+        domoticz_dir / "www" / "templates" / "pypluginstore.html"
+    ).read_text()
+    assert "<div>Plugin Store</div>" in deployed_html
+    assert '"build_id":"0000000000000000' not in deployed_html
     assert (domoticz_dir / "www" / "images" / "pypluginstore-icon.png").read_bytes() == b"icon"
     assert not (domoticz_dir / "www" / "templates" / "pypluginstore-icon.png").exists()
 

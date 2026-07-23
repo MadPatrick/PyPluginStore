@@ -164,6 +164,12 @@ entries stay Git-managed. See [`registry_local.json` How-To](registry_local.md).
 PyPluginStore's own self-update also intentionally stays Git-based. It is not
 selected from `release_index.json`.
 
+The manager uses a deterministic runtime build ID in addition to its semantic
+version. After self-update, a changed runtime bundle requires a Domoticz
+restart; a Git change outside that bundle does not. Until the loaded backend,
+installed files, deployed custom page, and browser page agree, the Plugin Store
+reports recovery guidance in its main status and keeps mutations read-only.
+
 ## Deployment upgrade path
 
 The public v2 cutover is staged. First, a manager version that reads both legacy

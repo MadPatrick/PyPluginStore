@@ -24,10 +24,16 @@
 - Local registry writes must use backend-owned per-entry CRUD, exact-byte revisions, and atomic replacement; never let the browser replace the whole registry document or overwrite malformed/stale data.
 - Keep plugin folder matching and UI plugin-name cleanup aligned. When changing flexible folder-name matching in the plugin, review/update the UI cleanup logic too, and vice versa, so the visible names users compare match the install-detection names PyPluginStore accepts.
 - Custom UI bridge device discovery must include hidden Domoticz devices because users may hide the text payload device from normal overviews.
-- The installed plugin version can advance before Domoticz reloads the custom
-  page copied into `www/templates`. When a screenshot reports a current version
-  but lacks current controls, first verify a Domoticz restart, browser hard
-  refresh, and the narrow custom-UI autoinstall log result.
+- Manager coherence needs an exact build ID as well as a semantic version:
+  freeze the loaded runtime before self-update, recompute installed files,
+  compare the exact deployed page and browser identity, and treat Git revision
+  as diagnostic provenance only.
+- Keep manager mismatch and self-update recovery guidance in
+  `#pypluginstore-status`; card badges may stay compact, but card-specific detail
+  renderers can hide or duplicate the authoritative recovery state.
+- Manager identity mismatches fail closed for mutations. Legacy, stale, or
+  malformed pages retain list/status and restart recovery but must hard-refresh
+  before changing plugins or the Local registry.
 - The custom UI bridge shares one text device for request and response data; always clear stale responses and treat response-looking payloads as stale bridge data, not inbound commands.
 - API bridge error responses may omit `action`; accept them by matching `status: "error"` plus the same `tx_id`, then clear the bridge payload.
 - Domoticz Python plugin APIs vary across supported Domoticz versions; optional APIs such as native notifications must be guarded with `hasattr`/`callable` checks.

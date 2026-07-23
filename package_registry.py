@@ -7,11 +7,28 @@ so compatibility does not leak into the current schema.
 
 import copy
 from datetime import datetime, timezone
+import hashlib
 import json
 import re
 import unicodedata
 import urllib.parse
 from dataclasses import dataclass
+
+
+def _capture_loaded_source_fingerprint():
+    try:
+        with open(__file__, "rb") as source_file:
+            contents = source_file.read(4 * 1024 * 1024 + 1)
+        if not contents or len(contents) > 4 * 1024 * 1024:
+            return None
+        return (len(contents), hashlib.sha256(contents).hexdigest())
+    except OSError:
+        return None
+
+
+PYPLUGINSTORE_LOADED_SOURCE_FINGERPRINT = (
+    _capture_loaded_source_fingerprint()
+)
 
 
 REGISTRY_SCHEMA_VERSION = 2

@@ -1,6 +1,7 @@
 from html.parser import HTMLParser
 import json
 import os
+import re
 import shutil
 import subprocess
 import tempfile
@@ -300,6 +301,47 @@ def test_api_bridge_payload_is_cleared_around_commands():
     assert "Could not clear API bridge payload" in script
 
 
+def test_custom_page_embeds_valid_manager_frontend_identity():
+    identity = extract_frozen_json_constant(
+        load_inline_script(),
+        "MANAGER_FRONTEND_IDENTITY",
+    )
+
+    assert identity["schema_version"] == 1
+    assert isinstance(identity["product_version"], str)
+    assert identity["product_version"].strip()
+    assert re.fullmatch(r"[0-9a-f]{64}", identity["build_id"])
+    assert set(identity).issubset(
+        {"schema_version", "product_version", "build_id", "git_commit"}
+    )
+    if "git_commit" in identity:
+        assert re.fullmatch(r"(?:[0-9a-f]{40}|[0-9a-f]{64})", identity["git_commit"])
+
+
+def test_every_frontend_command_includes_the_embedded_manager_identity():
+    send_command = extract_js_function(load_inline_script(), "sendCommand")
+
+    data_position = send_command.index("...data")
+    identity_position = send_command.index(
+        "frontend_identity: MANAGER_FRONTEND_IDENTITY"
+    )
+
+    # Keep the frozen page identity after caller data so a command cannot
+    # accidentally replace it.
+    assert data_position < identity_position
+
+
+def test_local_registry_payload_sizing_includes_the_frontend_identity():
+    request_fits = extract_js_function(
+        load_inline_script(),
+        "localRegistryRequestFitsBridge",
+    )
+
+    assert "frontend_identity: MANAGER_FRONTEND_IDENTITY" in request_fits
+    assert "JSON.stringify(request).length" in request_fits
+    assert "LOCAL_REGISTRY_PAYLOAD_MAX_LENGTH" in request_fits
+
+
 def test_api_bridge_accepts_error_response_without_action():
     node = shutil.which("node")
     if not node:
@@ -362,17 +404,155 @@ def test_self_update_does_not_reload_plugin_list_immediately():
     assert "action === 'update' && pluginKey === managerKey" in script
 
 
-def test_self_update_state_is_cached_rendered_and_polled():
+def test_list_plugins_applies_manager_coherence_before_rendering():
+    script = load_inline_script()
+    load_plugins = extract_js_function(script, "loadPlugins")
+
+    apply_position = load_plugins.index(
+        "applyManagerIdentityVerdict(response.manager_identity)"
+    )
+    render_position = load_plugins.index("filterAndRender()")
+
+    assert apply_position < render_position
+    assert "setStatus(`Loaded ${Object.keys(response.data).length} plugins.`)" not in (
+        load_plugins
+    )
+    assert "function renderManagerStatus" in script
+
+    render_status = extract_js_function(script, "renderManagerStatus")
+    assert "setStatus(" in render_status
+    assert "runtime" in render_status
+    assert "product_version" in render_status
+    assert "build_id" in render_status
+    assert "git_commit" in render_status
+    assert ".message" in render_status
+    assert "selfUpdateState" in render_status
+
+
+def test_manager_identity_states_gate_mutations_and_keep_recovery_read_only():
+    script = load_inline_script()
+    allows_mutations = extract_js_function(
+        script,
+        "managerIdentityAllowsMutations",
+    )
+    action_is_mutating = extract_js_function(script, "managerActionIsMutating")
+    node_script = f"""
+{allows_mutations}
+{action_is_mutating}
+
+const identityCases = [
+    [null, false],
+    [{{state: 'consistent', mutations_allowed: true}}, true],
+    [{{state: 'consistent', mutations_allowed: false}}, false],
+    [{{state: 'updating', mutations_allowed: false}}, false],
+    [{{state: 'restart_required', mutations_allowed: false}}, false],
+    [{{state: 'ui_deploy_stale', mutations_allowed: false}}, false],
+    [{{state: 'frontend_stale', mutations_allowed: false}}, false],
+    [{{state: 'legacy_frontend', mutations_allowed: false}}, false],
+    [{{state: 'unverifiable', mutations_allowed: false}}, false]
+];
+for (const [verdict, expected] of identityCases) {{
+    const actual = managerIdentityAllowsMutations(verdict);
+    if (actual !== expected) {{
+        throw new Error(
+            `Unexpected mutation verdict for ${{JSON.stringify(verdict)}}: ${{actual}}`
+        );
+    }}
+}}
+
+const mutatingActions = [
+    'install',
+    'update',
+    'remove',
+    'rollback',
+    'use_release',
+    'upsert_local_registry_entry',
+    'delete_local_registry_entry'
+];
+for (const action of mutatingActions) {{
+    if (!managerActionIsMutating(action)) {{
+        throw new Error(`Expected ${{action}} to be mutating`);
+    }}
+}}
+
+const recoveryActions = [
+    'list_plugins',
+    'refresh_update_status',
+    'get_local_registry',
+    'self_update_status',
+    'restart_domoticz'
+];
+for (const action of recoveryActions) {{
+    if (managerActionIsMutating(action)) {{
+        throw new Error(`Expected ${{action}} to remain available`);
+    }}
+}}
+"""
+
+    result = run_node_script(node_script)
+    assert result.returncode == 0, result.stderr
+
+    send_command = extract_js_function(script, "sendCommand")
+    assert "managerActionIsMutating(action)" in send_command
+    assert "managerIdentityAllowsMutations(managerIdentityVerdict)" in send_command
+    assert "renderManagerStatus(" in send_command
+
+
+def test_manager_identity_verdict_disables_mutating_controls():
+    script = load_inline_script()
+
+    assert "function updateManagerMutationControls" in script
+    update_controls = extract_js_function(
+        script,
+        "updateManagerMutationControls",
+    )
+    assert "managerIdentityAllowsMutations(managerIdentityVerdict)" in update_controls
+    assert "button[data-action]" in update_controls
+    assert "managerActionIsMutating" in update_controls
+    assert "local-registry-add" in update_controls
+    assert "local-registry-save" in update_controls
+    assert "local-registry-delete" in update_controls
+    assert ".disabled" in update_controls
+
+    apply_verdict = extract_js_function(script, "applyManagerIdentityVerdict")
+    assert "managerIdentityVerdict =" in apply_verdict
+    assert "updateManagerMutationControls()" in apply_verdict
+    assert "renderManagerStatus(" in apply_verdict
+
+
+def test_self_update_state_is_cached_polled_and_reported_in_main_status():
     script = load_inline_script()
 
     assert "let selfUpdateState = null;" in script
     assert "selfUpdateState = response.self_update || null;" in script
-    assert "function renderSelfUpdateState" in script
     assert "function selfUpdateIsActive" in script
     assert "async function pollSelfUpdateStatus" in script
     assert "sendCommand('self_update_status', {}, { retries: 10 })" in script
     assert "response.operation === 'self_update'" in script
     assert "pollSelfUpdateStatus();" in script
+
+    for function_name in (
+        "loadPlugins",
+        "handleAction",
+        "pollSelfUpdateStatus",
+        "refreshUpdateStatus",
+    ):
+        function_source = extract_js_function(script, function_name)
+        state_position = function_source.index("selfUpdateState =")
+        status_position = function_source.index(
+            "renderManagerStatus(",
+            state_position,
+        )
+        assert state_position < status_position
+
+
+def test_self_update_detail_card_rendering_is_removed_completely():
+    html = (REPO_ROOT / "pypluginstore.html").read_text(encoding="utf-8")
+    script = load_inline_script()
+
+    assert ".self-update-detail" not in html
+    assert "function renderSelfUpdateState" not in script
+    assert "renderSelfUpdateState(" not in script
 
 
 def test_installed_filter_state_is_persisted_in_local_storage():
@@ -819,6 +999,39 @@ def test_custom_ui_references_existing_icon_asset():
     assert (REPO_ROOT / "pypluginstore-icon.png").is_file()
 
 
+def run_node_script(source):
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("node is not installed")
+
+    with tempfile.NamedTemporaryFile(
+        suffix=".js",
+        mode="w",
+        delete=False,
+        encoding="utf-8",
+    ) as script_file:
+        script_file.write(source)
+        script_path = script_file.name
+    try:
+        return subprocess.run(
+            [node, script_path],
+            capture_output=True,
+            text=True,
+        )
+    finally:
+        os.remove(script_path)
+
+
+def extract_frozen_json_constant(script, constant_name):
+    prefix = "const " + constant_name + " = Object.freeze("
+    start = script.index(prefix) + len(prefix)
+    serialized = script[start:].lstrip()
+    value, end = json.JSONDecoder().raw_decode(serialized)
+    assert serialized[end:].lstrip().startswith(");")
+    assert isinstance(value, dict)
+    return value
+
+
 def load_inline_script():
     html = (REPO_ROOT / "pypluginstore.html").read_text()
     parser = InlineScriptParser()
@@ -840,7 +1053,20 @@ def extract_js_function(script, function_name):
     prefix_start = start - len(async_prefix)
     if prefix_start >= 0 and script[prefix_start:start] == async_prefix:
         start = prefix_start
-    brace_start = script.index("{", start)
+    arguments_start = script.index("(", start)
+    argument_depth = 0
+    arguments_end = None
+    for index in range(arguments_start, len(script)):
+        if script[index] == "(":
+            argument_depth += 1
+        elif script[index] == ")":
+            argument_depth -= 1
+            if argument_depth == 0:
+                arguments_end = index
+                break
+    if arguments_end is None:
+        raise AssertionError(function_name + " arguments were not closed")
+    brace_start = script.index("{", arguments_end)
     depth = 0
     for index in range(brace_start, len(script)):
         if script[index] == "{":

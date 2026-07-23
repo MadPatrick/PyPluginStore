@@ -36,6 +36,28 @@ from datetime import datetime, timedelta, timezone
 import Domoticz
 
 
+def _capture_loaded_source_fingerprint(path):
+    """Fingerprint module source at import time before disk can advance."""
+    try:
+        path_stat = os.lstat(path)
+        if stat.S_ISLNK(path_stat.st_mode) or not stat.S_ISREG(path_stat.st_mode):
+            return None
+        if path_stat.st_size <= 0 or path_stat.st_size > 8 * 1024 * 1024:
+            return None
+        with open(path, "rb") as source_file:
+            contents = source_file.read(8 * 1024 * 1024 + 1)
+        if not contents or len(contents) > 8 * 1024 * 1024:
+            return None
+        return (len(contents), hashlib.sha256(contents).hexdigest())
+    except OSError:
+        return None
+
+
+_MANAGER_LOADED_PLUGIN_SOURCE_FINGERPRINT = (
+    _capture_loaded_source_fingerprint(__file__)
+)
+
+
 def _load_package_registry_module():
     """Import sibling package contracts from normal or path-based loads."""
     try:
@@ -68,6 +90,11 @@ def _load_package_registry_module():
 _package_registry_module = _load_package_registry_module()
 PackageRegistry = _package_registry_module.PackageRegistry
 UpdateTimesDocument = _package_registry_module.UpdateTimesDocument
+_MANAGER_LOADED_PACKAGE_REGISTRY_FINGERPRINT = getattr(
+    _package_registry_module,
+    "PYPLUGINSTORE_LOADED_SOURCE_FINGERPRINT",
+    None,
+)
 
 
 def _load_package_identity_module():
@@ -101,10 +128,16 @@ def _load_package_identity_module():
 
 _package_identity_module = _load_package_identity_module()
 certify_plugin_py = _package_identity_module.certify_plugin_py
+_MANAGER_LOADED_PACKAGE_IDENTITY_FINGERPRINT = getattr(
+    _package_identity_module,
+    "PYPLUGINSTORE_LOADED_SOURCE_FINGERPRINT",
+    None,
+)
 
 
 API_PAYLOAD_MAX_LENGTH = 2000
 SELF_UPDATE_STARTUP_DELAY_SECONDS = 5
+SELF_UPDATE_ACTIVE_STALE_SECONDS = 15 * 60
 DEFAULT_GIT_HOST = "github.com"
 SUPPORTED_GIT_HOSTS = ("github.com", "gitlab.com", "codeberg.org")
 REPOSITORY_PATH_STOP_PARTS = {
@@ -249,7 +282,37 @@ class HostRuntime:
                 pass
             raise
 
-    def write_self_update_state(self, phase, message="", previous_state=None, **fields):
+    def prepare_web_file(self, path):
+        """Prepare a temporary web asset before it atomically becomes visible."""
+        return None
+
+    def write_web_bytes_atomic(self, path, contents):
+        """Replace a web asset without exposing a partially written file."""
+        if not isinstance(contents, (bytes, bytearray)):
+            raise ValueError("Web asset contents must be bytes.")
+        contents = bytes(contents)
+        destination_dir = os.path.dirname(path)
+        os.makedirs(destination_dir, exist_ok=True)
+        file_descriptor, tmp_path = tempfile.mkstemp(
+            prefix=".pypluginstore-",
+            suffix=".tmp",
+            dir=destination_dir,
+        )
+        try:
+            with os.fdopen(file_descriptor, "wb") as temporary_file:
+                temporary_file.write(contents)
+                temporary_file.flush()
+                os.fsync(temporary_file.fileno())
+            self.prepare_web_file(tmp_path)
+            os.replace(tmp_path, path)
+        except Exception:
+            try:
+                os.remove(tmp_path)
+            except OSError:
+                pass
+            raise
+
+    def build_self_update_state(self, phase, message="", previous_state=None, **fields):
         now = self.utc_timestamp()
         state = dict(previous_state or {})
         state.setdefault("created_at", now)
@@ -263,6 +326,15 @@ class HostRuntime:
         for key, value in fields.items():
             if value is not None:
                 state[key] = value
+        return state
+
+    def write_self_update_state(self, phase, message="", previous_state=None, **fields):
+        state = self.build_self_update_state(
+            phase,
+            message,
+            previous_state=previous_state,
+            **fields,
+        )
         self.write_json_atomic(self.self_update_state_file(), state)
         return state
 
@@ -1201,6 +1273,9 @@ class LinuxHostRuntime(HostRuntime):
             os.chmod(path, 0o644)
         except Exception as e:
             Domoticz.Debug(f"Could not update file permissions for {path}: {e}")
+
+    def prepare_web_file(self, path):
+        os.chmod(path, 0o644)
 
     def restart_command_groups(self):
         return [
@@ -13379,6 +13454,512 @@ class ReleaseManagementCoordinator:
         return None
 
 
+MANAGER_IDENTITY_SCHEMA_VERSION = 1
+MANAGER_IDENTITY_RUNTIME_FILES = (
+    "plugin.py",
+    "package_registry.py",
+    "package_identity.py",
+    "pypluginstore.html",
+)
+MANAGER_IDENTITY_MAX_FILE_BYTES = 4 * 1024 * 1024
+MANAGER_IDENTITY_MAX_BUNDLE_BYTES = 8 * 1024 * 1024
+MANAGER_IDENTITY_HASH_DOMAIN = b"PyPluginStore manager runtime identity\x00v1"
+MANAGER_FRONTEND_IDENTITY_PATTERN = re.compile(
+    rb"const MANAGER_FRONTEND_IDENTITY = Object\.freeze\((\{[^\r\n]*\})\);"
+    rb" // x-pypluginstore-manager-identity"
+)
+MANAGER_IDENTITY_RECOVERY_ACTIONS = frozenset(
+    {
+        "get_local_registry",
+        "list_plugins",
+        "refresh_update_status",
+        "restart_domoticz",
+        "self_update_status",
+    }
+)
+
+try:
+    PYPLUGINSTORE_VERSION
+except NameError:
+    PYPLUGINSTORE_VERSION = "development"
+
+
+def _manager_hash_frame(digest, value):
+    value = bytes(value)
+    digest.update(len(value).to_bytes(8, byteorder="big", signed=False))
+    digest.update(value)
+
+
+def compute_manager_build_id(documents):
+    """Return the deterministic build ID for the fixed manager runtime bundle."""
+    if not isinstance(documents, Mapping):
+        raise ValueError("Manager runtime documents must be a mapping.")
+
+    total_size = 0
+    digest = hashlib.sha256()
+    _manager_hash_frame(digest, MANAGER_IDENTITY_HASH_DOMAIN)
+    for relative_path in MANAGER_IDENTITY_RUNTIME_FILES:
+        contents = documents.get(relative_path)
+        if not isinstance(contents, (bytes, bytearray)):
+            raise ValueError(relative_path + " is missing from the manager runtime bundle.")
+        contents = bytes(contents)
+        if not contents or len(contents) > MANAGER_IDENTITY_MAX_FILE_BYTES:
+            raise ValueError(relative_path + " has an invalid manager runtime size.")
+        total_size += len(contents)
+        if total_size > MANAGER_IDENTITY_MAX_BUNDLE_BYTES:
+            raise ValueError("Manager runtime bundle exceeds the size limit.")
+        _manager_hash_frame(digest, relative_path.encode("utf-8"))
+        _manager_hash_frame(digest, contents)
+    return digest.hexdigest()
+
+
+def _read_manager_runtime_file(root, relative_path):
+    path = os.path.join(root, relative_path)
+    try:
+        path_stat = os.lstat(path)
+    except OSError as error:
+        raise ValueError(relative_path + " could not be read.") from error
+    if stat.S_ISLNK(path_stat.st_mode) or not stat.S_ISREG(path_stat.st_mode):
+        raise ValueError(relative_path + " must be a regular non-symlink file.")
+    if (
+        path_stat.st_size <= 0
+        or path_stat.st_size > MANAGER_IDENTITY_MAX_FILE_BYTES
+    ):
+        raise ValueError(relative_path + " has an invalid manager runtime size.")
+
+    open_flags = os.O_RDONLY
+    if hasattr(os, "O_BINARY"):
+        open_flags |= os.O_BINARY
+    if hasattr(os, "O_NOFOLLOW"):
+        open_flags |= os.O_NOFOLLOW
+    try:
+        file_descriptor = os.open(path, open_flags)
+        with os.fdopen(file_descriptor, "rb") as runtime_file:
+            opened_stat = os.fstat(runtime_file.fileno())
+            if (
+                not stat.S_ISREG(opened_stat.st_mode)
+                or opened_stat.st_dev != path_stat.st_dev
+                or opened_stat.st_ino != path_stat.st_ino
+            ):
+                raise ValueError(relative_path + " changed while it was being read.")
+            contents = runtime_file.read(MANAGER_IDENTITY_MAX_FILE_BYTES + 1)
+    except (OSError, ValueError) as error:
+        if isinstance(error, ValueError):
+            raise
+        raise ValueError(relative_path + " could not be read.") from error
+
+    if not contents or len(contents) > MANAGER_IDENTITY_MAX_FILE_BYTES:
+        raise ValueError(relative_path + " has an invalid manager runtime size.")
+    return contents
+
+
+def _read_manager_runtime_bundle(root):
+    root = os.path.abspath(root)
+    documents = {}
+    total_size = 0
+    for relative_path in MANAGER_IDENTITY_RUNTIME_FILES:
+        contents = _read_manager_runtime_file(root, relative_path)
+        total_size += len(contents)
+        if total_size > MANAGER_IDENTITY_MAX_BUNDLE_BYTES:
+            raise ValueError("Manager runtime bundle exceeds the size limit.")
+        documents[relative_path] = contents
+    return documents
+
+
+def _manager_product_version(plugin_contents):
+    try:
+        source = plugin_contents.decode("utf-8")
+    except UnicodeDecodeError as error:
+        raise ValueError("plugin.py encoding is invalid.") from error
+    plugin_tags = re.findall(
+        r"<plugin\b([^>]*)>",
+        source,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+    versions = []
+    for attributes in plugin_tags:
+        version_match = re.search(
+            r"\bversion\s*=\s*([\"'])(.*?)\1",
+            attributes,
+            flags=re.IGNORECASE | re.DOTALL,
+        )
+        if version_match:
+            versions.append(html.unescape(version_match.group(2)).strip())
+    if len(versions) != 1 or not versions[0]:
+        raise ValueError("plugin.py must declare exactly one manager version.")
+    if re.search(r"[\x00-\x1f\x7f]", versions[0]):
+        raise ValueError("plugin.py manager version is invalid.")
+    return versions[0]
+
+
+def _manager_identity_is_valid(identity):
+    if not isinstance(identity, dict):
+        return False
+    return (
+        identity.get("schema_version") == MANAGER_IDENTITY_SCHEMA_VERSION
+        and isinstance(identity.get("product_version"), str)
+        and bool(identity["product_version"].strip())
+        and isinstance(identity.get("build_id"), str)
+        and re.fullmatch(r"[0-9a-f]{64}", identity["build_id"]) is not None
+        and (
+            "git_commit" not in identity
+            or (
+                isinstance(identity["git_commit"], str)
+                and re.fullmatch(r"(?:[0-9a-f]{40}|[0-9a-f]{64})", identity["git_commit"])
+                is not None
+            )
+        )
+    )
+
+
+def _public_manager_identity(identity):
+    if not isinstance(identity, dict):
+        return {}
+    public_identity = {
+        "schema_version": identity.get(
+            "schema_version",
+            MANAGER_IDENTITY_SCHEMA_VERSION,
+        ),
+        "product_version": str(identity.get("product_version") or ""),
+        "build_id": str(identity.get("build_id") or ""),
+    }
+    git_commit = str(identity.get("git_commit") or "").lower()
+    if re.fullmatch(r"(?:[0-9a-f]{40}|[0-9a-f]{64})", git_commit):
+        public_identity["git_commit"] = git_commit
+    return public_identity
+
+
+def _manager_identities_match(first, second):
+    if not _manager_identity_is_valid(first) or not _manager_identity_is_valid(second):
+        return False
+    return (
+        first["schema_version"] == second["schema_version"]
+        and first["product_version"] == second["product_version"]
+        and first["build_id"] == second["build_id"]
+    )
+
+
+class ManagerIdentityService:
+    """Compare loaded, installed, deployed, and browser manager generations."""
+
+    def __init__(self, plugin):
+        self.plugin = plugin
+        self.runtime_documents = None
+        self.runtime_identity = None
+        self.runtime_error = ""
+        self.rendered_runtime_frontend = None
+
+    def _runtime_root(self):
+        loaded_module_path = os.path.abspath(__file__)
+        if os.path.basename(loaded_module_path).lower() == "plugin.py":
+            return os.path.dirname(loaded_module_path)
+        return self.plugin.get_host().plugin_home_folder()
+
+    def _git_commit(self, root):
+        try:
+            result = self.plugin.get_host().run_git_read_only(
+                ["git", "rev-parse", "--verify", "HEAD"],
+                root,
+                timeout=15,
+            )
+        except Exception:
+            return ""
+        if result is None or result.returncode != 0:
+            return ""
+        output = str(result.stdout or "").strip().splitlines()
+        commit = output[0].strip().lower() if output else ""
+        if re.fullmatch(r"(?:[0-9a-f]{40}|[0-9a-f]{64})", commit):
+            return commit
+        return ""
+
+    def _identity_from_documents(self, documents, root):
+        identity = {
+            "schema_version": MANAGER_IDENTITY_SCHEMA_VERSION,
+            "product_version": _manager_product_version(documents["plugin.py"]),
+            "build_id": compute_manager_build_id(documents),
+        }
+        git_commit = self._git_commit(root)
+        if git_commit:
+            identity["git_commit"] = git_commit
+        return identity
+
+    def _validate_loaded_source_fingerprints(self, documents):
+        if os.path.basename(os.path.abspath(__file__)).lower() != "plugin.py":
+            return
+        expected_fingerprints = {
+            "plugin.py": _MANAGER_LOADED_PLUGIN_SOURCE_FINGERPRINT,
+            "package_registry.py": (
+                _MANAGER_LOADED_PACKAGE_REGISTRY_FINGERPRINT
+            ),
+            "package_identity.py": (
+                _MANAGER_LOADED_PACKAGE_IDENTITY_FINGERPRINT
+            ),
+        }
+        for relative_path, expected in expected_fingerprints.items():
+            contents = documents[relative_path]
+            actual = (len(contents), hashlib.sha256(contents).hexdigest())
+            if expected is None or tuple(expected) != actual:
+                raise ValueError(
+                    relative_path
+                    + " does not match the source loaded by this runtime."
+                )
+
+    def _unverifiable_identity(self):
+        product_version = str(PYPLUGINSTORE_VERSION or "unknown")
+        return {
+            "schema_version": MANAGER_IDENTITY_SCHEMA_VERSION,
+            "product_version": product_version,
+            "build_id": "",
+        }
+
+    def capture_runtime(self):
+        """Freeze the loaded generation before self-update can change disk."""
+        if self.runtime_identity is not None:
+            return dict(self.runtime_identity)
+
+        runtime_root = self._runtime_root()
+        try:
+            documents = _read_manager_runtime_bundle(runtime_root)
+            self._validate_loaded_source_fingerprints(documents)
+            identity = self._identity_from_documents(documents, runtime_root)
+            expected_version = str(PYPLUGINSTORE_VERSION or "")
+            if (
+                os.path.basename(os.path.abspath(__file__)).lower() == "plugin.py"
+                and expected_version
+                and expected_version != "development"
+                and identity["product_version"] != expected_version
+            ):
+                raise ValueError("Loaded and declared manager versions do not match.")
+            self.runtime_documents = dict(documents)
+            self.runtime_identity = identity
+        except (OSError, ValueError) as error:
+            self.runtime_error = str(error)
+            self.runtime_identity = self._unverifiable_identity()
+            try:
+                self.runtime_documents = {
+                    "pypluginstore.html": _read_manager_runtime_file(
+                        runtime_root,
+                        "pypluginstore.html",
+                    )
+                }
+            except ValueError:
+                self.runtime_documents = None
+        return dict(self.runtime_identity)
+
+    def _replace_frontend_identity(self, source, identity):
+        matches = list(MANAGER_FRONTEND_IDENTITY_PATTERN.finditer(source))
+        if len(matches) != 1:
+            raise ValueError(
+                "pypluginstore.html must contain exactly one manager identity placeholder."
+            )
+        serialized = json.dumps(
+            _public_manager_identity(identity),
+            separators=(",", ":"),
+            sort_keys=True,
+        ).encode("ascii")
+        replacement = (
+            b"const MANAGER_FRONTEND_IDENTITY = Object.freeze("
+            + serialized
+            + b"); // x-pypluginstore-manager-identity"
+        )
+        match = matches[0]
+        return source[: match.start()] + replacement + source[match.end() :]
+
+    def render_runtime_frontend(self):
+        """Return the immutable custom page rendered for the loaded generation."""
+        self.capture_runtime()
+        if self.rendered_runtime_frontend is not None:
+            return self.rendered_runtime_frontend
+        if not self.runtime_documents:
+            raise ValueError("Loaded manager frontend could not be captured.")
+        source = self.runtime_documents.get("pypluginstore.html")
+        self.rendered_runtime_frontend = self._replace_frontend_identity(
+            source,
+            self.runtime_identity,
+        )
+        return self.rendered_runtime_frontend
+
+    def deploy_runtime_frontend(self):
+        """Atomically synchronize the Domoticz template with the loaded page."""
+        rendered = self.render_runtime_frontend()
+        destination = self.plugin.get_host().ui_html_destination()
+        current = None
+        try:
+            if os.path.islink(destination):
+                current = None
+            else:
+                with open(destination, "rb") as deployed_file:
+                    current = deployed_file.read(MANAGER_IDENTITY_MAX_FILE_BYTES + 1)
+        except OSError:
+            current = None
+        if current == rendered:
+            return False
+        self.plugin.get_host().write_web_bytes_atomic(destination, rendered)
+        return True
+
+    def _installed_identity(self):
+        installed_root = self.plugin.get_host().plugin_home_folder()
+        try:
+            documents = _read_manager_runtime_bundle(installed_root)
+            return self._identity_from_documents(documents, installed_root), ""
+        except (OSError, ValueError) as error:
+            return self._unverifiable_identity(), str(error)
+
+    def runtime_installation_status(self):
+        """Return whether the frozen runtime and current installed bundle match."""
+        runtime = self.capture_runtime()
+        installed, installed_error = self._installed_identity()
+        verifiable = (
+            _manager_identity_is_valid(runtime)
+            and not self.runtime_error
+            and _manager_identity_is_valid(installed)
+            and not installed_error
+        )
+        return {
+            "verifiable": verifiable,
+            "matches": verifiable
+            and _manager_identities_match(runtime, installed),
+            "runtime": _public_manager_identity(runtime),
+            "installed": _public_manager_identity(installed),
+        }
+
+    def _extract_frontend_identity(self, contents):
+        matches = list(MANAGER_FRONTEND_IDENTITY_PATTERN.finditer(contents))
+        if len(matches) != 1:
+            return {}
+        try:
+            identity = json.loads(matches[0].group(1).decode("ascii"))
+        except (UnicodeDecodeError, ValueError):
+            return {}
+        return _public_manager_identity(identity)
+
+    def _deployed_frontend(self):
+        deployed = {"identity": {}, "exact_match": False}
+        try:
+            rendered = self.render_runtime_frontend()
+            destination = self.plugin.get_host().ui_html_destination()
+            destination_stat = os.lstat(destination)
+            if stat.S_ISLNK(destination_stat.st_mode) or not stat.S_ISREG(
+                destination_stat.st_mode
+            ):
+                return deployed
+            if destination_stat.st_size > MANAGER_IDENTITY_MAX_FILE_BYTES:
+                return deployed
+            with open(destination, "rb") as deployed_file:
+                contents = deployed_file.read(MANAGER_IDENTITY_MAX_FILE_BYTES + 1)
+            if len(contents) > MANAGER_IDENTITY_MAX_FILE_BYTES:
+                return deployed
+            deployed["identity"] = self._extract_frontend_identity(contents)
+            deployed["exact_match"] = contents == rendered
+        except (OSError, ValueError):
+            pass
+        return deployed
+
+    def _identity_label(self, identity):
+        if not _manager_identity_is_valid(identity):
+            return "PyPluginStore"
+        label = (
+            "PyPluginStore v"
+            + identity["product_version"]
+            + " · build "
+            + identity["build_id"][:12]
+        )
+        if identity.get("git_commit"):
+            label += " · git " + identity["git_commit"][:8]
+        return label
+
+    def get_verdict(self, frontend_identity=None, self_update_state=None):
+        """Return a safe coherence verdict for one browser request."""
+        runtime = self.capture_runtime()
+        installed, installed_error = self._installed_identity()
+        deployed = self._deployed_frontend()
+        frontend = _public_manager_identity(frontend_identity)
+        runtime_valid = _manager_identity_is_valid(runtime) and not self.runtime_error
+        installed_valid = (
+            _manager_identity_is_valid(installed) and not installed_error
+        )
+        runtime_installed_match = _manager_identities_match(runtime, installed)
+        frontend_match = _manager_identities_match(runtime, frontend)
+        deployed_match = (
+            deployed["exact_match"]
+            and _manager_identities_match(runtime, deployed["identity"])
+        )
+        active_update = str((self_update_state or {}).get("phase") or "") in {
+            "scheduled",
+            "running",
+        }
+        label = self._identity_label(runtime)
+
+        if not runtime_valid or not installed_valid:
+            state = "unverifiable"
+            coherent = False
+            message = (
+                label
+                + " · runtime identity could not be verified. Repair or reinstall "
+                "PyPluginStore before making changes."
+            )
+        elif active_update:
+            state = "updating"
+            coherent = runtime_installed_match and deployed_match and frontend_match
+            message = (
+                label
+                + " · self-update is in progress. Changes are temporarily read-only."
+            )
+        elif not runtime_installed_match:
+            state = "restart_required"
+            coherent = False
+            message = (
+                label
+                + " is running, but a different build is installed. Restart "
+                "Domoticz to finish the PyPluginStore update."
+            )
+        elif not deployed_match:
+            state = "ui_deploy_stale"
+            coherent = False
+            message = (
+                label
+                + " · the Domoticz custom page is not synchronized. Check template "
+                "permissions, restart Domoticz, then reload this page."
+            )
+        elif frontend_identity is None:
+            state = "legacy_frontend"
+            coherent = False
+            message = (
+                label
+                + " · this browser page has no runtime identity. Hard-refresh the "
+                "page to enable changes."
+            )
+        elif not frontend_match:
+            state = "frontend_stale"
+            coherent = False
+            message = (
+                label
+                + " · this browser page is from a different build. Hard-refresh "
+                "the page before making changes."
+            )
+        else:
+            state = "consistent"
+            coherent = True
+            message = (
+                label
+                + " · frontend, backend, and installed files match."
+            )
+
+        verdict = {
+            "schema_version": MANAGER_IDENTITY_SCHEMA_VERSION,
+            "state": state,
+            "coherent": coherent,
+            "mutations_allowed": state == "consistent",
+            "message": message,
+            "runtime": _public_manager_identity(runtime),
+            "installed": _public_manager_identity(installed),
+            "deployed": deployed,
+        }
+        if frontend:
+            verdict["frontend"] = frontend
+        return verdict
+
+
 class BasePlugin:
     enabled = False
     pluginState = "Not Ready"
@@ -13436,6 +14017,9 @@ class BasePlugin:
             self,
             release_strategy=self.release_install_update_strategy,
         )
+        self.manager_identity_service = None
+        self._api_frontend_identity = None
+        self._api_manager_identity = None
 
     def get_host(self):
         parameters = globals().get("Parameters")
@@ -13444,6 +14028,24 @@ class BasePlugin:
         if self.host is None or self.host.parameters is not parameters:
             self.host = make_host_runtime(parameters)
         return self.host
+
+    def getManagerIdentityService(self):
+        if self.manager_identity_service is None:
+            self.manager_identity_service = ManagerIdentityService(self)
+        return self.manager_identity_service
+
+    def captureManagerRuntimeIdentity(self):
+        return self.getManagerIdentityService().capture_runtime()
+
+    def getManagerIdentityVerdict(
+        self,
+        frontend_identity=None,
+        self_update_state=None,
+    ):
+        return self.getManagerIdentityService().get_verdict(
+            frontend_identity=frontend_identity,
+            self_update_state=self_update_state,
+        )
 
     def get_current_plugin_folder(self):
         return self.get_host().current_plugin_folder()
@@ -14991,6 +15593,15 @@ class BasePlugin:
 
             local_meta = self.parse_domoticz_plugin_metadata(plugin_dir)
             installed_version = local_meta.get("version") if local_meta else None
+            if (
+                plugin_key == self.get_current_plugin_folder()
+                and self.manager_identity_service is not None
+            ):
+                runtime_identity = (
+                    self.manager_identity_service.capture_runtime()
+                )
+                if _manager_identity_is_valid(runtime_identity):
+                    installed_version = runtime_identity["product_version"]
             available_version = None
 
             if update_status.get(plugin_key) == "available":
@@ -15422,6 +16033,18 @@ class BasePlugin:
 
         host = self.get_host()
         Domoticz.Log(f"PyPluginStore host runtime is: {host.platform_name}")
+        manager_identity = self.captureManagerRuntimeIdentity()
+        if _manager_identity_is_valid(manager_identity):
+            Domoticz.Log(
+                "PyPluginStore runtime identity: v"
+                + manager_identity["product_version"]
+                + " build "
+                + manager_identity["build_id"][:12]
+            )
+        else:
+            Domoticz.Error(
+                "PyPluginStore runtime identity could not be verified."
+            )
         self.finalizeSelfUpdateState()
 
         plugins_dir = host.plugins_dir()
@@ -15478,17 +16101,7 @@ class BasePlugin:
                     except Exception as e:
                         Domoticz.Error(f"Failed to remove legacy UI file: {e}")
                 
-                # Check if we need to copy (exists and different, or doesn't exist)
-                should_copy = True
-                if os.path.isfile(html_dst):
-                    src_mtime = os.path.getmtime(html_src)
-                    dst_mtime = os.path.getmtime(html_dst)
-                    if src_mtime <= dst_mtime:
-                        should_copy = False
-                
-                if should_copy:
-                    shutil.copyfile(html_src, html_dst)
-                    host.make_web_readable(html_dst)
+                if self.getManagerIdentityService().deploy_runtime_frontend():
                     Domoticz.Log(f"Custom UI autoinstalled/updated: {html_dst}")
                 else:
                     Domoticz.Debug("Custom UI is already up to date.")
@@ -16195,6 +16808,44 @@ class BasePlugin:
         # Ensure action is a safe string
         action = str(payload.get("action", ""))
         plugins_dir = self.get_host().plugins_dir()
+        self._api_frontend_identity = None
+        self._api_manager_identity = None
+        if self.manager_identity_service is not None:
+            frontend_identity = (
+                payload.get("frontend_identity")
+                if "frontend_identity" in payload
+                else None
+            )
+            if "frontend_identity" in payload and not isinstance(
+                frontend_identity,
+                dict,
+            ):
+                frontend_identity = {}
+            self._api_frontend_identity = frontend_identity
+            self._api_manager_identity = self.getManagerIdentityVerdict(
+                frontend_identity=frontend_identity,
+                self_update_state=self.getSelfUpdateState(),
+            )
+            if (
+                action not in MANAGER_IDENTITY_RECOVERY_ACTIONS
+                and not self._api_manager_identity.get(
+                    "mutations_allowed",
+                    False,
+                )
+            ):
+                self.sendApiResponse(
+                    {
+                        "status": "error",
+                        "action": action,
+                        "code": "manager_identity_mismatch",
+                        "message": self._api_manager_identity.get(
+                            "message",
+                            "PyPluginStore generations do not match.",
+                        ),
+                        "manager_identity": self._api_manager_identity,
+                    }
+                )
+                return
         
         if action == "get_local_registry":
             document = self.local_registry_service.read_document()
@@ -16325,11 +16976,14 @@ class BasePlugin:
                 "self_update": self.getSelfUpdateState()
             })
         elif action == "self_update_status":
-            self.sendApiResponse({
+            response = {
                 "status": "success",
                 "action": action,
-                "self_update": self.getSelfUpdateState()
-            })
+                "self_update": self.getSelfUpdateState(),
+            }
+            if self._api_manager_identity is not None:
+                response["manager_identity"] = self._api_manager_identity
+            self.sendApiResponse(response)
         elif action == "use_git":
             self.sendApiResponse({
                 "status": "error",
@@ -16420,13 +17074,20 @@ class BasePlugin:
         elif action == "restart_domoticz":
             restart_success, restart_message = self.restartDomoticz()
             if restart_success:
-                self.sendApiResponse({
+                response = {
                     "status": "success",
                     "action": action,
-                    "message": restart_message
-                })
+                    "message": restart_message,
+                }
             else:
-                self.sendApiResponse({"status": "error", "action": action, "message": restart_message})
+                response = {
+                    "status": "error",
+                    "action": action,
+                    "message": restart_message,
+                }
+            if self._api_manager_identity is not None:
+                response["manager_identity"] = self._api_manager_identity
+            self.sendApiResponse(response)
         elif action == "remove":
             plugin_key = payload.get("plugin_key", "")
             remove_success, remove_message = self.removePlugin(plugin_key)
@@ -16444,7 +17105,49 @@ class BasePlugin:
         return self.update_status_service.get_git_update_status(plugin_dir, plugin_key, fetch_first)
 
     def getSelfUpdateState(self):
-        return self.get_host().read_self_update_state()
+        host = self.get_host()
+        state = host.read_self_update_state()
+        if self.selfUpdateStateIsStale(state):
+            message = (
+                "PyPluginStore self-update stopped reporting progress. Check "
+                "self_update.log before retrying."
+            )
+            try:
+                return host.write_self_update_state(
+                    "stale_unknown",
+                    message,
+                    previous_state=state,
+                )
+            except Exception as error:
+                Domoticz.Error(
+                    "Could not persist stale self-update state: " + str(error)
+                )
+                return host.build_self_update_state(
+                    "stale_unknown",
+                    message,
+                    previous_state=state,
+                )
+        if (
+            state.get("phase") == "applied_needs_reload"
+            and self.manager_identity_service is not None
+        ):
+            return self.finalizeSelfUpdateState()
+        return state
+
+    def selfUpdateStateIsStale(self, state):
+        if str(state.get("phase") or "") not in {"scheduled", "running"}:
+            return False
+        updated_at = str(state.get("updated_at") or "").strip()
+        if not updated_at:
+            return False
+        try:
+            updated = datetime.fromisoformat(updated_at.replace("Z", "+00:00"))
+            if updated.tzinfo is None:
+                updated = updated.replace(tzinfo=timezone.utc)
+            age = datetime.now(timezone.utc) - updated.astimezone(timezone.utc)
+            return age.total_seconds() > SELF_UPDATE_ACTIVE_STALE_SECONDS
+        except (TypeError, ValueError):
+            return True
 
     def finalizeSelfUpdateState(self):
         host = self.get_host()
@@ -16453,7 +17156,11 @@ class BasePlugin:
             return state
 
         plugin_dir = host.plugin_home_folder()
-        result = host.run_git(["git", "rev-parse", "--verify", "HEAD"], plugin_dir, timeout=15)
+        result = host.run_git_read_only(
+            ["git", "rev-parse", "--verify", "HEAD"],
+            plugin_dir,
+            timeout=15,
+        )
         current_commit = result.stdout.strip().splitlines()[0] if result is not None and result.returncode == 0 and result.stdout.strip() else ""
         target_commit = str(state.get("target_commit") or "").strip()
 
@@ -16478,7 +17185,47 @@ class BasePlugin:
             Domoticz.Error(message + " Detailed output: " + host.self_update_log_file())
             return updated_state
 
-        message = "PyPluginStore self-update confirmed."
+        identity_status = (
+            self.getManagerIdentityService().runtime_installation_status()
+        )
+        if not identity_status["verifiable"]:
+            message = (
+                "PyPluginStore self-update was applied, but the installed "
+                "runtime bundle could not be verified."
+            )
+            updated_state = host.write_self_update_state(
+                "stale_unknown",
+                message,
+                previous_state=state,
+                confirmed_commit=current_commit,
+            )
+            Domoticz.Error(
+                message + " Detailed output: " + host.self_update_log_file()
+            )
+            return updated_state
+
+        if not identity_status["matches"]:
+            message = (
+                "PyPluginStore runtime files changed. Restart Domoticz to "
+                "finish the self-update."
+            )
+            if state.get("message") == message:
+                return state
+            updated_state = host.write_self_update_state(
+                "applied_needs_reload",
+                message,
+                previous_state=state,
+                confirmed_commit=current_commit,
+            )
+            Domoticz.Log(
+                message + " Detailed output: " + host.self_update_log_file()
+            )
+            return updated_state
+
+        message = (
+            "PyPluginStore self-update confirmed; the loaded runtime bundle "
+            "matches the installed files."
+        )
         updated_state = host.write_self_update_state(
             "confirmed",
             message,
@@ -16502,6 +17249,13 @@ class BasePlugin:
         Domoticz.Error(context + " failed: " + message)
 
     def sendApiResponse(self, response_dict):
+        response_dict = dict(response_dict)
+        if self.manager_identity_service is not None:
+            self._api_manager_identity = self.getManagerIdentityVerdict(
+                frontend_identity=self._api_frontend_identity,
+                self_update_state=self.getSelfUpdateState(),
+            )
+            response_dict["manager_identity"] = self._api_manager_identity
         self.logApiErrorResponse(response_dict)
         if 1 in Devices:
             try:

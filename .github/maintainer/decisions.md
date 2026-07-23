@@ -1,5 +1,47 @@
 # Maintainer Decisions
 
+## 2026-07-23 - Verify manager runtime generations before mutations
+
+Decision: identify PyPluginStore with both its semantic version and a
+deterministic runtime build ID, compare the browser, deployed custom page,
+loaded backend, and installed files, and make mismatched clients read-only.
+
+Rationale:
+- A Git update can change executable files without changing the release version.
+- Files on disk can advance while Domoticz still runs the previous Python code,
+  and `www/templates` or an open browser tab can remain on another generation.
+- Git `HEAD` is useful provenance but cannot be the equality key for release
+  archives, documentation-only commits, or local builds.
+- A stale page must retain enough access to explain and recover through status
+  and restart, but it must not issue plugin or Local registry mutations.
+
+Implementation notes:
+- The build ID length-frames and hashes `plugin.py`, `package_registry.py`,
+  `package_identity.py`, and `pypluginstore.html` in fixed order.
+- Runtime source fingerprints are frozen before self-update; cached support
+  modules whose source differs from disk make the identity unverifiable.
+- Startup renders the frozen identity into the custom page and replaces the
+  deployed template atomically by exact content rather than mtime.
+- Every frontend command sends the embedded page identity. Backend responses
+  return the current verdict and reject all non-recovery actions unless the
+  generations are coherent.
+- Version, build, Git provenance, self-update state, and recovery guidance are
+  composed only through `#pypluginstore-status`; the manager-card
+  `self-update-detail` renderer and styles were removed.
+- Same-build Git-only updates can be confirmed without restart. A changed bundle
+  requires Domoticz restart, followed by a browser hard refresh if needed.
+- The build ID detects local generation mismatch; it is not an authenticity
+  signature.
+
+Verification:
+- Full sanitized suite: 1,355 tests passed.
+- Generated runtime parity and Python compilation passed.
+- Live validation passed for all 257 registry entries.
+- `git diff --check` passed.
+
+Public action:
+- None.
+
 ## 2026-07-22 - Use local overrides for intentional Git management
 
 Decision: remove the public **Use Git** / `use_git` channel switch. Once a
