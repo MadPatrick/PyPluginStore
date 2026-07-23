@@ -968,7 +968,7 @@ def test_finalize_self_update_state_confirms_applied_target(plugin_core_module, 
 
     monkeypatch.setattr(
         host,
-        "run_git",
+        "run_git_read_only",
         lambda command, cwd, timeout=15: FakeGitResult(stdout="def2222\n"),
     )
 
@@ -995,7 +995,7 @@ def test_finalize_self_update_state_reports_unknown_when_head_cannot_be_verified
 
     monkeypatch.setattr(
         host,
-        "run_git",
+        "run_git_read_only",
         lambda command, cwd, timeout=15: FakeGitResult(stderr="fatal: no head\n", returncode=128),
     )
 

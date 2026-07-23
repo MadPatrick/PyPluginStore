@@ -14,8 +14,6 @@ def generate_plugin():
 #  Since (2018-02-23): Initial Version
 #
 
-PYPLUGINSTORE_VERSION = "{PLUGIN_VERSION}"  # {RELEASE_VERSION_MARKER}
-
 """
 <plugin key="PP-MANAGER" name="PyPluginStore" author="adrighem" version="{PLUGIN_VERSION}" externallink="https://forum.domoticz.com/viewtopic.php?t=44626"> <!-- {RELEASE_VERSION_MARKER} -->
     <description>
@@ -48,6 +46,7 @@ PYPLUGINSTORE_VERSION = "{PLUGIN_VERSION}"  # {RELEASE_VERSION_MARKER}
     </params>
 </plugin>
 """
+PYPLUGINSTORE_VERSION = "{PLUGIN_VERSION}"  # {RELEASE_VERSION_MARKER}
 '''
 
     with open(CORE_FILE, 'r', encoding='utf-8') as f:

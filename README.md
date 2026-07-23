@@ -18,6 +18,7 @@ A robust and modern plugin manager for Domoticz that installs and updates Python
 *   **Release-First Delivery:** Uses checksum-pinned stable release archives when the public release index has certified one, with Git retained as a supported channel.
 *   **Safe Git Migration:** Existing Git installs migrate during their normal Update flow only after repository, ancestry, local-file, dependency, and rollback checks pass.
 *   **Self Update:** PyPluginStore appears in the store under its installed folder name, so it can update itself like any other plugin.
+*   **Runtime Coherence:** The main status shows the manager version, exact build ID, and optional Git revision, and pauses changes when the browser, backend, deployed page, or installed files differ.
 *   **Update Status Checks:** Cards show the active Release or Git channel, versions, verification state, migration blockers, and rollback availability.
 *   **Auto Updates & Notifications:** Automatically update installed plugins or run in notification-only mode.
 *   **Restart Domoticz:** Request a Domoticz service restart from the Plugin Store UI after installs or updates.
@@ -98,6 +99,7 @@ Confirmation: the Domoticz log should contain lines like:
 
 ```text
 PyPluginStore: Initialized version ...
+PyPluginStore: PyPluginStore runtime identity: v... build ...
 PyPluginStore: Custom UI autoinstalled/updated: ...
 PyPluginStore: Plugin Manager Ready. Use the 'Custom' menu to manage plugins.
 ```
@@ -131,6 +133,33 @@ If the hardware exists but **Custom -> pypluginstore** is missing:
 4.  In Docker, confirm `domoticz/www/templates/pypluginstore.html` and `domoticz/www/images/pypluginstore-icon.png` exist inside the running container.
 
 Domoticz only shows the **Custom** menu when custom pages exist and the menu is enabled for the current user.
+
+### Manager Version and Recovery Status
+
+The status in the Plugin Store header is the authoritative manager-version
+check. It shows the semantic version and a short exact build ID, plus the Git
+revision when PyPluginStore is installed from Git. The build ID covers
+`plugin.py`, `package_registry.py`, `package_identity.py`, and
+`pypluginstore.html`, so same-version Git updates are detected as well as normal
+release version changes.
+
+PyPluginStore compares the page running in the browser, the page deployed under
+`domoticz/www/templates`, the backend loaded by Domoticz, and the files currently
+installed on disk. If they differ, install, update, remove, rollback, channel,
+and Local registry changes become read-only. Status checks and **Restart
+Domoticz** remain available for recovery:
+
+* **Restart required:** restart Domoticz, then reopen the Plugin Store.
+* **Browser page differs:** hard-refresh the page after Domoticz has restarted.
+* **Custom page not synchronized:** check write access to
+  `domoticz/www/templates`, restart Domoticz, and reload the page.
+* **Identity could not be verified:** repair or reinstall the fixed runtime
+  files before making changes.
+
+Self-update progress and recovery instructions also appear in this header
+status. A documentation-only Git update can keep the same build ID and does not
+require a restart. The build ID detects local generation mismatches; it is not a
+cryptographic signature or proof that the upstream source is trustworthy.
 
 ### Settings (Hardware Page)
 

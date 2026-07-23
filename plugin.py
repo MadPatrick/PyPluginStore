@@ -5,8 +5,6 @@
 #  Since (2018-02-23): Initial Version
 #
 
-PYPLUGINSTORE_VERSION = "2.21.1"  # x-release-please-version
-
 """
 <plugin key="PP-MANAGER" name="PyPluginStore" author="adrighem" version="2.21.1" externallink="https://forum.domoticz.com/viewtopic.php?t=44626"> <!-- x-release-please-version -->
     <description>
@@ -39,6 +37,7 @@ PYPLUGINSTORE_VERSION = "2.21.1"  # x-release-please-version
     </params>
 </plugin>
 """
+PYPLUGINSTORE_VERSION = "2.21.1"  # x-release-please-version
 
 
 
@@ -179,6 +178,7 @@ _MANAGER_LOADED_PACKAGE_IDENTITY_FINGERPRINT = getattr(
 
 API_PAYLOAD_MAX_LENGTH = 2000
 SELF_UPDATE_STARTUP_DELAY_SECONDS = 5
+SELF_UPDATE_ACTIVE_STALE_SECONDS = 15 * 60
 DEFAULT_GIT_HOST = "github.com"
 SUPPORTED_GIT_HOSTS = ("github.com", "gitlab.com", "codeberg.org")
 REPOSITORY_PATH_STOP_PARTS = {
@@ -13689,7 +13689,7 @@ class ManagerIdentityService:
 
     def _git_commit(self, root):
         try:
-            result = self.plugin.get_host().run_git(
+            result = self.plugin.get_host().run_git_read_only(
                 ["git", "rev-parse", "--verify", "HEAD"],
                 root,
                 timeout=15,
@@ -17138,12 +17138,37 @@ class BasePlugin:
 
     def getSelfUpdateState(self):
         state = self.get_host().read_self_update_state()
+        if self.selfUpdateStateIsStale(state):
+            message = (
+                "PyPluginStore self-update stopped reporting progress. Check "
+                "self_update.log before retrying."
+            )
+            return self.get_host().write_self_update_state(
+                "stale_unknown",
+                message,
+                previous_state=state,
+            )
         if (
             state.get("phase") == "applied_needs_reload"
             and self.manager_identity_service is not None
         ):
             return self.finalizeSelfUpdateState()
         return state
+
+    def selfUpdateStateIsStale(self, state):
+        if str(state.get("phase") or "") not in {"scheduled", "running"}:
+            return False
+        updated_at = str(state.get("updated_at") or "").strip()
+        if not updated_at:
+            return False
+        try:
+            updated = datetime.fromisoformat(updated_at.replace("Z", "+00:00"))
+            if updated.tzinfo is None:
+                updated = updated.replace(tzinfo=timezone.utc)
+            age = datetime.now(timezone.utc) - updated.astimezone(timezone.utc)
+            return age.total_seconds() > SELF_UPDATE_ACTIVE_STALE_SECONDS
+        except (TypeError, ValueError):
+            return True
 
     def finalizeSelfUpdateState(self):
         host = self.get_host()
@@ -17152,7 +17177,11 @@ class BasePlugin:
             return state
 
         plugin_dir = host.plugin_home_folder()
-        result = host.run_git(["git", "rev-parse", "--verify", "HEAD"], plugin_dir, timeout=15)
+        result = host.run_git_read_only(
+            ["git", "rev-parse", "--verify", "HEAD"],
+            plugin_dir,
+            timeout=15,
+        )
         current_commit = result.stdout.strip().splitlines()[0] if result is not None and result.returncode == 0 and result.stdout.strip() else ""
         target_commit = str(state.get("target_commit") or "").strip()
 

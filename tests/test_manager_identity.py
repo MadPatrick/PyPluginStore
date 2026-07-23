@@ -108,7 +108,7 @@ def make_identity_service(
         assert Path(cwd) == manager_dir
         return FakeGitResult(stdout=current_commit["value"] + "\n")
 
-    monkeypatch.setattr(host, "run_git", fake_git)
+    monkeypatch.setattr(host, "run_git_read_only", fake_git)
     _, service_class = require_identity_api(plugin_core_module)
     service = service_class(plugin)
     runtime_identity = service.capture_runtime()
@@ -404,6 +404,24 @@ def test_active_self_update_is_reported_and_temporarily_read_only(
     assert "progress" in verdict["message"].lower()
 
 
+def test_stale_active_self_update_state_becomes_recoverable_unknown(
+    plugin_core_module,
+    tmp_path,
+):
+    configure_home(plugin_core_module, tmp_path)
+    plugin = plugin_core_module.BasePlugin()
+    plugin.get_host().write_self_update_state(
+        "running",
+        "Self update helper is running.",
+        updated_at="2000-01-01T00:00:00Z",
+    )
+
+    state = plugin.getSelfUpdateState()
+
+    assert state["phase"] == "stale_unknown"
+    assert "stopped reporting progress" in state["message"]
+
+
 @pytest.mark.parametrize("failure_kind", ["missing", "symlink"])
 def test_missing_or_symlinked_installed_identity_input_is_unverifiable(
     plugin_core_module,
@@ -493,7 +511,7 @@ def test_git_head_failure_is_optional_and_does_not_break_bundle_coherence(
             raise OSError("git unavailable")
         return FakeGitResult(stderr="fatal: no HEAD\n", returncode=128)
 
-    monkeypatch.setattr(host, "run_git", unavailable_git)
+    monkeypatch.setattr(host, "run_git_read_only", unavailable_git)
 
     verdict = service.get_verdict(
         frontend_identity=runtime_identity,

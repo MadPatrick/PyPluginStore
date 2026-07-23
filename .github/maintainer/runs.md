@@ -1,5 +1,45 @@
 # Maintainer Runs
 
+## 2026-07-23 - Manager runtime identity and coherence
+
+Scope:
+- Added a schema-v1 manager identity with semantic version, deterministic
+  runtime build ID, and optional Git provenance.
+- Froze the loaded runtime before self-update and compared it with installed
+  files, the exact deployed Domoticz template, and the identity embedded in the
+  open browser page.
+- Added atomic content-based custom-page deployment and detection of cached
+  support modules whose source no longer matches disk.
+- Added a backend fail-closed mutation boundary for stale, malformed, legacy,
+  unverifiable, and updating clients while preserving list/status and restart
+  recovery.
+- Added the frontend identity to every bridge request, including Local registry
+  size calculations, and disabled plugin and Local registry mutations until the
+  backend reports a coherent generation.
+- Moved version/build/Git, self-update, and recovery communication into
+  `#pypluginstore-status`; removed the manager-card `self-update-detail` style,
+  renderer, title behavior, and call site.
+- Made self-update finalization depend on runtime bundle equality, so
+  documentation-only Git updates do not require restart and stale active states
+  become recoverable unknown states.
+- Established one Release Please-managed semantic version source in the
+  generator and regenerated `plugin.py`.
+
+Verification:
+- Full sanitized suite: 1,355 tests passed.
+- Focused backend/startup/update/restart/package suite: 160 tests passed.
+- Focused frontend/release-management UI suite: 94 tests passed.
+- Generated runtime parity and Python compilation passed.
+- Live validation passed for all 257 registry entries.
+- `git diff --check` passed.
+
+Notes:
+- No issue, pull request, push, comment, label, close, merge, or other public
+  GitHub action was taken.
+- The three pre-existing untracked maintainer notes remain untouched.
+- Real Domoticz restart/browser verification remains the Conductor manual
+  checkpoint.
+
 ## 2026-07-22 - ISSUE:117 reply and ISSUE:111 local-override hardening
 
 Scope:
