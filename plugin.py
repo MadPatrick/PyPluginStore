@@ -353,7 +353,7 @@ class HostRuntime:
                 pass
             raise
 
-    def write_self_update_state(self, phase, message="", previous_state=None, **fields):
+    def build_self_update_state(self, phase, message="", previous_state=None, **fields):
         now = self.utc_timestamp()
         state = dict(previous_state or {})
         state.setdefault("created_at", now)
@@ -367,6 +367,15 @@ class HostRuntime:
         for key, value in fields.items():
             if value is not None:
                 state[key] = value
+        return state
+
+    def write_self_update_state(self, phase, message="", previous_state=None, **fields):
+        state = self.build_self_update_state(
+            phase,
+            message,
+            previous_state=previous_state,
+            **fields,
+        )
         self.write_json_atomic(self.self_update_state_file(), state)
         return state
 
@@ -17137,17 +17146,28 @@ class BasePlugin:
         return self.update_status_service.get_git_update_status(plugin_dir, plugin_key, fetch_first)
 
     def getSelfUpdateState(self):
-        state = self.get_host().read_self_update_state()
+        host = self.get_host()
+        state = host.read_self_update_state()
         if self.selfUpdateStateIsStale(state):
             message = (
                 "PyPluginStore self-update stopped reporting progress. Check "
                 "self_update.log before retrying."
             )
-            return self.get_host().write_self_update_state(
-                "stale_unknown",
-                message,
-                previous_state=state,
-            )
+            try:
+                return host.write_self_update_state(
+                    "stale_unknown",
+                    message,
+                    previous_state=state,
+                )
+            except Exception as error:
+                Domoticz.Error(
+                    "Could not persist stale self-update state: " + str(error)
+                )
+                return host.build_self_update_state(
+                    "stale_unknown",
+                    message,
+                    previous_state=state,
+                )
         if (
             state.get("phase") == "applied_needs_reload"
             and self.manager_identity_service is not None

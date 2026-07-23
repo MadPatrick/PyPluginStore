@@ -422,6 +422,33 @@ def test_stale_active_self_update_state_becomes_recoverable_unknown(
     assert "stopped reporting progress" in state["message"]
 
 
+def test_stale_self_update_state_remains_recoverable_when_persistence_fails(
+    plugin_core_module,
+    tmp_path,
+    monkeypatch,
+):
+    configure_home(plugin_core_module, tmp_path)
+    plugin = plugin_core_module.BasePlugin()
+    host = plugin.get_host()
+    host.write_self_update_state(
+        "running",
+        "Self update helper is running.",
+        updated_at="2000-01-01T00:00:00Z",
+    )
+
+    def fail_write(*args, **kwargs):
+        raise PermissionError("manager directory is read-only")
+
+    monkeypatch.setattr(host, "write_self_update_state", fail_write)
+
+    state = plugin.getSelfUpdateState()
+
+    assert state["operation"] == "self_update"
+    assert state["phase"] == "stale_unknown"
+    assert "stopped reporting progress" in state["message"]
+    assert state["log_file"] == host.self_update_log_file()
+
+
 @pytest.mark.parametrize("failure_kind", ["missing", "symlink"])
 def test_missing_or_symlinked_installed_identity_input_is_unverifiable(
     plugin_core_module,
