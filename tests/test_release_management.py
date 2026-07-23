@@ -975,6 +975,73 @@ def test_execute_preserves_existing_git_status_wrapper_signature(
     assert release_strategy.calls == []
 
 
+def test_status_notifications_distinguish_updates_from_release_channel_switches(
+    plugin_core_module,
+    monkeypatch,
+):
+    coordinator, _, _ = make_coordinator(plugin_core_module)
+    entry = registry_entry(plugin_core_module)
+    target = release_descriptor(plugin_core_module)
+    notifications = []
+    monkeypatch.setattr(
+        coordinator.plugin,
+        "fnSelectedNotify",
+        lambda plugin_key: notifications.append(("update", plugin_key)),
+    )
+    monkeypatch.setattr(
+        coordinator.plugin,
+        "fnReleaseChannelNotify",
+        lambda plugin_key, version: notifications.append(
+            ("release_channel", plugin_key, version)
+        ),
+    )
+
+    decisions = iter(
+        [
+            plugin_core_module.ReleaseManagementDecision(
+                route="release_update",
+                status="available",
+                release=target,
+                trigger="automatic",
+            ),
+            plugin_core_module.ReleaseManagementDecision(
+                route="release_migration",
+                status="migration_available",
+                release=target,
+                trigger="automatic",
+            ),
+            plugin_core_module.ReleaseManagementDecision(
+                route="blocked",
+                status="migration_waiting_for_release",
+                reason="installed_head_ahead",
+                release=target,
+                trigger="automatic",
+            ),
+            plugin_core_module.ReleaseManagementDecision(
+                route="none",
+                status="current",
+                release=target,
+                trigger="automatic",
+            ),
+        ]
+    )
+    monkeypatch.setattr(
+        coordinator,
+        "_runtime_decision",
+        lambda requested_entry, operation, trigger: next(decisions),
+    )
+
+    coordinator.check_for_update(entry, trigger="automatic")
+    coordinator.check_for_update(entry, trigger="automatic")
+    coordinator.check_for_update(entry, trigger="automatic")
+    coordinator.check_for_update(entry, trigger="automatic")
+
+    assert notifications == [
+        ("update", "ExamplePlugin"),
+        ("release_channel", "ExamplePlugin", "1.4.0"),
+    ]
+
+
 def test_blocked_release_managed_operation_calls_neither_strategy(
     plugin_core_module,
 ):

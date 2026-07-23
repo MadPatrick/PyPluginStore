@@ -16,10 +16,10 @@ A robust and modern plugin manager for Domoticz that installs and updates Python
 *   **Search, Sort & Filter:** Find plugins in the registry with type-ahead search, sorting, and installed-plugin filtering.
 *   **Install, Remove & Update:** Manage Domoticz Python plugins without manual folder management.
 *   **Release-First Delivery:** Uses checksum-pinned stable release archives when the public release index has certified one, with Git retained as a supported channel.
-*   **Safe Git Migration:** Existing Git installs migrate during their normal Update flow only after repository, ancestry, local-file, dependency, and rollback checks pass.
+*   **Safe Release-Channel Use:** Existing Git installations can use the Release channel only after repository, ancestry, local-file, dependency, and rollback checks pass.
 *   **Self Update:** PyPluginStore appears in the store under its installed folder name, so it can update itself like any other plugin.
 *   **Runtime Coherence:** The main status shows the manager version, exact build ID, and optional Git revision, and pauses changes when the browser, backend, deployed page, or installed files differ.
-*   **Update Status Checks:** Cards show the active Release or Git channel, versions, verification state, migration blockers, and rollback availability.
+*   **Update Status Checks:** Cards show the active Release or Git channel, versions, verification state, Release-channel blockers, and rollback availability.
 *   **Auto Updates & Notifications:** Automatically update installed plugins or run in notification-only mode.
 *   **Restart Domoticz:** Request a Domoticz service restart from the Plugin Store UI after installs or updates.
 *   **Dependency Management:** Install plugin dependencies with `uv` (recommended) or `pip`, or manage them manually.
@@ -165,7 +165,8 @@ cryptographic signature or proof that the upstream source is trustworthy.
 
 *   **Auto Update:**
     *   **All:** Continuously updates all installed plugins.
-    *   **All (NotifyOnly):** Checks all plugins for updates and notifies you.
+    *   **All (NotifyOnly):** Reports newer plugin versions and available
+        Release-channel choices without changing files.
     *   **None:** Disables auto-updating.
 *   **Debug:** Set to True for detailed logging.
 
@@ -181,9 +182,9 @@ Local registry entries remain Git-managed. Release delivery is enabled only by t
 
 ### Release and Git Channels
 
-Release is the primary channel when PyPluginStore has a fresh, certified release target. A `release_if_indexed` package uses Git until that target exists. The weekly scan checks every eligible package, so a maintainer can start with Git and publish stable releases later without changing the package's registry identity. A matching release is downloaded and certified, then proposed through the weekly pull request; after review and merge, new installs become release-first and clean existing Git installs can migrate during **Update**. Local registry entries and PyPluginStore's own self-update remain Git-managed. To intentionally keep a package on branch-based Git updates, create a local registry override for it.
+Release is the primary channel when PyPluginStore has a fresh, certified release target. A `release_if_indexed` package uses Git until that target exists. The weekly scan checks every eligible package, so a maintainer can start with Git and publish stable releases later without changing the package's registry identity. A matching release is downloaded and certified, then proposed through the weekly pull request; after review and merge, new installs become release-first and existing Git installations can choose **Use Release channel** instead of continuing with Git commits. Local registry entries and PyPluginStore's own self-update remain Git-managed. To intentionally keep a package on branch-based Git updates, create a local registry override for it.
 
-Once Release has been activated for a plugin, missing, expired, invalid, or mismatched release metadata blocks the operation instead of silently falling back to Git. Existing Git installations are not replaced in bulk: migration preflight verifies the configured remote, commit ancestry, working tree, submodules, and permitted local data. Automatic migration requires a clean checkout whose installed commit equals or precedes the release commit and whose archive has proven source continuity. Notify-only mode only reports the transition; a local override, local changes, repository mismatches, or insufficient evidence leave the checkout on Git.
+Once Release has been activated for a plugin, missing, expired, invalid, or mismatched release metadata blocks the operation instead of silently falling back to Git. Existing Git installations are not replaced in bulk: migration preflight verifies the configured remote, commit ancestry, working tree, submodules, and permitted local data. Automatic migration requires a clean checkout whose installed commit equals or precedes the release commit and whose archive has proven source continuity. Notify-only mode describes this as a Release-channel option, not a newer plugin version; a local override, local changes, repository mismatches, or insufficient evidence leave the checkout on Git.
 
 Commit-addressed source archives provide automatic migration evidence. An attached ZIP must have a canonical selected tree equal to the source archive for the same commit; otherwise it requires a reviewed manual channel switch. Every accepted archive is checked against its byte length, SHA-256, canonical tree, layout, Python compilation, `package_id`, and exact Domoticz runtime key before activation with a complete staged dependency snapshot. A failed release operation never falls back to a branch update.
 

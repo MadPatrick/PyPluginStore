@@ -3,6 +3,8 @@ import os
 from datetime import datetime
 from pathlib import Path
 
+import pytest
+
 from plugin_core_helpers import (
     configure_home,
     write_manager_identity_bundle,
@@ -1033,6 +1035,11 @@ def test_check_for_update_notifies_when_update_available(plugin_core_module, tmp
     plugin.plugin_data = {
         "OtherPlugin": ["owner", "repo", "description", "main", ""],
     }
+    monkeypatch.setattr(
+        plugin_core_module.platform,
+        "node",
+        lambda: "domoticz-host",
+    )
 
     monkeypatch.setattr(plugin, "fetch_git_repo", lambda actual_dir: True)
     monkeypatch.setattr(plugin, "get_git_remote_ref", lambda actual_dir: "origin/main")
@@ -1043,7 +1050,65 @@ def test_check_for_update_notifies_when_update_available(plugin_core_module, tmp
 
     assert plugin_core_module.Domoticz.calls["Error"] == []
     assert len(plugin_core_module.Domoticz.calls["SendNotification"]) == 1
+    arguments, _ = plugin_core_module.Domoticz.calls["SendNotification"][0]
+    assert arguments == (
+        "domoticz-host: Domoticz Plugin Updates Available for description",
+        "description has updates available!!",
+    )
     assert plugin.update_status["OtherPlugin"] == "available"
+
+
+@pytest.mark.parametrize(
+    ("release_version", "expected_body"),
+    [
+        (
+            "v1.4.0",
+            (
+                "Use the Release channel v1.4.0 for Example plugin instead of "
+                "Git commits."
+            ),
+        ),
+        (
+            "",
+            (
+                "Use the Release channel for Example plugin instead of Git "
+                "commits."
+            ),
+        ),
+    ],
+)
+def test_release_channel_notification_explains_that_it_replaces_git_commits(
+    plugin_core_module,
+    monkeypatch,
+    release_version,
+    expected_body,
+):
+    plugin = plugin_core_module.BasePlugin()
+    entry = plugin_core_module.RegistryEntry(
+        "OtherPlugin",
+        "owner",
+        "repo",
+        "Example plugin",
+        "main",
+    )
+    plugin.registry_entries[entry.key] = entry
+    monkeypatch.setattr(
+        plugin_core_module.platform,
+        "node",
+        lambda: "domoticz-host",
+    )
+
+    plugin.fnReleaseChannelNotify(entry.key, release_version)
+
+    assert len(plugin_core_module.Domoticz.calls["SendNotification"]) == 1
+    arguments, _ = plugin_core_module.Domoticz.calls["SendNotification"][0]
+    subject, body = arguments
+    assert subject == (
+        "domoticz-host: Domoticz Plugin Release Channel Available for "
+        "Example plugin"
+    )
+    assert "Updates Available" not in subject
+    assert body == expected_body
 
 
 def test_check_for_update_caches_current_status(plugin_core_module, tmp_path, monkeypatch):

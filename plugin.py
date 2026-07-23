@@ -6760,7 +6760,8 @@ class ReleasePreservationService:
             if trigger == "automatic":
                 raise self._error(
                     "tracked_changes",
-                    "Automatic migration cannot preserve tracked changes.",
+                    "Automatic Release channel selection cannot preserve "
+                    "tracked changes.",
                     inventory_result.tracked_changes,
                 )
             outside_policy = [
@@ -11893,7 +11894,8 @@ class GitMigrationPreflight:
             except ValueError as error:
                 raise ReleasePreservationError(
                     "unsafe_preserved_path",
-                    "A tracked Git path is unsafe for migration.",
+                    "A tracked Git path is unsafe to preserve when using the "
+                    "Release channel.",
                     [relative_path],
                 ) from error
             physical_path = os.path.join(
@@ -11973,7 +11975,10 @@ class GitMigrationPreflight:
         if not host.command_available("git"):
             return self._result(
                 reason="git_unavailable",
-                message="Git is unavailable; migration state is unknown.",
+                message=(
+                    "Git is unavailable, so the Release channel cannot be "
+                    "compared with this checkout."
+                ),
                 **common,
             )
         if not os.path.isdir(plugin_dir) or os.path.islink(plugin_dir):
@@ -12031,7 +12036,10 @@ class GitMigrationPreflight:
             return self._result(
                 status="migration_blocked_local_changes",
                 reason="git_operation_in_progress",
-                message="A Git operation must be resolved before migration.",
+                message=(
+                    "Finish the current Git operation before using the "
+                    "Release channel."
+                ),
                 unresolved_operations=unresolved_operations,
                 **common,
             )
@@ -12113,7 +12121,10 @@ class GitMigrationPreflight:
             return self._result(
                 status="migration_blocked_local_changes",
                 reason="submodules_not_supported",
-                message="Git submodules are not supported by release migration.",
+                message=(
+                    "Using the Release channel does not support Git "
+                    "submodules."
+                ),
                 tracked_changes=tracked_changes,
                 untracked_files=untracked_files,
                 submodules=submodules,
@@ -12225,6 +12236,15 @@ class GitMigrationPreflight:
         }
         if relationship in {"installed_ahead", "diverged"}:
             requires_confirmation = trigger == "manual"
+            relationship_message = (
+                "The installed Git checkout contains commits newer than the "
+                "available Release."
+                if relationship == "installed_ahead"
+                else (
+                    "The installed Git checkout contains commits that differ "
+                    "from the available Release."
+                )
+            )
             return self._result(
                 status="migration_waiting_for_release",
                 reason=(
@@ -12232,7 +12252,7 @@ class GitMigrationPreflight:
                     if requires_confirmation
                     else relationship_reason
                 ),
-                message="The release does not contain the installed commit.",
+                message=relationship_message,
                 requires_confirmation=requires_confirmation,
                 **inventory_values,
                 **related,
@@ -12242,7 +12262,10 @@ class GitMigrationPreflight:
                 return self._result(
                     status="migration_blocked_local_changes",
                     reason="tracked_changes",
-                    message="Automatic migration cannot preserve tracked changes.",
+                    message=(
+                        "Automatic use of the Release channel cannot preserve "
+                        "tracked changes."
+                    ),
                     **inventory_values,
                     **related,
                 )
@@ -12281,7 +12304,10 @@ class GitMigrationPreflight:
                 return self._result(
                     status="migration_blocked_local_files",
                     reason="untracked_files",
-                    message="Automatic migration cannot preserve unknown local files.",
+                    message=(
+                        "Automatic use of the Release channel cannot preserve "
+                        "unknown local files."
+                    ),
                     **inventory_values,
                     **related,
                 )
@@ -12299,7 +12325,10 @@ class GitMigrationPreflight:
             allowed=True,
             status="migration_available",
             reason=relationship_reason,
-            message="The Git checkout is eligible for release migration.",
+            message=(
+                "This Git checkout can use the Release channel instead of Git "
+                "commits."
+            ),
             **inventory_values,
             **related,
         )
@@ -12418,7 +12447,7 @@ class ReleaseInstallUpdateStrategy:
         inventory = preflight.preservation_inventory
         if not isinstance(inventory, ReleasePreservationInventory):
             raise ValueError(
-                "Git migration preservation inventory is unavailable."
+                "Release channel preservation inventory is unavailable."
             )
         return _validated_migration_snapshot(
             {
@@ -12452,7 +12481,7 @@ class ReleaseInstallUpdateStrategy:
                 GitMigrationPreflightResult,
             ):
                 raise ValueError(
-                    "A validated Git migration preflight is required."
+                    "A validated Release channel preflight is required."
                 )
             plugin_dir = self.plugin.resolve_installed_plugin_dir(entry.key)
             return (
@@ -12606,7 +12635,7 @@ class ReleaseInstallUpdateStrategy:
         inventory = migration_preflight.preservation_inventory
         if not isinstance(inventory, ReleasePreservationInventory):
             raise ValueError(
-                "Git migration preservation inventory is unavailable."
+                "Release channel preservation inventory is unavailable."
             )
         result = self._preservation().apply_overlay(
             inventory,
@@ -12821,15 +12850,17 @@ class ReleaseInstallUpdateStrategy:
         migration_mode = release.artifact.migration_mode
         if migration_mode == "blocked":
             raise ValueError(
-                "The selected release is not migration eligible."
+                "The selected release cannot safely replace this Git checkout."
             )
         if trigger == "automatic" and migration_mode != "automatic":
             raise ValueError(
-                "The selected release requires manual migration."
+                "The selected release requires manual confirmation before "
+                "using the Release channel."
             )
         if not release.commit:
             raise ValueError(
-                "The selected release has no commit for migration ancestry."
+                "The selected release has no commit to compare with this Git "
+                "checkout."
             )
         plugin_dir = self.plugin.resolve_installed_plugin_dir(entry.key)
         release_policy = getattr(entry.delivery, "release", None)
@@ -12880,14 +12911,15 @@ class ReleaseInstallUpdateStrategy:
             )
         if preflight.requires_confirmation and not downgrade_confirmed:
             return False, preflight.message or (
-                "Migration requires explicit downgrade confirmation."
+                "Using the Release channel requires explicit downgrade "
+                "confirmation."
             )
         if approval_paths and (
             approved_inventory_sha256 != preflight.inventory_sha256
         ):
             return False, (
-                "Migration requires exact approval of the current local-data "
-                "inventory."
+                "Using the Release channel requires exact approval of the "
+                "current local-data inventory."
             )
         manually_authorized = bool(
             trigger == "manual"
@@ -12898,10 +12930,10 @@ class ReleaseInstallUpdateStrategy:
         )
         if not preflight.allowed and not manually_authorized:
             return False, preflight.message or preflight.reason or (
-                "Git-to-release migration is not available."
+                "The Release channel is not available for this Git checkout."
             )
         if not preflight.installed_commit or inventory is None:
-            return False, "Git migration preflight is incomplete."
+            return False, "Release channel preflight is incomplete."
 
         return self._execute(
             entry,
@@ -13490,8 +13522,18 @@ class ReleaseManagementCoordinator:
         if decision.route == "git_status":
             return self.execute(entry, decision)
         self.plugin.update_status[entry.key] = decision.status
-        if decision.status in {"available", "migration_available"}:
+        if decision.status == "available":
             self.plugin.fnSelectedNotify(entry.key)
+        elif decision.status == "migration_available":
+            release_version = (
+                getattr(decision.release, "version", "")
+                if decision.release is not None
+                else ""
+            )
+            self.plugin.fnReleaseChannelNotify(
+                entry.key,
+                release_version,
+            )
         return None
 
 
@@ -15821,6 +15863,11 @@ class BasePlugin:
                         else:
                             status = "migration_waiting_for_release"
                             reason = switch_plan.message
+                    elif (
+                        decision.status == "migration_waiting_for_release"
+                        and switch_plan.message
+                    ):
+                        reason = switch_plan.message
 
             version_info = versions.get(plugin_key, {})
             installed_version = (
@@ -16490,7 +16537,8 @@ class BasePlugin:
         if context.get("installed_mode") != "git":
             return ReleaseSwitchPlan(
                 "blocked",
-                "The requested release migration is not applicable.",
+                "This plugin is not using Git, so this Release channel action "
+                "is not applicable.",
             )
 
         decision_context = dict(context)
@@ -16505,10 +16553,20 @@ class BasePlugin:
         )
         decision = replace(decision, index_sequence=index_sequence)
         if decision.route != "release_migration":
+            decision_message = {
+                "release_not_migration_eligible": (
+                    "The selected release cannot safely replace this Git "
+                    "checkout."
+                ),
+                "release_requires_manual_migration": (
+                    "The selected release requires manual confirmation before "
+                    "using the Release channel."
+                ),
+            }.get(decision.reason, decision.reason)
             return ReleaseSwitchPlan(
                 "blocked",
-                decision.reason
-                or "Git-to-release migration is not available.",
+                decision_message
+                or "The Release channel is not available for this Git checkout.",
                 decision=decision,
             )
 
@@ -16525,7 +16583,7 @@ class BasePlugin:
         if not callable(preflight_migration):
             return ReleaseSwitchPlan(
                 "blocked",
-                "Git-to-release migration is not configured.",
+                "Using the Release channel is not configured.",
                 decision=decision,
             )
         try:
@@ -16548,7 +16606,7 @@ class BasePlugin:
             preflight.message
             or preflight.reason
             or (
-                "Git-to-release migration is not available."
+                "The Release channel is not available for this Git checkout."
                 if action_state == "blocked"
                 else ""
             ),
@@ -16702,7 +16760,8 @@ class BasePlugin:
                 }
             if installed_mode != "git":
                 raise RuntimeError(
-                    "The requested release migration is not applicable."
+                    "This plugin is not using Git, so this Release channel "
+                    "action is not applicable."
                 )
 
             switch_plan = self._plan_release_switch(
@@ -16713,7 +16772,10 @@ class BasePlugin:
             if switch_plan.action_state == "blocked":
                 raise RuntimeError(
                     switch_plan.message
-                    or "Git-to-release migration is not available."
+                    or (
+                        "The Release channel is not available for this Git "
+                        "checkout."
+                    )
                 )
             decision = switch_plan.decision
             preflight = switch_plan.preflight
@@ -16746,27 +16808,37 @@ class BasePlugin:
             target["requires_downgrade_confirmation"] = bool(
                 preflight.requires_confirmation
             )
+            relationship_message = (
+                preflight.message
+                or (
+                    "The selected Release channel does not contain the "
+                    "installed Git commit."
+                )
+            )
             confirmation_message = (
-                "Switch this plugin from Git to the pinned Release channel?"
+                "Use the Release channel instead of Git commits for this "
+                "plugin?"
             )
             if (
                 preflight.requires_confirmation
                 and requires_inventory_approval
             ):
                 confirmation_message = (
-                    "The pinned release does not contain the installed Git "
-                    "commit. Confirm preserving the reviewed local-data "
-                    "inventory and replacing the checkout with this release."
+                    relationship_message
+                    + " Confirm preserving the reviewed local-data "
+                    "inventory and using the Release channel instead of Git "
+                    "commits."
                 )
             elif preflight.requires_confirmation:
                 confirmation_message = (
-                    "The pinned release does not contain the installed Git "
-                    "commit. Confirm replacing it with the reviewed release."
+                    relationship_message
+                    + " Confirm using the Release channel instead of the "
+                    "installed Git commits."
                 )
             elif requires_inventory_approval:
                 confirmation_message = (
                     "Confirm preserving the reviewed local-data inventory and "
-                    "switching this plugin from Git to Release."
+                    "using the Release channel instead of Git commits."
                 )
             confirmation, approved_digest = (
                 self._release_action_confirmation(
@@ -16784,7 +16856,7 @@ class BasePlugin:
             migrate = getattr(release_strategy, "migrate", None)
             if not callable(migrate):
                 raise RuntimeError(
-                    "Git-to-release migration is not configured."
+                    "Using the Release channel is not configured."
                 )
             success, message = migrate(
                 entry,
@@ -16798,7 +16870,7 @@ class BasePlugin:
             )
             if not success:
                 raise RuntimeError(
-                    message or "Git-to-release migration failed."
+                    message or "Using the Release channel failed."
                 )
             plugin_dir = self.resolve_installed_plugin_dir(plugin_key)
             installed_release = self.install_metadata_service.read(plugin_dir)
@@ -16815,7 +16887,7 @@ class BasePlugin:
             self.channel_preference_service.set(identity, "release")
             return {
                 "status": "success",
-                "message": message or "Release migration staged.",
+                "message": message or "Release channel selected; restart required.",
                 "restart_pending": True,
             }
         except (OSError, ReleaseConfirmationError, RuntimeError, ValueError) as error:
@@ -17395,6 +17467,38 @@ class BasePlugin:
         plugin_name = entry.description if entry is not None and entry.description else plugin_key
         MailSubject = platform.node() + ": Domoticz Plugin Updates Available for " + plugin_name
         MailBody = plugin_name + " has updates available!!"
+        self.sendDomoticzNotification(MailSubject, MailBody)
+        return None
+
+    def fnReleaseChannelNotify(self, plugin_key, release_version=""):
+        Domoticz.Debug("fnReleaseChannelNotify called")
+        Domoticz.Log("Preparing Release channel notification")
+        entry = self.get_registry_entry(plugin_key)
+        plugin_name = (
+            entry.description
+            if entry is not None and entry.description
+            else plugin_key
+        )
+        normalized_version = str(release_version or "").strip()
+        if normalized_version[:1].lower() == "v":
+            normalized_version = normalized_version[1:]
+        release_target = (
+            " v" + normalized_version
+            if normalized_version
+            else ""
+        )
+        MailSubject = (
+            platform.node()
+            + ": Domoticz Plugin Release Channel Available for "
+            + plugin_name
+        )
+        MailBody = (
+            "Use the Release channel"
+            + release_target
+            + " for "
+            + plugin_name
+            + " instead of Git commits."
+        )
         self.sendDomoticzNotification(MailSubject, MailBody)
         return None
 

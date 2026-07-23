@@ -616,7 +616,7 @@ def test_release_status_text_surfaces_versions_verification_migration_and_restar
                 migration_status="migration_blocked_local_changes",
                 migration_message="Local changes must be reviewed.",
             ),
-            "fragments": ["Migration blocked", "Local changes"],
+            "fragments": ["Cannot use Release channel", "Local changes"],
         },
         {
             "state": release_management_state(
@@ -624,14 +624,29 @@ def test_release_status_text_surfaces_versions_verification_migration_and_restar
                 status="migration_confirmation_required",
                 migration_status="migration_confirmation_required",
                 migration_message=(
-                    "The release does not contain the installed commit."
+                    "The installed Git checkout contains commits newer than "
+                    "the available Release."
                 ),
                 migration_action_state="confirmation_required",
                 updateable=False,
             ),
             "fragments": [
-                "Release switch to v2.0.0 requires confirmation",
-                "does not contain the installed commit",
+                (
+                    "Use Release channel v2.0.0 instead of Git commits; "
+                    "confirmation required"
+                ),
+                "contains commits newer than the available Release",
+            ],
+        },
+        {
+            "state": release_management_state(
+                channel="git",
+                status="migration_available",
+                migration_status="migration_available",
+                migration_action_state="available",
+            ),
+            "fragments": [
+                "Use Release channel v2.0.0 instead of Git commits",
             ],
         },
         {
@@ -874,10 +889,32 @@ def test_ui_renders_explicit_channel_and_rollback_actions():
     assert "use_git" not in script
     assert "Use Git" not in script
     assert "use_release" in script
-    assert "Switch to Release" in script
+    assert "Use Release channel" in script
+    assert "Use the Release channel instead of Git commits" in script
     assert "rollback" in script
     assert "Rollback" in script
     assert "handleReleaseManagementAction" in script
+
+
+def test_ui_uses_a_friendly_name_for_release_channel_progress():
+    script = load_inline_script()
+    label_source = extract_js_function(script, "actionDisplayName")
+    handle_action_source = extract_js_function(script, "handleAction")
+
+    run_node(
+        label_source
+        + """
+if (actionDisplayName('use_release') !== 'Release channel selection') {
+    throw new Error('release channel action leaked its internal name');
+}
+if (actionDisplayName('refresh_update_status') !== 'refresh update status') {
+    throw new Error('fallback action label was not humanized');
+}
+"""
+    )
+    assert "actionDisplayName(action)" in handle_action_source
+    assert "Executing ${actionName}" in handle_action_source
+    assert "Error during ${actionName}" in handle_action_source
 
 
 def test_confirmation_payload_contains_only_key_and_bounded_opaque_token():

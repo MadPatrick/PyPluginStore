@@ -437,9 +437,24 @@ def test_clean_git_checkout_migrates_through_the_same_pinned_pipeline(
         ("automatic", "automatic", True, ""),
         ("automatic", "manual", True, ""),
         ("manual", "manual", True, ""),
-        ("manual", "automatic", False, "requires manual migration"),
-        ("blocked", "manual", False, "not migration eligible"),
-        ("blocked", "automatic", False, "not migration eligible"),
+        (
+            "manual",
+            "automatic",
+            False,
+            "requires manual confirmation before using the Release channel",
+        ),
+        (
+            "blocked",
+            "manual",
+            False,
+            "cannot safely replace this Git checkout",
+        ),
+        (
+            "blocked",
+            "automatic",
+            False,
+            "cannot safely replace this Git checkout",
+        ),
     ],
 )
 def test_runtime_preflight_enforces_migration_mode_and_trigger(

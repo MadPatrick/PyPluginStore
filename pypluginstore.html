@@ -3392,20 +3392,25 @@
         } else if (state.status === 'local_override_requires_git_checkout') {
             details.push('Local override requires Rollback or reinstall');
         } else if (String(state.status || '').indexOf('migration_blocked') === 0) {
-            details.push('Migration blocked' + (state.migration_message ? ': ' + state.migration_message : ''));
+            details.push('Cannot use Release channel' +
+                (state.migration_message ? ': ' + state.migration_message : ''));
         } else if (state.status === 'migration_confirmation_required') {
-            const releaseTarget = target ? ' to ' + target : '';
-            details.push('Release switch' + releaseTarget + ' requires confirmation' +
+            const releaseTarget = target ? ' ' + target : '';
+            details.push('Use Release channel' + releaseTarget +
+                ' instead of Git commits; confirmation required' +
                 (state.migration_message ? ': ' + state.migration_message : ''));
         } else if (state.status === 'migration_waiting_for_release') {
-            details.push('Migration waiting for release' + (state.migration_message ? ': ' + state.migration_message : ''));
+            details.push('Release channel is not ready for this Git checkout' +
+                (state.migration_message ? ': ' + state.migration_message : ''));
         } else if (state.status === 'git_available') {
             details.push('Update available');
         } else if (state.status === 'rollback_available') {
             const rollbackVersion = state.rollback_version ? 'v' + String(state.rollback_version).replace(/^v/i, '') : '';
             details.push('Rollback available' + (rollbackVersion ? ': ' + rollbackVersion : ''));
         } else if (state.status === 'migration_available') {
-            details.push('Release migration available' + (target ? ': ' + target : ''));
+            const releaseTarget = target ? ' ' + target : '';
+            details.push('Use Release channel' + releaseTarget +
+                ' instead of Git commits');
         } else if (state.status === 'available') {
             details.push((target ? target + ' — ' : '') + 'available');
         } else if (state.status === 'current') {
@@ -3715,7 +3720,8 @@
                     useReleaseButton.dataset.key = key;
                     useReleaseButton.dataset.action = 'use_release';
                     useReleaseButton.type = 'button';
-                    useReleaseButton.textContent = 'Switch to Release';
+                    useReleaseButton.textContent = 'Use Release channel';
+                    useReleaseButton.title = 'Use the Release channel instead of Git commits';
                     actions.appendChild(useReleaseButton);
                 }
 
@@ -3763,6 +3769,11 @@
         updateManagerMutationControls();
     }
 
+    function actionDisplayName(action) {
+        if (action === 'use_release') return 'Release channel selection';
+        return String(action || '').replace(/_/g, ' ');
+    }
+
     async function handleAction(action, pluginKey) {
         if (
             managerActionIsMutating(action) &&
@@ -3779,14 +3790,15 @@
             return;
         }
 
-        renderManagerStatus(`Executing ${action} for ${pluginKey}... This may take a moment.`);
+        const actionName = actionDisplayName(action);
+        renderManagerStatus(`Executing ${actionName} for ${pluginKey}... This may take a moment.`);
         try {
             const isReleaseManagementAction = ['update', 'use_release', 'rollback'].includes(action);
             const response = isReleaseManagementAction ?
                 await handleReleaseManagementAction(action, pluginKey) :
                 await sendCommand(action, { plugin_key: pluginKey });
             if (response && response.status === 'success') {
-                const successMessage = response.message || `Successfully completed ${action} for ${pluginKey}. Domoticz restart may be required.`;
+                const successMessage = response.message || `Successfully completed ${actionName} for ${pluginKey}. Domoticz restart may be required.`;
                 alert(successMessage);
                 renderManagerStatus(successMessage);
                 if (response.operation === 'self_update') {
@@ -3798,7 +3810,7 @@
                     await loadPlugins();
                 }
             } else {
-                alert(`Error during ${action}: ` + (response ? response.message : "Unknown error"));
+                alert(`Error during ${actionName}: ` + (response ? response.message : "Unknown error"));
                 renderManagerStatus("Operation failed.");
             }
         } catch (e) {
